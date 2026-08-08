@@ -501,7 +501,8 @@ uv sync --all-extras --group dev --frozen
 
 ## Configuration
 
-The current CLI uses `.semapact.yaml` during the rename transition.
+SemaPact uses `.semapact.yaml` for project-local configuration.
+For backward compatibility, `.contracthub.yaml` is also supported.
 
 Example:
 
@@ -528,7 +529,7 @@ databricks:
   profile: default
 ```
 
-Configuration and package naming will migrate to SemaPact terminology separately from the repository rename.
+
 
 ---
 
