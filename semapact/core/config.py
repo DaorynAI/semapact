@@ -24,10 +24,10 @@ class ConfigManager:
 
     def _load_configs(self):
         self._last_cwd = Path.cwd()
-        # Load global first (semapact, fallback to semapact)
+        # Load global first (semapact, fallback to contracthub)
         global_config_path = Path.home() / ".config" / "semapact" / "config.yaml"
         if not global_config_path.exists():
-            global_config_path = Path.home() / ".config" / "semapact" / "config.yaml"
+            global_config_path = Path.home() / ".config" / "contracthub" / "config.yaml"
         if global_config_path.exists():
             try:
                 with open(global_config_path, "r", encoding="utf-8") as f:
@@ -36,10 +36,10 @@ class ConfigManager:
             except Exception as e:
                 LOGGER.warning(f"Failed to load global config from {global_config_path}: {e}")
 
-        # Load local overriding global (semapact, fallback to semapact)
+        # Load local overriding global (semapact, fallback to contracthub)
         local_config_path = Path.cwd() / ".semapact.yaml"
         if not local_config_path.exists():
-            local_config_path = Path.cwd() / ".semapact.yaml"
+            local_config_path = Path.cwd() / ".contracthub.yaml"
         if local_config_path.exists():
             try:
                 with open(local_config_path, "r", encoding="utf-8") as f:
@@ -101,11 +101,11 @@ class ConfigManager:
             if env_var in os.environ:
                 return os.environ[env_var]
             if env_var.startswith("SEMAPACT_"):
-                fallback_var = env_var.replace("SEMAPACT_", "SEMAPACT_")
+                fallback_var = env_var.replace("SEMAPACT_", "CONTRACTHUB_")
                 if fallback_var in os.environ:
                     return os.environ[fallback_var]
-            elif env_var.startswith("SEMAPACT_"):
-                fallback_var = env_var.replace("SEMAPACT_", "SEMAPACT_")
+            elif env_var.startswith("CONTRACTHUB_"):
+                fallback_var = env_var.replace("CONTRACTHUB_", "SEMAPACT_")
                 if fallback_var in os.environ:
                     return os.environ[fallback_var]
 

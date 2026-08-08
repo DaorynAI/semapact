@@ -228,9 +228,7 @@ The goal is to determine whether a proposed change is **safe, compatible, review
 
 ## Quick Start
 
-> **Project rename in progress**
->
-> The repository is now named **SemaPact**, while the current Python package and CLI still use the legacy `semapact` name. These will be migrated separately to avoid breaking the current package surface.
+
 
 ### 1. Set up the development environment
 
@@ -436,7 +434,7 @@ Platform-specific importers should not own:
 
 ## Repository Structure
 
-The current package still uses the legacy `semapact` module name during the SemaPact migration.
+
 
 ```text
 semapact/
