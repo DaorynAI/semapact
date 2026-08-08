@@ -1,4 +1,4 @@
 interface:
   display_name: "Draft Workflow"
-  short_description: "Define draft-safe ContractHub change workflows"
-  default_prompt: "Use $draft-workflow to implement or review ContractHub draft save, analyze, and future promotion flows."
+  short_description: "Define draft-safe SemaPact change workflows"
+  default_prompt: "Use $draft-workflow to implement or review SemaPact draft save, analyze, and future promotion flows."

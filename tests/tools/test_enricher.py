@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 from pathlib import Path
-from contracthub.tools.enricher import ContractEnricher
+from semapact.tools.enricher import ContractEnricher
 from open_data_contract_standard.model import OpenDataContractStandard
 
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "DevOps Workflow"
   short_description: "Guide GitOps promotion and CI/CD contract flow"
-  default_prompt: "Use $devops-workflow to implement or review ContractHub branch, PR, CI/CD, and release workflow for contract promotion."
+  default_prompt: "Use $devops-workflow to implement or review SemaPact branch, PR, CI/CD, and release workflow for contract promotion."

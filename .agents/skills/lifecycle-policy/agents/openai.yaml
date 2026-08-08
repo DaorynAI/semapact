@@ -1,4 +1,4 @@
 interface:
   display_name: "Lifecycle Policy"
   short_description: "Apply ODCS lifecycle governance rules"
-  default_prompt: "Use $lifecycle-policy to reference ContractHub lifecycle rules for breaking changes, deprecation, and governed merge behavior."
+  default_prompt: "Use $lifecycle-policy to reference SemaPact lifecycle rules for breaking changes, deprecation, and governed merge behavior."

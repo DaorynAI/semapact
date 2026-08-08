@@ -7,7 +7,7 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
-from contracthub.importers.unity_lineage import enrich_unity_lineage
+from semapact.importers.unity_lineage import enrich_unity_lineage
 
 
 def test_enrich_unity_lineage_no_http_path():

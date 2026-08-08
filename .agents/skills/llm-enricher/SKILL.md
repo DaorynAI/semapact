@@ -5,12 +5,12 @@ description: Core behavior, prompt patterns, and metadata specification for the 
 
 # LLM Enricher & Metadata Specification
 
-This skill details the functionality, prompts, and metadata schemas of the `ContractEnricher` tool used in ContractHub.
+This skill details the functionality, prompts, and metadata schemas of the `ContractEnricher` tool used in SemaPact.
 
 ## 1. Core Architecture & Files
-- `contracthub/tools/enricher.py`: The `ContractEnricher` class iterates over the contract, parses definitions, and executes parallel LLM tasks. Output must be written directly back to the YAML contract.
-- `contracthub/tools/llm_client.py`: LLM abstraction (`BaseLLMProvider`, `OpenAILLMProvider`) powered by `litellm`. Compatible with standard OpenAI, Azure AI Foundry, Databricks, vLLM, Ollama, etc.
-- `contracthub/constants.py`: Stores all LLM prompt templates (system and user prompts). Prompt templates must NEVER be hardcoded inside logic modules.
+- `semapact/tools/enricher.py`: The `ContractEnricher` class iterates over the contract, parses definitions, and executes parallel LLM tasks. Output must be written directly back to the YAML contract.
+- `semapact/tools/llm_client.py`: LLM abstraction (`BaseLLMProvider`, `OpenAILLMProvider`) powered by `litellm`. Compatible with standard OpenAI, Azure AI Foundry, Databricks, vLLM, Ollama, etc.
+- `semapact/constants.py`: Stores all LLM prompt templates (system and user prompts). Prompt templates must NEVER be hardcoded inside logic modules.
 
 ## 2. LLM Provider Configuration
 Standard routing expects these environment variables:

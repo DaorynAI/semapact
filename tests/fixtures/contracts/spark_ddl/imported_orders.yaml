@@ -15,11 +15,11 @@ schema:
     physicalType: external-table
     description: Orders external table
     customProperties:
-      - property: contracthub.table.external
+      - property: semapact.table.external
         value: 'true'
-      - property: contracthub.table.format
+      - property: semapact.table.format
         value: DELTA
-      - property: contracthub.table.location
+      - property: semapact.table.location
         value: abfss://silver@mydatalake.dfs.core.windows.net/orders_external
     properties:
       - id: id

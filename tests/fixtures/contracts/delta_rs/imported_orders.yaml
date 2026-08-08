@@ -14,9 +14,9 @@ schema:
     physicalName: orders
     physicalType: table
     customProperties:
-      - property: contracthub.table.location
+      - property: semapact.table.location
         value: s3://lake/silver/orders
-      - property: contracthub.delta.version
+      - property: semapact.delta.version
         value: '12'
     properties:
       - id: id

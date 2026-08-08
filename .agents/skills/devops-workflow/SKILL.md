@@ -5,7 +5,7 @@ description: Defines GitOps workflow for contract promotion including branch cre
 
 # DevOps Workflow
 
-ContractHub follows a GitOps-based promotion model.
+SemaPact follows a GitOps-based promotion model.
 
 ------------------------------------------------
 FLOW

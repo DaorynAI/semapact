@@ -1,4 +1,4 @@
-from contracthub.exporters.graph_exporter import CypherSerializer, GraphNode
+from semapact.exporters.graph_exporter import CypherSerializer, GraphNode
 
 
 def test_cypher_serializer_escaping():

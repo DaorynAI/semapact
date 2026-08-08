@@ -1,4 +1,4 @@
 interface:
   display_name: "ODCS Skills"
-  short_description: "ODCS ContractHub lifecycle workflows"
-  default_prompt: "Use this skill when implementing or reviewing Open Data Contract Standard workflows in ContractHub, including lifecycle-aware merges and deterministic outputs."
+  short_description: "ODCS SemaPact lifecycle workflows"
+  default_prompt: "Use this skill when implementing or reviewing Open Data Contract Standard workflows in SemaPact, including lifecycle-aware merges and deterministic outputs."

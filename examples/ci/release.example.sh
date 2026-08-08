@@ -14,14 +14,14 @@ REPO_PATH="${REPO_PATH:-.}"
 : "${ADO_REPOSITORY_ID:?Set ADO_REPOSITORY_ID}"
 : "${ADO_PAT_TOKEN:?Set ADO_PAT_TOKEN}"
 
-contracthub release build-manifest \
+semapact release build-manifest \
   --base-root "${BASE_ROOT}" \
   --candidate-root "${CANDIDATE_ROOT}" \
   --output "${MANIFEST_PATH}"
 
 echo "Review and edit ${MANIFEST_PATH} before continuing."
 
-contracthub release create-prs \
+semapact release create-prs \
   --manifest "${MANIFEST_PATH}" \
   --repo-path "${REPO_PATH}" \
   --organization "${ADO_ORGANIZATION}" \
