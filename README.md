@@ -1,92 +1,442 @@
-# 🏛️ ContractHub
+# SemaPact
 
-[![PyPI version](https://badge.fury.io/py/contract-hub.svg)](https://badge.fury.io/py/contract-hub)
-[![Python versions](https://img.shields.io/pypi/pyversions/contract-hub.svg)](https://pypi.org/project/contract-hub/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+**Lifecycle governance for data contracts and enterprise semantics.**
 
-**Data Contract Management & Governance for the Modern Data Stack (ODCS v3.0+)**
+SemaPact is an open-source, change-driven governance layer for evolving data products safely.
 
-Stop managing isolated YAML files. ContractHub elevates **data contracts** from mere format validators to enterprise-grade, lifecycle-aware infrastructure. Designed for **Data Mesh** architectures, **Data Engineering** teams, and **Data Product** owners, it provides a seamless **GitOps** pipeline. By enforcing deterministic schema merges, semantic breaking-change policies, and **graph-native data lineage**, ContractHub ensures reliable data integration across platforms like Databricks Unity Catalog, Snowflake, and Great Expectations. All powered by a dynamic configuration system that eliminates hardcoded CLI credentials.
+It turns data contracts from static YAML specifications into governed lifecycle artifacts — with deterministic change analysis, breaking-change detection, deprecation, version policy, GitOps workflows, and runtime metadata integration.
 
-```mermaid
-graph LR
-    %% Define styles
-    classDef source fill:#f9f9f9,stroke:#333,stroke-width:1px;
-    classDef engine fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
-    classDef target fill:#f1f8e9,stroke:#689f38,stroke-width:1px;
-    classDef alert fill:#ffebee,stroke:#d32f2f,stroke-width:1px,color:#d32f2f;
+SemaPact uses the **Open Data Contract Standard (ODCS)** as its canonical contract representation and is designed to integrate deeply with modern data platforms such as **Databricks Unity Catalog**, while keeping its governance core platform-independent.
 
-    subgraph Data_Product_Context [Data Product Boundaries]
-        SQL[Local SQL DDLs]:::source
-        DBT[dbt Models]:::source
-        YAML[ODCS YAMLs]:::source
-    end
+> **SemaPact is not another metadata catalog or CRUD editor. It governs how data products are allowed to change.**
 
-    subgraph ContractHub_GitOps [ContractHub GitOps Pipeline]
-        Merge["Merge Engine<br>(Deterministic)"]:::engine
-        Policy["Lifecycle Policy<br>(Breaking Checks)"]:::engine
-        Graph["Graph Exporter<br>(Cross-Domain)"]:::engine
+---
 
-        Merge --> Policy
-        Policy --> Graph
+## Why SemaPact?
 
-        %% Blocking node
-        Block>"Breaking Change Blocked!"]:::alert
-        Policy -.-> |Fails Validation| Block
-    end
+Validating a data contract is the easy part.
 
-    subgraph Downstream_Targets [Production Environments]
-        UC[("Databricks<br>Unity Catalog")]:::target
-        Neo4j[("Neo4j<br>Lineage Graph")]:::target
-        GE["Great Expectations<br>Quality Rules"]:::target
-    end
+The harder problem starts when the data product changes.
 
-    %% Connections
-    SQL & DBT & YAML -->|Import / Sync| Merge
-    Policy -->|Deploy| UC
-    Policy -->|Generate| GE
-    Graph -->|Export Lineage| Neo4j
+What happens when:
+
+* a column disappears?
+* a required field becomes optional?
+* a decimal loses precision?
+* a physical type changes?
+* an active field needs to be deprecated?
+* business semantics change?
+* production metadata drifts from the approved contract?
+* multiple tools produce assets into the same data platform?
+* an AI agent needs to know which semantics are actually approved?
+
+SemaPact treats these as **governance decisions**, not YAML editing operations.
+
+```text
+Current Contract
+       +
+Proposed Change
+       +
+Runtime Evidence
+       ↓
+┌──────────────────────────────┐
+│           SemaPact           │
+│                              │
+│  Normalize → Analyze →       │
+│  Policy → Governed Decision  │
+└──────────────────────────────┘
+       ↓
+Allow / Block / Deprecate / Review
+       ↓
+GitOps release + deployment
 ```
 
-## 💡 Why ContractHub? (Beyond basic CLI tools)
-While basic tools validate single-table schema syntax, ContractHub tackles the real-world chaos of data engineering: State, Evolution, and Dependencies.
+---
 
-* **📦 Data Product Bounding**: Group multiple tables into a single governed boundary using Folder/Schema mapping.
-* **🚦 Strict Lifecycle State Machine**: Built-in rules for draft -> active -> deprecated. Active contracts cannot be silently broken.
-* **🛡️ Invisible GitOps**: Deterministic merge engines that catch breaking changes (e.g., narrowing decimal precision) before they hit production.
-* **🕸️ Graph-Native Lineage**: Exports contracts as Property Graphs (Paths Over Joins), enabling cross-domain impact analysis in Neo4j.
+## Core Principles
 
-## 🤝 ContractHub vs. Unity Catalog (Why both?)
-If you are already using Databricks Unity Catalog (UC), you might wonder why you need Data Contracts or ContractHub. Unity Catalog is a world-class technical catalog and governance engine for your active data platform, but ContractHub complements it by **shifting governance left**:
+### Change-driven, not CRUD
 
-1. **Catch Breaks Before Production (GitOps)**: UC manages state *after* code is deployed. ContractHub acts in your Git CI/CD pipeline. If a developer drops a column, ContractHub's policy engine catches it in the Pull Request and blocks the merge, preventing the breakage from ever reaching UC.
-2. **Platform Agnostic Semantic Layer**: UC is specific to Databricks. ContractHub uses the Open Data Contract Standard (ODCS) which can export not just to UC, but simultaneously to Great Expectations (quality), Neo4j (lineage), Snowflake, and Kafka. This breaks vendor lock-in and allows multi-platform data sharing.
-3. **Business Semantics over Technical Metadata**: While UC knows your tables and columns, ContractHub bounds multiple tables into a logical "Data Product". It captures SLAs, data granularity, rich business descriptions, and semantic multi-table relationships that go beyond physical constraints.
-4. **Strict Lifecycle Versioning**: ContractHub enforces a strict state machine (`Draft` -> `Active` -> `Deprecated`). A v1.0.0 contract in UC cannot be gracefully deprecated with a timeline without external tooling—ContractHub orchestrates this lifecycle natively.
+Governance begins with the difference between an approved state and a proposed state.
 
-## 🚀 Quick Start (Local Sandbox)
-Experience ContractHub locally without any cloud credentials. We use a local folder of SQL DDLs to simulate a Data Product.
+SemaPact is designed around **change analysis**, rather than directly editing the canonical contract in place.
 
-**1. Install**
+### Deterministic by default
+
+The same base contract, candidate contract, and governance context should produce the same result.
+
+Lifecycle policy belongs in deterministic code, not in UI state or LLM reasoning.
+
+### Contracts as code
+
+Approved contracts live in Git and evolve through reviewable, CI/CD-friendly workflows.
+
+### Runtime-aware
+
+Git represents declared state.
+
+Platforms such as Unity Catalog represent observed runtime state.
+
+SemaPact is designed to reconcile the two rather than assuming they are always identical.
+
+### Business semantics without schema ownership
+
+Business users should be able to contribute descriptions and semantic context without silently changing technical schemas.
+
+Physical schema evolution remains an engineering responsibility.
+
+### Agent-ready governance
+
+AI systems can consume approved contracts and semantic context, but agents do not become the authority that decides governance policy.
+
+---
+
+## What SemaPact Governs
+
+| Area               | SemaPact responsibility                                 |
+| ------------------ | ------------------------------------------------------- |
+| Schema evolution   | Detect and classify structural changes                  |
+| Breaking changes   | Identify incompatible changes before release            |
+| Lifecycle          | Govern Draft → Active → Deprecated → Retired            |
+| Version policy     | Determine lifecycle and release implications            |
+| Business semantics | Preserve governed human-authored metadata               |
+| Quality contracts  | Govern quality intent independently of runtime engines  |
+| Runtime drift      | Compare approved contracts with observed platform state |
+| GitOps             | Produce deterministic, reviewable contract changes      |
+| Relationships      | Preserve relationship metadata for impact analysis      |
+| AI context         | Provide approved semantics for downstream agents        |
+
+SemaPact does **not** aim to replace transformation engines, data catalogs, orchestration systems, or data quality runtimes.
+
+---
+
+## SemaPact + Databricks Unity Catalog
+
+Unity Catalog and SemaPact solve different parts of the governance problem.
+
+> **Unity Catalog tells you what exists.
+> SemaPact governs how it is allowed to change.**
+
+```text
+              Git / ODCS
+          approved desired state
+                  │
+                  ▼
+            ┌──────────┐
+            │ SemaPact │
+            └──────────┘
+             ▲        │
+             │        │ governance decision
+runtime      │        ▼
+evidence     │     CI / GitOps
+             │        │
+             │        ▼
+       Unity Catalog / Databricks
+          observed runtime state
+```
+
+Unity Catalog remains responsible for runtime assets, access control, lineage, metadata, and platform enforcement.
+
+SemaPact adds lifecycle-aware governance around those assets:
+
+* breaking-change analysis before deployment
+* lifecycle and version policy
+* governed semantic evolution
+* Git-based review
+* runtime drift detection
+* governance decision history
+* approved context for downstream systems and AI agents
+
+SemaPact is designed to become **Unity Catalog-native without making its governance kernel Unity Catalog-dependent**.
+
+---
+
+## Works With Your Data Stack
+
+A governed data product may be created by many different tools.
+
+```text
+dbt ───────────────────┐
+Lakeflow Pipelines ────┤
+Spark / PySpark ───────┤
+Databricks SQL ────────┤
+SQL DDL ───────────────┤
+External pipelines ────┘
+                       ↓
+                 Runtime assets
+                       ↓
+                   SemaPact
+                       ↓
+             Governed evolution
+```
+
+SemaPact is therefore not tied to dbt or any single transformation framework.
+
+**dbt** can build analytical data products.
+
+**Lakeflow Pipelines** can build batch and streaming data pipelines.
+
+**Unity Catalog** can govern runtime assets and permissions.
+
+**Great Expectations** can execute data quality checks.
+
+**SemaPact governs the lifecycle of the contract that connects them.**
+
+---
+
+## Why Not Just dbt Contracts?
+
+dbt model contracts are useful for enforcing model interfaces inside dbt projects.
+
+SemaPact addresses a broader problem:
+
+* not every enterprise data asset is built with dbt
+* production assets may be created by Spark, Lakeflow, SQL, notebooks, or external systems
+* lifecycle governance should not depend on one transformation framework
+* runtime state can drift independently of declared dbt state
+* business semantic governance may involve users who never interact with a dbt project
+
+SemaPact can integrate with dbt, but dbt is one producer of governed data assets rather than the center of the architecture.
+
+---
+
+## Why Not Just a Data Contract CLI?
+
+Schema validation and format conversion are important, but they are only part of the problem.
+
+SemaPact focuses on what happens **between contract versions**:
+
+```text
+Version N
+   ↓
+Proposed change
+   ↓
+Breaking analysis
+   ↓
+Lifecycle policy
+   ↓
+Governance decision
+   ↓
+Version N+1
+```
+
+The goal is not simply to determine whether a YAML document is valid.
+
+The goal is to determine whether a proposed change is **safe, compatible, reviewable, and allowed**.
+
+---
+
+## Quick Start
+
+> **Project rename in progress**
+>
+> The repository is now named **SemaPact**, while the current Python package and CLI still use the legacy `contracthub` name. These will be migrated separately to avoid breaking the current package surface.
+
+### 1. Set up the development environment
+
 ```bash
 uv sync --group dev
 ```
 
-**2. Initialize a Data Product from a local SQL folder**
+### 2. Import a contract from SQL
+
 ```bash
-# Point ContractHub to a folder containing your local .sql files
-uv run contracthub import --format sql-folder --source ./my_sales_ddl --output ./contracts/sales/
+uv run contracthub import \
+  --format sql-folder \
+  --source ./my_sales_ddl \
+  --output ./contracts/sales.yaml
 ```
 
-**3. Simulate a Breaking Change & Merge**
+SemaPact uses ODCS as the canonical representation of the resulting contract.
 
-Try modifying a column type in your SQL file from `DECIMAL(10,2)` to `DECIMAL(8,2)` and run the merge engine:
-```bash
-uv run contracthub merge --base ./contracts/sales/ --business ./prod_contracts/sales/ --output ./merged/
+### 3. Introduce a breaking change
+
+For example, change:
+
+```text
+DECIMAL(10,2)
 ```
-ContractHub's policy engine will instantly catch the precision reduction and block the merge unless a semantic version bump or deprecation policy is applied.
 
-## ⚙️ Deep Dive & Architecture
+to:
+
+```text
+DECIMAL(8,2)
+```
+
+Then run the lifecycle merge:
+
+```bash
+uv run contracthub merge \
+  --base ./generated.yaml \
+  --business ./contracts/sales.yaml \
+  --output ./contracts/sales.merged.yaml
+```
+
+The lifecycle engine detects the precision reduction as an incompatible change instead of silently replacing the approved field definition.
+
+---
+
+## Lifecycle Governance
+
+SemaPact currently models the following lifecycle:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    [*] --> Draft
+    Draft --> Draft: Edit
+    Draft --> Active: Promote
+
+    Active --> Active: Compatible change
+    Active --> Deprecated: Governed deprecation
+
+    Deprecated --> Retired: End of life
+    Retired --> [*]
+```
+
+Lifecycle state affects how changes are evaluated.
+
+For example, an active field should not simply disappear from a new source snapshot. SemaPact can preserve the field as deprecated so that contract history and downstream expectations remain explicit.
+
+Current breaking-change checks include scenarios such as:
+
+* logical type incompatibility
+* physical type changes
+* decimal precision reduction
+* decimal scale reduction
+* required/nullability tightening
+* removal of active fields
+
+---
+
+## Current Capabilities
+
+### Contract Ingestion
+
+SemaPact can build ODCS contracts from sources including:
+
+* SQL folders
+* Delta DDL
+* Delta tables
+* Databricks Unity Catalog
+
+Importers are responsible for describing external state.
+
+They should not contain lifecycle policy or CI/CD behavior.
+
+---
+
+### Deterministic Lifecycle Merge
+
+Technical source changes can be merged into an existing governed contract while preserving human-authored business metadata.
+
+The lifecycle layer owns:
+
+* breaking-change analysis
+* lifecycle evaluation
+* auto-deprecation
+* merge policy
+* version-related governance decisions
+
+---
+
+### Quality Integration
+
+SemaPact can validate and export contract quality rules to execution systems such as Great Expectations.
+
+The separation is intentional:
+
+```text
+SemaPact
+→ governs quality intent
+
+Great Expectations
+→ executes runtime quality checks
+```
+
+---
+
+### Graph Export
+
+Contract relationships can be exported as directed property graphs for dependency and impact-analysis use cases.
+
+This can be used to model cross-table and cross-domain relationships beyond simple flat schema metadata.
+
+---
+
+### Optional Semantic Enrichment
+
+LLM-assisted enrichment can help suggest:
+
+* table descriptions
+* column descriptions
+* quality rules
+* semantic relationships
+
+AI enrichment is optional.
+
+Governance decisions remain deterministic and are not delegated to the LLM.
+
+---
+
+### Storage
+
+Contract artifacts can currently be stored using:
+
+* local filesystem paths
+* ADLS2
+* Unity Catalog Volumes
+
+---
+
+## Architecture
+
+SemaPact separates platform integration from lifecycle governance.
+
+```text
+External Sources
+      │
+      ▼
+ Import / Evidence Layer
+      │
+      ▼
+Canonical ODCS Contract
+      │
+      ▼
+Lifecycle Governance
+ ├── normalization
+ ├── change analysis
+ ├── breaking checks
+ ├── lifecycle policy
+ └── deterministic merge
+      │
+      ▼
+Governance Decision
+      │
+      ├── Git / CI
+      ├── Databricks
+      ├── Quality engines
+      └── Graph / downstream consumers
+```
+
+A core architectural rule is:
+
+> **Importers describe external state. The lifecycle governance layer decides what that state means.**
+
+Platform-specific importers should not own:
+
+* breaking-change policy
+* lifecycle transitions
+* auto-deprecation policy
+* CI/CD behavior
+* release decisions
+
+---
+
+## Repository Structure
+
+The current package still uses the legacy `contracthub` module name during the SemaPact migration.
 
 ```text
 contracthub/
@@ -95,404 +445,223 @@ contracthub/
     editor_contract.py
     loader.py
     validator.py
-  exporters/
-    sql_exporter.py
-    graph_exporter.py
+
   lifecycle/
     merge_engine.py
     policy.py
     helpers.py
+
+  exporters/
+    sql_exporter.py
+    graph_exporter.py
+
   quality/
     ge_exporter.py
     validation.py
     sql_exporter.py
+
   orchestrator/
     pipeline.py
+
   interfaces/
     cli.py
     streamlit/
-      app.py
-      editor/
-      services/
+
   devops/
     pr_creator.py
     ci_cd.py
     audit.py
 ```
 
-### 🚦 Strict Lifecycle State Machine
+---
 
-```mermaid
-stateDiagram-v2
-    direction LR
+## Optional Dependencies
 
-    %% State definitions
-    state "Draft" as Draft
-    state "Active" as Active
-    state "Deprecated" as Deprecated
-    state "Retired" as Retired
+SemaPact keeps its core lightweight and uses optional extras for integrations.
 
-    [*] --> Draft : Create
+| Extra        | Purpose                                   |
+| ------------ | ----------------------------------------- |
+| `sql`        | SQL parsing and SQL-folder imports        |
+| `delta`      | Delta table support                       |
+| `databricks` | Databricks / Unity Catalog integration    |
+| `quality`    | Great Expectations integration            |
+| `graph`      | Graph exports                             |
+| `llm`        | Optional LLM-assisted semantic enrichment |
+| `azure`      | ADLS2 access                              |
+| `s3`         | Amazon S3 access                          |
+| `dbt`        | dbt interoperability                      |
+| `tui`        | Textual terminal interface                |
+| `all`        | All optional integrations                 |
 
-    Draft --> Active : Promote
-    Draft --> Draft : Edit
+For local development:
 
-    %% Breaking change logic
-    state breaking_check <<choice>>
-    Active --> breaking_check : Governed Merge
-    breaking_check --> Active : Safe (Minor Bump)
-    breaking_check --> Deprecated : Breaking (Auto-Deprecate)
-
-    Deprecated --> Retired : End of Life
-    Retired --> [*] : Archive
-```
-
-### Installation Details
-
-ContractHub is designed to be lightweight by default. Core functionality (like basic GitOps and schema validation) requires minimal dependencies. You can install specific feature sets using optional extras:
-
-| Extra Group | Description | Key Dependencies Installed |
-|---|---|---|
-| **`core`** | (Default) Basic schema validation and GitOps engine. | `pydantic`, `PyYAML`, `datacontract-cli` |
-| **`delta`** | Required for `delta-table` and `delta-ddl` format importers. | `deltalake`, `pyarrow`, `pandas` |
-| **`sql`** | Required for SQL dialect parsing and `sql-folder` imports. | `SQLAlchemy`, `sqlglot` |
-| **`databricks`**| Required for Unity Catalog integration. | `databricks-sql-connector`, `pyspark` |
-| **`azure`** | Required for ADLS2 (`abfss://`) native storage access. | `azure-identity`, `azure-storage-file-datalake` |
-| **`s3`** | Required for Amazon S3 (`s3://`) native storage access. | `boto3`, `s3fs` |
-| **`quality`** | Required for exporting Great Expectations (`export-ge`). | `great_expectations`, `pandas` |
-| **`llm`** | Required for LLM Semantic Enrichment (`enrich`). | `openai`, `litellm` |
-| **`graph`** | Required for Neo4j/Cypher Graph exports. | `networkx` |
-| **`dbt`** | Required for exporting dbt models. | `datacontract-cli[dbt]` |
-| **`tui`** | Required to launch the interactive graphical interface. | `textual` |
-| **`all`** | Installs all of the above for a complete environment. | *All optional dependencies* |
-
-**Installation Examples:**
 ```bash
-# Basic installation (Core only)
-pip install contract-hub
-
-# Install with TUI and Unity Catalog support
-pip install "contract-hub[tui,databricks]"
-
-# Install EVERYTHING
-pip install "contract-hub[all]"
-```
-
-*If you are using `uv` for local development:*
-```bash
-# Sync all dependencies including dev tools and all extras
 uv sync --all-extras --group dev --frozen
 ```
 
-### Core Components & Features
+---
 
-#### 1. Data Importers
+## Configuration
 
-ContractHub provides pure Python, Spark-free importers that register into the `datacontract-cli` importer factory.
+The current CLI uses `.contracthub.yaml` during the rename transition.
 
-* **Delta Importers (`delta-table`)**: Parses Delta tables. You can import multiple Delta tables into a single data contract using the `--tables` parameter containing a comma-separated list of paths.
-* **SQL Importers (`sql-folder` / `delta-ddl`)**: Parses Spark/Databricks-style Delta DDL statically to import structure and foreign key relationships from DDL constraints.
-* **Unity Catalog Importer (`unity`)**: Imports from Databricks Unity Catalog. Securely fetches credentials (e.g. `workspace_url`, `token`, or `profile`) from `.contracthub.yaml`. Includes a best-effort relationship enrichment step to read Unity table metadata for foreign key constraints.
+Example:
 
-#### 2. Validation & Quality Exports
-
-* **Great Expectations (`export-ge`)**: Delegates GE suite generation to datacontract-cli while running a lightweight GE-specific preflight check. It separates contract-level quality validation from GE execution.
-* **SQL Exporters (`sql_exporter.py`)**: Generates Databricks/Spark SQL deployment DDL. For Databricks targets, it adds Databricks-specific constraints natively mapped from ODCS quality rules (e.g. `ALTER COLUMN ... SET NOT NULL` for `nullValues mustBe 0`).
-* **Validation**: Core validation delegates base ODCS schema checks to `datacontract-cli` and Pydantic, reserving custom validation strictly for advanced semantic constraints.
-
-#### 3. Graph Exports & Relationship Inferencing
-
-* **Graph Exporter**: Exports ODCS models to Directed Property Graphs (`cypher`, `json`). Enforces strict "Paths Over Joins" compliance. Junction tables (with exactly 2 foreign keys) are collapsed into single edges, and PII Sovereignty rules are automatically enforced.
-* **LLM Enrichment (`enrich`)**: Uses an LLM to automatically generate missing table descriptions, column descriptions, base Great Expectations quality rules, and infer semantic relationship edges. Powered by `litellm` under the hood, natively supporting over 100 model providers including OpenAI, Azure AI Foundry, Databricks, vLLM, and Ollama. Supported modes include `infer_joins`, `label`, `describe_tables`, `describe_columns`, and `suggest_quality`.
-
-#### 4. Merging & Lifecycle Governance
-
-* **Merge Engine (`merge`)**: Safely merges technical source updates into an existing, governed contract without overwriting manual business edits.
-* **Lifecycle Governance**: Root contract `id` is immutable after creation. Root contract `version` is release-managed and never automatically updated by standard importer/merge runs.
-* **Streamlit UI**: ContractHub includes a Streamlit app to serve as a presentation layer for interactive contract editing, fully decoupled from the core business logic.
-
-#### 5. Storage & Access
-
-Contract catalog storage supports:
-* Local filesystem paths
-* ADLS2 paths (`abfs://`, `abfss://`, or `https://<account>.dfs.core.windows.net/...`)
-* Databricks Unity Catalog volume paths (`/Volumes/...`, `dbfs:/Volumes/...`)
-
-*Note: ADLS2 access is SDK-based and uses `CONTRACTHUB_ADLS_BEARER_TOKEN` or `azure.identity.DefaultAzureCredential`. SAS URL authentication is not supported.*
-
-### CLI Reference
-
-The ContractHub CLI offers commands for the full contract lifecycle:
-
-**Setup & Environment**
-```bash
-# Initialize a local configuration file (.contracthub.yaml) in the current directory.
-# This configures your local CLI/TUI environment and eliminates the need for environment variables.
-contracthub init
-
-# Bootstrap your git repository with CI/CD pipelines and GitOps templates.
-# Use this when setting up a new centralized data contract repository for the first time.
-contracthub init --scaffold
-```
-
-The `--scaffold` flag will bootstrap a brand new Git repository with standard CI/CD and GitOps templates. It automatically generates:
-- **Folder Structure**: Creates the default `contracts` directory.
-- **CI/CD Pipelines**: Creates a `.github/workflows/contract-check.yaml` (GitHub), `.gitlab/ci/contract-check.yml` (GitLab), or `azure-pipelines.yml` (Azure DevOps) based on the `git.provider` setting in your `.contracthub.yaml`.
-- **Sample Contract**: Generates a dummy `contracts/sample.yaml` to help you get started.
-
-The `contracthub init` command will generate a `.contracthub.yaml` file that looks like this:
 ```yaml
 azure:
   auth_method: cli
   scope: https://storage.azure.com/.default
+
 git:
   provider: azure
   organization: your-organization
   project: your-project
   repository_id: your-repo-id
+
 core:
   enforce_lifecycle: true
+
 llm:
   model_name: gpt-4-turbo
   api_key: ""
   base_url: ""
+
 databricks:
-  profile: "default"
-  # workspace_url: "https://adb-xxx.azuredatabricks.net"
-  # token: "dapi..."
-```
-This configuration is automatically picked up by the CLI and the SDK. 
-
-**Using the SDK (Overriding Configuration)**
-If you are building your own tools or CLI on top of ContractHub, you don't have to rely on the `.contracthub.yaml` file. You can dynamically inject or override configuration using the `ConfigManager` singleton:
-
-```python
-from contracthub.core.config import config_manager
-from contracthub.core.loader import ContractLoader
-
-# 1. Inject configuration via a Python Dictionary (Overrides YAML)
-config_manager.update_config({
-    "azure": {
-        "auth_method": "managed_identity"
-    },
-    "databricks": {
-        "workspace_url": "https://adb-1234.azuredatabricks.net",
-        "token": "dapi..."
-    }
-})
-
-# 2. Or load from a custom path if your tool uses a different config file
-# config_manager.load_from_path("/etc/my-custom-tool/config.yaml")
-
-# Now any ContractHub operations will use your injected config
-loader = ContractLoader()
+  profile: default
 ```
 
-**Reusing the Textual TUI (`contracthub tui`)**
-The ContractHub TUI is designed to dynamically render forms based on python's standard `argparse.ArgumentParser`. If you are building a custom CLI that extends ContractHub, you can get a free graphical interface for your commands.
+Configuration and package naming will migrate to SemaPact terminology separately from the repository rename.
 
-The TUI automatically:
-- Recursively flattens deeply nested sub-commands into a clean sidebar.
-- Renders `argparse._ArgumentGroup`s into elegant `Collapsible` panels, hiding irrelevant arguments (e.g. keeping `--workspace-url` hidden unless expanding Unity Catalog options).
+---
 
-Simply pass your custom parser into the `ContractHubTUI` class:
+## CLI Examples
 
-```python
-import argparse
-from contracthub.tui.app import ContractHubTUI
+### Initialize
 
-# 1. Define your custom CLI
-my_parser = argparse.ArgumentParser(prog="my_custom_tool")
-subparsers = my_parser.add_subparsers(dest="command")
-sync_cmd = subparsers.add_parser("sync-remote")
-sync_cmd.add_argument("--force", action="store_true")
-
-# 2. Launch the TUI dynamically generated from your parser!
-app = ContractHubTUI(cli_parser=my_parser, excluded_commands=["hidden_cmd"])
-app.run()
-```
-
-**Importing Data Contracts**
 ```bash
-# Import from Delta SQL DDL
-contracthub import --format delta-ddl --source ./sql/orders --output ./contracts/orders.yaml
+contracthub init
+```
 
-# Import from standard SQL
-contracthub import --format sql-folder --source ./ddl/orders.sql --output ./contracts/orders.yaml
+Bootstrap repository templates:
 
-# Import multiple Delta Tables from ADLS
-# Automatically fetches ADLS OAuth token via azure.auth_method (e.g. managed_identity or cli) in config
-contracthub import --format delta-table \
-  --source abfss://container@acct.dfs.core.windows.net/orders \
-  --tables abfss://container@acct.dfs.core.windows.net/payments \
-  --output ./contracts/finance.yaml
+```bash
+contracthub init --scaffold
+```
 
-# Import from Unity Catalog
-# Automatically uses databricks.profile or token from .contracthub.yaml
-contracthub import --format unity --source main.silver.orders \
+### Import from SQL
+
+```bash
+contracthub import \
+  --format sql-folder \
+  --source ./ddl/orders.sql \
   --output ./contracts/orders.yaml
 ```
 
-**Merging & Enrichment**
-```bash
-# Merge a base contract with business modifications
-contracthub merge --base ./generated.yaml --business ./contracts/orders.yaml --output ./contracts/orders.merged.yaml
-
-# Run dry run plan of changes
-contracthub plan --type unity --source main.silver.orders --base ./contracts/orders.yaml
-
-# Note: LLM credentials (model_name, api_key, base_url) should be configured in your .contracthub.yaml file
-
-# Enrich contract metadata via LLM (e.g. generate missing descriptions)
-contracthub enrich --contract ./contracts/orders.yaml --mode describe_columns --concurrency 2
-contracthub enrich --contract ./contracts/orders.yaml --mode suggest_quality --concurrency 2
-```
-
-**Exporting Artifacts**
-```bash
-# Export Great Expectations Suite
-contracthub export-ge --contract ./contracts/orders.yaml --output ./artifacts/orders_suite.json
-
-# Export to Graph formats (using datacontract-cli wrapper)
-datacontract export --format graph --export-args '{"format": "cypher"}' ./contracts/orders.yaml
-datacontract export --format graph --export-args '{"format": "json"}' ./contracts/orders.yaml
-```
-
-**CI/CD & DevOps (PRs & Releases)**
-```bash
-# Single Contract PR Creation (reads org/project/repo from config)
-contracthub create-pr --pat-token $ADO_PAT \
-  --repo-path . --source-branch contracthub/update-orders --target-branch main \
-  --commit-message "Update orders contract" --title "Update orders contract" --description "Automated update"
-
-# Classify contract bump required for a feature change
-contracthub release classify --base ./contracts/orders.main.yaml --candidate ./contracts/orders.feature.yaml
-
-# Prepare a release version candidate
-contracthub release prepare --base ./contracts/orders.main.yaml --candidate ./contracts/orders.release.yaml \
-  --release-tag orders/v1.2.0 --output ./artifacts/orders.promoted.yaml
-
-# Open a PR for a promoted release candidate (reads org/project/repo from config)
-contracthub release create-pr --base ./contracts/orders.main.yaml --candidate ./contracts/orders.release.yaml \
-  --release-tag orders/v1.2.0 --repo-path . --contract-path contracts/orders.yaml \
-  --source-branch release/orders-v1.2.0 --target-branch release \
-  --pat-token $ADO_PAT --push
-
-# Multi-Contract (Repo-level) Release Management
-contracthub release classify-repo --base-root ./contracts-main --candidate-root ./contracts-feature
-contracthub release build-manifest --base-root ./contracts-main --candidate-root ./contracts-feature \
-  --output ./artifacts/release_manifest.json
-contracthub release create-prs --manifest ./artifacts/release_manifest.json --repo-path . \
-  --organization org --project proj --repository-id repo --pat-token $ADO_PAT --push
-```
-
-### SDK Usage
-
-ContractHub functionality can be executed via its pure-Python API.
-
-```python
-from datacontract.data_contract import DataContract
-from contracthub.lifecycle import ContractMergeEngine
-from contracthub.quality import GreatExpectationsExporter
-from contracthub.importers.unity_importer import import_unity_contract
-from contracthub.tools.enricher import ContractEnricher
-from azure.identity import DefaultAzureCredential
-import os
-
-# 1. Import from a source
-# Setting Azure token natively for datacontract-cli ingestion via ADLS
-os.environ["CONTRACTHUB_ADLS_BEARER_TOKEN"] = DefaultAzureCredential().get_token("https://storage.azure.com/.default").token
-
-contract = DataContract.import_from_source(
-    format="delta-ddl",
-    source="./sql/orders"
-)
-
-# 2. Merge with an existing governed contract
-merged = ContractMergeEngine().merge(
-    base_contract=contract,
-    business_contract=DataContract(data_contract_file="./contracts/orders.yaml").data_contract
-)
-
-# 3. Export to Great Expectations Suite
-GreatExpectationsExporter().export_to_path(
-    contract=merged.contract,
-    output_path="./artifacts/orders_suite.json",
-    schema_name="all"
-)
-
-# 4. Importing from Unity Catalog Programmatically
-unity_contract = import_unity_contract(
-    table_fqn="main.silver.orders",
-    workspace_url="https://adb.example",
-    token="YOUR_TOKEN"
-)
-
-# 5. Enriching via LLM (supports modes 'label', 'infer_joins', 'describe_tables', 'describe_columns', 'suggest_quality')
-# Ensure litellm environment variables are set (LLM_MODEL_NAME, LLM_API_KEY)
-enricher = ContractEnricher()
-enricher.process(contract_path="./contracts/orders.yaml", max_workers=2, mode="suggest_quality")
-```
-
-### CI/CD Flow & Releases
-
-#### Feature -> Main
-
-Use per-contract bump classification without changing contract versions:
+### Import from Delta DDL
 
 ```bash
-contracthub release classify \
-  --base ./contracts/orders.main.yaml \
-  --candidate ./contracts/orders.feature.yaml
+contracthub import \
+  --format delta-ddl \
+  --source ./sql/orders \
+  --output ./contracts/orders.yaml
 ```
 
-For multi-contract repos:
+### Import from Unity Catalog
 
 ```bash
-contracthub release classify-repo \
-  --base-root ./contracts-main \
-  --candidate-root ./contracts-feature
+contracthub import \
+  --format unity \
+  --source main.silver.orders \
+  --output ./contracts/orders.yaml
 ```
 
-#### Main -> Release
-
-Build an editable per-contract manifest, review or adjust tags, then create release PRs:
+### Merge a technical source with governed metadata
 
 ```bash
-# Generate manifest
-contracthub release build-manifest \
-  --base-root ./contracts-main \
-  --candidate-root ./contracts-release \
-  --output ./artifacts/release_manifest.json
-
-# Review the manifest, then execute PR creation
-contracthub release create-prs \
-  --manifest ./artifacts/release_manifest.json \
-  --repo-path . \
-  --organization org \
-  --project proj \
-  --repository-id repo \
-  --pat-token $ADO_PAT \
-  --push
+contracthub merge \
+  --base ./generated.yaml \
+  --business ./contracts/orders.yaml \
+  --output ./contracts/orders.merged.yaml
 ```
 
-**Important Notes for CI/CD**:
-* The generated manifest is per contract. Review it before creating PRs, especially for added/removed contracts or required bump adjustments.
-* Reference examples for CI workflows live under:
-  - `examples/release/release-manifest.example.json`
-  - `examples/ci/pr-check.example.sh`
-  - `examples/ci/release.example.sh`
-  - `examples/azure-devops/contracthub-pr-validation.yml`
-  - `examples/azure-devops/contracthub-release.yml`
+### Analyze a Unity Catalog source
 
-## 🗺️ Roadmap & Contributing
-ContractHub is actively evolving. We are looking for community contributions in the following areas:
+```bash
+contracthub plan \
+  --type unity \
+  --source main.silver.orders \
+  --base ./contracts/orders.yaml
+```
 
-- [ ] **Zero-Setup Sandbox**: Add native DuckDB/SQLite providers for frictionless local CI/CD testing.
-- [ ] **DevOps UX**: Introduce Lite Mode for trunk-based development (auto tag/bump on main merge).
-- [ ] **CLI Actions**: Add atomic state commands like `contracthub promote <name>` and `contracthub deprecate <property>`.
-- [ ] **PR Governance Reporter**: Translate backend LifecycleError traces into clean, human-readable Markdown comments for GitHub Actions.
-- [ ] **Physical State Sync**: Sync lifecycleStatus and version directly into Databricks Unity Catalog column comments.
-- [ ] **Cross-Domain Validation**: Shift-left graph validations to block cross-contract dependency breaks during CI.
+### Optional LLM enrichment
 
-We welcome PRs! Check out our Contributing Guide.
+```bash
+contracthub enrich \
+  --contract ./contracts/orders.yaml \
+  --mode describe_columns \
+  --concurrency 2
+```
+
+```bash
+contracthub enrich \
+  --contract ./contracts/orders.yaml \
+  --mode suggest_quality \
+  --concurrency 2
+```
+
+---
+
+## Project Direction
+
+SemaPact is evolving toward an open-source **ContractOps and semantic lifecycle governance layer** for enterprise data platforms.
+
+Near-term development areas include:
+
+* stronger Unity Catalog reconciliation
+* explicit governance decision artifacts
+* runtime drift detection
+* business semantic proposal workflows
+* schema evolution history
+* semantic evolution history
+* Databricks-native deployment patterns
+* governed interfaces for AI agents
+* metric lifecycle governance
+
+The goal is not to create another catalog.
+
+The goal is to make data-product evolution:
+
+**explicit, reviewable, deterministic, and safe.**
+
+---
+
+## Open Data Contract Standard
+
+SemaPact uses the **Open Data Contract Standard (ODCS)** as its canonical contract representation.
+
+Rather than introducing another proprietary data-contract schema, SemaPact builds lifecycle governance around an open standard.
+
+---
+
+## Contributing
+
+SemaPact is being developed in the open.
+
+Contributions are welcome, including:
+
+* bug reports
+* integrations
+* documentation improvements
+* architecture discussions
+* governance use cases
+* Databricks and Unity Catalog scenarios
+* dbt interoperability
+* schema-evolution edge cases
+
+If you have experienced production problems caused by schema evolution, semantic drift, or data-contract governance, we would especially like to hear about them.
+
+---
+
+## License
+
+MIT
