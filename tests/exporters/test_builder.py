@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from contracthub.exporters.builder import InMemoryGraphBuilder
+from semapact.exporters.builder import InMemoryGraphBuilder
 from open_data_contract_standard.model import OpenDataContractStandard
 
 
@@ -11,7 +11,7 @@ def sample_graph_yaml_path() -> Path:
 
 def test_in_memory_graph_builder(sample_graph_yaml_path):
     import networkx as nx
-    from contracthub.utils.schema_utils import contract_to_model
+    from semapact.utils.schema_utils import contract_to_model
 
     contract: OpenDataContractStandard = contract_to_model(sample_graph_yaml_path)
 
@@ -89,7 +89,7 @@ def sample_graph_nary_junction_yaml_path() -> Path:
 
 
 def test_nary_junction_fallback(sample_graph_nary_junction_yaml_path):
-    from contracthub.utils.schema_utils import contract_to_model
+    from semapact.utils.schema_utils import contract_to_model
 
     contract: OpenDataContractStandard = contract_to_model(
         sample_graph_nary_junction_yaml_path

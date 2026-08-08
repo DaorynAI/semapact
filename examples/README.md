@@ -1,6 +1,6 @@
-# ContractHub Examples
+# SemaPact Examples
 
-This folder contains reference assets for wiring ContractHub into CI/CD.
+This folder contains reference assets for wiring SemaPact into CI/CD.
 
 ## Release Assets
 
@@ -16,16 +16,16 @@ This folder contains reference assets for wiring ContractHub into CI/CD.
 
 ## GitHub Actions Examples
 
-- `github/contracthub-enrich.yml`
+- `github/semapact-enrich.yml`
   - on-demand LLM contract enrichment trigger
-- `github/contracthub-release.yml`
+- `github/semapact-release.yml`
   - release promotion trigger
 
 ## Azure DevOps Examples
 
-- `azure-devops/contracthub-pr-validation.yml`
+- `azure-devops/semapact-pr-validation.yml`
   - PR validation template
-- `azure-devops/contracthub-release.yml`
+- `azure-devops/semapact-release.yml`
   - release promotion template
 
 Important rules reflected by these examples:

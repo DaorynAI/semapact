@@ -10,7 +10,7 @@ tenant: ClimateQuantumInc
 description:
   purpose: Unity Catalog governed orders contract
 servers:
-  - server: contracthub_target
+  - server: semapact_target
     type: databricks
     catalog: main
     schema: silver

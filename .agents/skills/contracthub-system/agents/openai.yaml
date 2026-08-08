@@ -1,4 +1,0 @@
-interface:
-  display_name: "ContractHub System"
-  short_description: "Define ContractHub's draft-first operating model"
-  default_prompt: "Use $contracthub-system to apply ContractHub's core system model, including immutable main contracts, draft-based editing, and governed promotion workflows."

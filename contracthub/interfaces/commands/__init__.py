@@ -1,1 +1,0 @@
-# contracthub commands package

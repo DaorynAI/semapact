@@ -19,7 +19,7 @@
 
 ### Features
 
-- **exporter**: Support spark external table via contracthub.table.location
+- **exporter**: Support spark external table via semapact.table.location
   ([`eade008`](https://github.com/ElliotSun/contract-hub/commit/eade0081beb9b7deda80ad8d7b798f7246a0c2ed))
 
 
@@ -72,7 +72,7 @@
 
 ### Features
 
-- Add s3 extra dependencies and bump contracthub version to 0.6.0
+- Add s3 extra dependencies and bump semapact version to 0.6.0
   ([`d557ced`](https://github.com/ElliotSun/contract-hub/commit/d557ced8704bd1919671fcf197dde9e17ca10cfb))
 
 - Implement StorageAdapterFactory for delta table discovery and add azure auth unit tests
@@ -126,7 +126,7 @@
 
 ### Features
 
-- Add dynamic textual tui for contracthub commands
+- Add dynamic textual tui for semapact commands
   ([`3234dd9`](https://github.com/ElliotSun/contract-hub/commit/3234dd90c6283abd348b3908fdc591e00ae558fa))
 
 ### Refactoring
@@ -134,7 +134,7 @@
 - Remove Streamlit UI components and stabilize pyarrow dependency
   ([`d5a6c4e`](https://github.com/ElliotSun/contract-hub/commit/d5a6c4e15b6badfef01110369e3a041173ed6714))
 
-- Remove Streamlit UI components to keep contracthub as a backend-only CLI
+- Remove Streamlit UI components to keep semapact as a backend-only CLI
   ([`945d45d`](https://github.com/ElliotSun/contract-hub/commit/945d45d2d14173352a1bc08acc54ea26a0edaa2f))
 
 
@@ -159,7 +159,7 @@
 
 ### Refactoring
 
-- Rename package and installation instructions to `contracthub`
+- Rename package and installation instructions to `semapact`
   ([`047c0f3`](https://github.com/ElliotSun/contract-hub/commit/047c0f37aba2edcd2fc33428de7b25f245cd2d4b))
 
 

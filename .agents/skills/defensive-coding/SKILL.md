@@ -1,14 +1,14 @@
 ---
 name: defensive-coding
-description: Defines the strict coding standards, exception handling, and typing rules for Coding Agents modifying ContractHub. Apply this skill whenever writing new logic, refactoring core pipelines, or debugging integration issues.
+description: Defines the strict coding standards, exception handling, and typing rules for Coding Agents modifying SemaPact. Apply this skill whenever writing new logic, refactoring core pipelines, or debugging integration issues.
 ---
 
 # Defensive Coding & Agent Directives
 
 ## 1. Exception Handling
 - **NEVER use bare `except Exception:` blocks** unless at the absolute top-level entrypoint logging boundary (e.g., catching uncaught errors right before the process exits). If you must catch `Exception`, be sure to log it clearly.
-- Always raise and catch domain-specific exceptions from the `contracthub.exceptions` module:
-  - `ContractHubError`: The base exception.
+- Always raise and catch domain-specific exceptions from the `semapact.exceptions` module:
+  - `SemaPactError`: The base exception.
   - `ValidationError`: Raised when a contract fails governance or structure validation.
   - `MergeConflictError`: Raised by the merge engine when business and technical metadata fatally conflict.
   - `LifecycleError`: Raised for invalid promotion or deployment actions.

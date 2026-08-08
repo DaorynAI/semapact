@@ -1,0 +1,34 @@
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  UV_NO_PROGRESS: "1"
+
+steps:
+  - checkout: self
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.11"
+
+  - script: |
+      python -m pip install uv
+      uv sync --all-extras --group dev --frozen
+    displayName: Install dependencies
+
+  - script: |
+      semapact release classify-repo \
+        --base-root ./contracts-main \
+        --candidate-root ./contracts-feature
+    displayName: Classify per-contract required bumps
+
+  - script: |
+      uv run pytest
+    displayName: Run test suite

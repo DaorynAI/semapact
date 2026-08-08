@@ -2,7 +2,7 @@ import pytest
 from pathlib import Path
 import json
 
-from contracthub.exporters.graph_exporter import GraphExporter
+from semapact.exporters.graph_exporter import GraphExporter
 from datacontract.data_contract import DataContract
 
 
@@ -141,7 +141,7 @@ def test_graph_exporter_cypher_from_yaml(sample_graph_yaml):
         getattr(contract, "_data_contract", contract.get_data_contract()),
     )
     if contract_model is None:
-        from contracthub.utils.schema_utils import contract_to_model
+        from semapact.utils.schema_utils import contract_to_model
 
         contract_model = contract_to_model(sample_graph_yaml)
 
@@ -173,7 +173,7 @@ def test_graph_exporter_json_from_yaml(sample_graph_yaml):
         getattr(contract, "_data_contract", contract.get_data_contract()),
     )
     if contract_model is None:
-        from contracthub.utils.schema_utils import contract_to_model
+        from semapact.utils.schema_utils import contract_to_model
 
         contract_model = contract_to_model(sample_graph_yaml)
 

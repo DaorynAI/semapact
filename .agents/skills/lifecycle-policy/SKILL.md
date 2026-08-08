@@ -2,7 +2,7 @@
 name: lifecycle-policy
 description: Defines lifecycle governance rules including breaking changes, deprecation, merge constraints, and version enforcement for ODCS contracts.
 ---
-# ContractHub – Lifecycle Governance Policy (ODCS Contracts)
+# SemaPact – Lifecycle Governance Policy (ODCS Contracts)
 This policy is the SINGLE SOURCE OF TRUTH for all lifecycle and breaking change rules.
 
 Other skills MUST NOT redefine these rules.
@@ -11,7 +11,7 @@ They may only reference this policy.
 
 ## 1. Purpose
 
-This policy defines **lifecycle-aware governance rules** for ODCS contracts within ContractHub.
+This policy defines **lifecycle-aware governance rules** for ODCS contracts within SemaPact.
 
 It ensures:
 
@@ -322,4 +322,4 @@ This policy ensures:
 - Deterministic Git-based auditing  
 - Clear separation between structure and policy  
 
-ContractHub therefore provides **production-grade lifecycle governance for ODCS contracts**.
+SemaPact therefore provides **production-grade lifecycle governance for ODCS contracts**.

@@ -1,0 +1,54 @@
+name: Enrich Contracts
+
+on:
+  workflow_dispatch:
+    inputs:
+      contract_path:
+        description: 'Path to the contract YAML file to enrich'
+        required: true
+        default: './contracts/orders.yaml'
+      mode:
+        description: 'Enrichment mode (label or infer_joins)'
+        required: true
+        type: choice
+        options:
+          - label
+          - infer_joins
+        default: 'label'
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    env:
+      UV_NO_PROGRESS: "1"
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --all-extras --group dev --frozen
+
+      - name: Run Enrichment
+        run: |
+          uv run semapact enrich \
+            --contract ${{ github.event.inputs.contract_path }} \
+            --mode ${{ github.event.inputs.mode }} \
+            --concurrency 2
+
+      - name: Create Pull Request with Enriched Contract
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(contract): enrich contract via LLM (${{ github.event.inputs.mode }})"
+          title: "Enrich Data Contract: ${{ github.event.inputs.contract_path }}"
+          branch: "semapact/enrich-${{ github.run_id }}"
+          body: "Automated contract enrichment triggered via GitHub Actions."

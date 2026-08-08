@@ -1,14 +1,14 @@
-# 🤖 ContractHub Agentic System & AI Skills
+# 🤖 SemaPact Agentic System & AI Skills
 
-Welcome to the **ContractHub AI Agentic System**!
+Welcome to the **SemaPact AI Agentic System**!
 
 To guarantee high-quality code generation, secure data contract governance, and rigorous defensive coding, we provide built-in **AI Agent Skills** under the `.agents/skills/` directory.
 
 ## 🌟 What is this?
-AI Coding Assistants (such as Google Gemini, Cursor, Claude, or GitHub Copilot) can dynamically load these skills to align their reasoning with ContractHub's core architectural guidelines.
+AI Coding Assistants (such as Google Gemini, Cursor, Claude, or GitHub Copilot) can dynamically load these skills to align their reasoning with SemaPact's core architectural guidelines.
 
 ## 📂 Active Skills (Flat Structure)
-- [contracthub-system](skills/contracthub-system/SKILL.md): Core platform principles (e.g., Change-driven editing, immutable main contracts).
+- [semapact-system](skills/semapact-system/SKILL.md): Core platform principles (e.g., Change-driven editing, immutable main contracts).
 - [defensive-coding](skills/defensive-coding/SKILL.md): Strict exception handling, static typing, and test-mocking guidelines.
 - [devops-workflow](skills/devops-workflow/SKILL.md): GitOps automation, release preparation, and version bump rules.
 - [draft-workflow](skills/draft-workflow/SKILL.md): Draft contract save, load, and persistence logic.

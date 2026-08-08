@@ -1,47 +1,47 @@
 from unittest.mock import patch, MagicMock
-from contracthub.devops.pr_creator import _get_git_config, _set_git_config, GitHubConfig, GitHubProvider, AzureDevOpsConfig, AzureDevOpsProvider
+from semapact.devops.pr_creator import _get_git_config, _set_git_config, GitHubConfig, GitHubProvider, AzureDevOpsConfig, AzureDevOpsProvider
 import os
 
-@patch("contracthub.devops.pr_creator.subprocess.run")
+@patch("semapact.devops.pr_creator.subprocess.run")
 def test_get_git_config_success(mock_run):
     mock_run.return_value = MagicMock(returncode=0, stdout="cli\n")
-    result = _get_git_config("/mock/repo", "contracthub.pr-auth-method")
+    result = _get_git_config("/mock/repo", "semapact.pr-auth-method")
 
     mock_run.assert_called_once_with(
-        ["git", "-C", "/mock/repo", "config", "--local", "--get", "contracthub.pr-auth-method"],
+        ["git", "-C", "/mock/repo", "config", "--local", "--get", "semapact.pr-auth-method"],
         capture_output=True,
         text=True,
         check=False,
     )
     assert result == "cli"
 
-@patch("contracthub.devops.pr_creator.subprocess.run")
+@patch("semapact.devops.pr_creator.subprocess.run")
 def test_get_git_config_failure(mock_run):
     mock_run.return_value = MagicMock(returncode=1, stdout="")
-    result = _get_git_config("/mock/repo", "contracthub.pr-auth-method")
+    result = _get_git_config("/mock/repo", "semapact.pr-auth-method")
     assert result is None
 
-@patch("contracthub.devops.pr_creator.subprocess.run")
+@patch("semapact.devops.pr_creator.subprocess.run")
 def test_get_git_config_exception(mock_run):
     mock_run.side_effect = Exception("git error")
-    result = _get_git_config("/mock/repo", "contracthub.pr-auth-method")
+    result = _get_git_config("/mock/repo", "semapact.pr-auth-method")
     assert result is None
 
-@patch("contracthub.devops.pr_creator.subprocess.run")
+@patch("semapact.devops.pr_creator.subprocess.run")
 def test_set_git_config_success(mock_run):
-    _set_git_config("/mock/repo", "contracthub.pr-auth-method", "api")
+    _set_git_config("/mock/repo", "semapact.pr-auth-method", "api")
     mock_run.assert_called_once_with(
-        ["git", "-C", "/mock/repo", "config", "--local", "contracthub.pr-auth-method", "api"],
+        ["git", "-C", "/mock/repo", "config", "--local", "semapact.pr-auth-method", "api"],
         check=True,
     )
 
-@patch("contracthub.devops.pr_creator.subprocess.run")
+@patch("semapact.devops.pr_creator.subprocess.run")
 def test_set_git_config_exception_swallowed(mock_run):
     mock_run.side_effect = Exception("git error")
     # Should not raise
-    _set_git_config("/mock/repo", "contracthub.pr-auth-method", "api")
+    _set_git_config("/mock/repo", "semapact.pr-auth-method", "api")
 
-@patch.dict(os.environ, {"CONTRACTHUB_PR_METHOD": "api"}, clear=True)
+@patch.dict(os.environ, {"SEMAPACT_PR_METHOD": "api"}, clear=True)
 @patch.object(GitHubProvider, "_create_pull_request_api")
 @patch.object(GitHubProvider, "_create_pull_request_cli")
 def test_github_provider_override_api(mock_cli, mock_api):
@@ -60,7 +60,7 @@ def test_github_provider_override_api(mock_cli, mock_api):
     mock_api.assert_called_once()
     mock_cli.assert_not_called()
 
-@patch.dict(os.environ, {"CONTRACTHUB_PR_METHOD": "cli"}, clear=True)
+@patch.dict(os.environ, {"SEMAPACT_PR_METHOD": "cli"}, clear=True)
 @patch.object(GitHubProvider, "_create_pull_request_api")
 @patch.object(GitHubProvider, "_create_pull_request_cli")
 def test_github_provider_override_cli(mock_cli, mock_api):
@@ -80,7 +80,7 @@ def test_github_provider_override_cli(mock_cli, mock_api):
     mock_api.assert_not_called()
 
 @patch.dict(os.environ, {}, clear=True)
-@patch("contracthub.devops.pr_creator._get_git_config")
+@patch("semapact.devops.pr_creator._get_git_config")
 @patch.object(GitHubProvider, "_create_pull_request_api")
 @patch.object(GitHubProvider, "_create_pull_request_cli")
 def test_github_provider_cached_cli(mock_cli, mock_api, mock_get_cache):
@@ -101,7 +101,7 @@ def test_github_provider_cached_cli(mock_cli, mock_api, mock_get_cache):
     mock_api.assert_not_called()
 
 @patch.dict(os.environ, {}, clear=True)
-@patch("contracthub.devops.pr_creator._get_git_config")
+@patch("semapact.devops.pr_creator._get_git_config")
 @patch.object(GitHubProvider, "_create_pull_request_api")
 @patch.object(GitHubProvider, "_create_pull_request_cli")
 def test_github_provider_cached_api(mock_cli, mock_api, mock_get_cache):
@@ -122,8 +122,8 @@ def test_github_provider_cached_api(mock_cli, mock_api, mock_get_cache):
     mock_cli.assert_not_called()
 
 @patch.dict(os.environ, {}, clear=True)
-@patch("contracthub.devops.pr_creator._get_git_config")
-@patch("contracthub.devops.pr_creator._set_git_config")
+@patch("semapact.devops.pr_creator._get_git_config")
+@patch("semapact.devops.pr_creator._set_git_config")
 @patch.object(GitHubProvider, "_create_pull_request_api")
 @patch.object(GitHubProvider, "_create_pull_request_cli")
 def test_github_provider_fallback_chain(mock_cli, mock_api, mock_set_cache, mock_get_cache):
@@ -148,12 +148,12 @@ def test_github_provider_fallback_chain(mock_cli, mock_api, mock_set_cache, mock
     mock_api.assert_called_once()
 
     # Assert cache was set to api
-    mock_set_cache.assert_called_once_with("/mock/repo", "contracthub.pr-auth-method", "api")
+    mock_set_cache.assert_called_once_with("/mock/repo", "semapact.pr-auth-method", "api")
 
 
 @patch.dict(os.environ, {}, clear=True)
-@patch("contracthub.devops.pr_creator._get_git_config")
-@patch("contracthub.devops.pr_creator._set_git_config")
+@patch("semapact.devops.pr_creator._get_git_config")
+@patch("semapact.devops.pr_creator._set_git_config")
 @patch.object(AzureDevOpsProvider, "_create_pull_request_api")
 @patch.object(AzureDevOpsProvider, "_create_pull_request_cli")
 def test_azure_devops_provider_fallback_chain(mock_cli, mock_api, mock_set_cache, mock_get_cache):
@@ -178,4 +178,4 @@ def test_azure_devops_provider_fallback_chain(mock_cli, mock_api, mock_set_cache
     mock_api.assert_not_called()
 
     # Assert cache was set to cli
-    mock_set_cache.assert_called_once_with("/mock/repo", "contracthub.pr-auth-method", "cli")
+    mock_set_cache.assert_called_once_with("/mock/repo", "semapact.pr-auth-method", "cli")

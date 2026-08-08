@@ -1,0 +1,42 @@
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  UV_NO_PROGRESS: "1"
+  MANIFEST_PATH: "./artifacts/release_manifest.json"
+
+steps:
+  - checkout: self
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.11"
+
+  - script: |
+      python -m pip install uv
+      uv sync --all-extras --group dev --frozen
+    displayName: Install dependencies
+
+  - script: |
+      semapact release build-manifest \
+        --base-root ./contracts-main \
+        --candidate-root ./contracts-release \
+        --output "$(MANIFEST_PATH)"
+    displayName: Build editable per-contract release manifest
+
+  - script: |
+      cat "$(MANIFEST_PATH)"
+    displayName: Review manifest output
+
+  - script: |
+      semapact release create-prs \
+        --manifest "$(MANIFEST_PATH)" \
+        --repo-path . \
+        --organization "$(ADO_ORGANIZATION)" \
+        --project "$(ADO_PROJECT)" \
+        --repository-id "$(ADO_REPOSITORY_ID)" \
+        --pat-token "$(ADO_PAT_TOKEN)" \
+        --push
+    displayName: Create per-contract release PRs

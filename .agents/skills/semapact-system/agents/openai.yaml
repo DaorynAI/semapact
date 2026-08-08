@@ -1,0 +1,4 @@
+interface:
+  display_name: "SemaPact System"
+  short_description: "Define SemaPact's draft-first operating model"
+  default_prompt: "Use $semapact-system to apply SemaPact's core system model, including immutable main contracts, draft-based editing, and governed promotion workflows."

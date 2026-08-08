@@ -3,9 +3,9 @@ name: streamlit-ui
 description: Detailed layout, design system (calm theme), UX principles, and presentation logic for the Streamlit single-page application. Apply this skill when modifying app.py, UI elements, or interactive components.
 ---
 
-# ContractHub Streamlit UI Specification
+# SemaPact Streamlit UI Specification
 
-This skill defines the design system, layout, and UX rules for the ContractHub Streamlit application.
+This skill defines the design system, layout, and UX rules for the SemaPact Streamlit application.
 
 ## 1. Single-Page Architecture
 - **Rule:** The UI is a single-page application with state-driven views.

@@ -1,13 +1,13 @@
 import pytest
 import logging
-from contracthub.utils.schema_utils import contract_to_model
+from semapact.utils.schema_utils import contract_to_model
 
-from contracthub.exporters.graph_exporter import GraphNode, GraphEdge
-from contracthub.exporters.graph.validator import (
+from semapact.exporters.graph_exporter import GraphNode, GraphEdge
+from semapact.exporters.graph.validator import (
     TopologyValidator,
     TopologyValidationError,
 )
-from contracthub.exporters.graph.interceptor import SovereigntyInterceptor
+from semapact.exporters.graph.interceptor import SovereigntyInterceptor
 
 
 def test_topology_validator_success():

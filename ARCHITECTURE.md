@@ -1,8 +1,8 @@
-# ContractHub Architecture
+# SemaPact Architecture
 
 ## Purpose
 
-ContractHub is an ODCS-first contract governance platform.
+SemaPact is an ODCS-first contract governance platform.
 
 The current implementation focuses on:
 
@@ -13,7 +13,7 @@ The current implementation focuses on:
 - deployment artifact export
 - a Streamlit UI as one presentation layer
 
-ContractHub is not a CRUD system. It is a change-driven system:
+SemaPact is not a CRUD system. It is a change-driven system:
 
 - edit -> save draft
 - analyze -> compare draft vs main
@@ -25,7 +25,7 @@ ContractHub is not a CRUD system. It is a change-driven system:
 
 Location:
 
-- `contracthub/core/`
+- `semapact/core/`
 
 Responsibilities:
 
@@ -35,15 +35,15 @@ Responsibilities:
 
 Key modules:
 
-- `contracthub/core/loader.py`
-- `contracthub/core/validator.py`
-- `contracthub/core/draft_normalizer.py`
+- `semapact/core/loader.py`
+- `semapact/core/validator.py`
+- `semapact/core/draft_normalizer.py`
 
 ### 2. Lifecycle Governance
 
 Location:
 
-- `contracthub/lifecycle/`
+- `semapact/lifecycle/`
 
 Responsibilities:
 
@@ -54,14 +54,14 @@ Responsibilities:
 
 Key modules:
 
-- `contracthub/lifecycle/merge_engine.py`
-- `contracthub/lifecycle/policy.py`
+- `semapact/lifecycle/merge_engine.py`
+- `semapact/lifecycle/policy.py`
 
 ### 3. Utilities
 
 Location:
 
-- `contracthub/utils/`
+- `semapact/utils/`
 
 Responsibilities:
 
@@ -71,14 +71,14 @@ Responsibilities:
 
 Key modules:
 
-- `contracthub/utils/yaml_utils.py`
-- `contracthub/utils/schema_utils.py`
+- `semapact/utils/yaml_utils.py`
+- `semapact/utils/schema_utils.py`
 
 ### 4. Service Layer
 
 Location:
 
-- `contracthub/interfaces/streamlit/services/`
+- `semapact/interfaces/streamlit/services/`
 
 Responsibilities:
 
@@ -90,15 +90,15 @@ Responsibilities:
 
 Key modules:
 
-- `contracthub/interfaces/streamlit/services/contract_service.py`
-- `contracthub/interfaces/streamlit/services/governance_service.py`
+- `semapact/interfaces/streamlit/services/contract_service.py`
+- `semapact/interfaces/streamlit/services/governance_service.py`
 
 ### 5. Exporters
 
 Location:
 
-- `contracthub/exporters/`
-- `contracthub/quality/`
+- `semapact/exporters/`
+- `semapact/quality/`
 
 Responsibilities:
 
@@ -108,14 +108,14 @@ Responsibilities:
 
 Key modules:
 
-- `contracthub/quality/ge_exporter.py`
-- `contracthub/exporters/sql_exporter.py`
+- `semapact/quality/ge_exporter.py`
+- `semapact/exporters/sql_exporter.py`
 
 ### 6. Orchestration
 
 Location:
 
-- `contracthub/orchestrator/`
+- `semapact/orchestrator/`
 
 Responsibilities:
 
@@ -124,13 +124,13 @@ Responsibilities:
 
 Key module:
 
-- `contracthub/orchestrator/pipeline.py`
+- `semapact/orchestrator/pipeline.py`
 
 ### 7. Interfaces
 
 Location:
 
-- `contracthub/interfaces/`
+- `semapact/interfaces/`
 
 Responsibilities:
 
@@ -141,11 +141,11 @@ Responsibilities:
 
 Current interface:
 
-- Streamlit single-page app in `contracthub/interfaces/streamlit/app.py`
+- Streamlit single-page app in `semapact/interfaces/streamlit/app.py`
 
 ## Current Contract Model
 
-ContractHub currently assumes:
+SemaPact currently assumes:
 
 - Open Data Contract Standard (ODCS) is the single canonical contract representation
 - `open_data_contract_standard.model.OpenDataContractStandard` is the canonical runtime model
@@ -154,11 +154,11 @@ The system may temporarily work with Python `dict` objects at boundaries, but no
 
 ## Root Contract Governance
 
-At the top level of the contract, ContractHub currently treats these fields specially:
+At the top level of the contract, SemaPact currently treats these fields specially:
 
 - `id`
   - immutable once the governed/main contract exists
-  - importer-generated IDs are only used when a contract is first created outside ContractHub
+  - importer-generated IDs are only used when a contract is first created outside SemaPact
 - `version`
   - release-managed
   - must not change in the normal import/merge pipeline
@@ -166,12 +166,12 @@ At the top level of the contract, ContractHub currently treats these fields spec
 
 Current behavior:
 
-- `contracthub.lifecycle.merge_engine` preserves governed `id` and `version`
-- `contracthub.lifecycle.policy` flags root `id` changes as `id_violation`
-- `contracthub.lifecycle.policy` flags root version changes as `version_violation`
-- `contracthub.orchestrator.pipeline` blocks on `id_violation` and `version_violation`
+- `semapact.lifecycle.merge_engine` preserves governed `id` and `version`
+- `semapact.lifecycle.policy` flags root `id` changes as `id_violation`
+- `semapact.lifecycle.policy` flags root version changes as `version_violation`
+- `semapact.orchestrator.pipeline` blocks on `id_violation` and `version_violation`
 
-This means ContractHub currently supports:
+This means SemaPact currently supports:
 
 - technical schema refresh through import/merge
 - governed metadata preservation
@@ -228,29 +228,29 @@ generation skips the contract by default.
 
 Current release tooling:
 
-- `contracthub release classify`
+- `semapact release classify`
   - compute `required_bump` for one contract
-- `contracthub release prepare`
+- `semapact release prepare`
   - prepare one promoted contract candidate with an explicit `release_tag`
-- `contracthub release create-pr`
+- `semapact release create-pr`
   - create one release PR for one contract
 
 ## Repo-Level Release Orchestration
 
-Some repositories contain multiple governed contracts. ContractHub supports
+Some repositories contain multiple governed contracts. SemaPact supports
 repo-level release orchestration helpers, but these helpers do **not** change
 the versioning unit.
 
 Current repo-level commands:
 
-- `contracthub release classify-repo`
+- `semapact release classify-repo`
   - compare two contract roots
   - report per-contract statuses such as `changed`, `unchanged`, `added`, and `removed`
   - report `required_bump` for changed contracts only
-- `contracthub release build-manifest`
+- `semapact release build-manifest`
   - generate an editable JSON array of per-contract release tasks
   - suggest release tags and source branches from each contract's current version and `required_bump`
-- `contracthub release create-prs`
+- `semapact release create-prs`
   - consume an explicit batch manifest
   - run independent per-contract release preparation and PR creation
 
@@ -261,13 +261,13 @@ Important rule:
 
 Recommended repo-level flow:
 
-1. `contracthub release classify-repo`
+1. `semapact release classify-repo`
    - inspect changed contracts
-2. `contracthub release build-manifest`
+2. `semapact release build-manifest`
    - generate an editable per-contract release task list
 3. review and adjust the manifest
    - especially release tags and branch names
-4. `contracthub release create-prs`
+4. `semapact release create-prs`
    - create one PR per contract release task
 
 ## CI Build Modes
@@ -307,7 +307,7 @@ Important rules:
 
 Draft storage:
 
-- `.contracthub/drafts/{user}/{contract_id}.yaml`
+- `.semapact/drafts/{user}/{contract_id}.yaml`
 
 ## Storage Support
 
@@ -319,7 +319,7 @@ Current canonical contract roots support:
 
 ADLS2 authentication currently supports:
 
-- `CONTRACTHUB_ADLS_BEARER_TOKEN`
+- `SEMAPACT_ADLS_BEARER_TOKEN`
 - `azure.identity.DefaultAzureCredential`
 
 SAS URL authentication is intentionally not supported.
@@ -328,7 +328,7 @@ SAS URL authentication is intentionally not supported.
 
 ### Contract validation
 
-`contracthub/core/validator.py` validates:
+`semapact/core/validator.py` validates:
 
 - ODCS structure
 - quality rule completeness
@@ -336,7 +336,7 @@ SAS URL authentication is intentionally not supported.
 
 ### GE export
 
-`contracthub/quality/ge_exporter.py`:
+`semapact/quality/ge_exporter.py`:
 
 - delegates suite generation to datacontract-cli
 - performs GE-specific preflight on exported expectation configs
@@ -344,7 +344,7 @@ SAS URL authentication is intentionally not supported.
 
 ### SQL export
 
-`contracthub/exporters/sql_exporter.py`:
+`semapact/exporters/sql_exporter.py`:
 
 - delegates base SQL generation to datacontract-cli
 - appends Databricks-only constraints for a limited supported subset of ODCS quality rules
@@ -358,7 +358,7 @@ Current supported Databricks mappings:
 Precedence:
 
 - schema `required=True` is emitted first by datacontract-cli as `NOT NULL`
-- ContractHub does not emit duplicate nullability constraints
+- SemaPact does not emit duplicate nullability constraints
 
 ## Current Design Principles
 

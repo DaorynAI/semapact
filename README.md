@@ -230,7 +230,7 @@ The goal is to determine whether a proposed change is **safe, compatible, review
 
 > **Project rename in progress**
 >
-> The repository is now named **SemaPact**, while the current Python package and CLI still use the legacy `contracthub` name. These will be migrated separately to avoid breaking the current package surface.
+> The repository is now named **SemaPact**, while the current Python package and CLI still use the legacy `semapact` name. These will be migrated separately to avoid breaking the current package surface.
 
 ### 1. Set up the development environment
 
@@ -241,7 +241,7 @@ uv sync --group dev
 ### 2. Import a contract from SQL
 
 ```bash
-uv run contracthub import \
+uv run semapact import \
   --format sql-folder \
   --source ./my_sales_ddl \
   --output ./contracts/sales.yaml
@@ -266,7 +266,7 @@ DECIMAL(8,2)
 Then run the lifecycle merge:
 
 ```bash
-uv run contracthub merge \
+uv run semapact merge \
   --base ./generated.yaml \
   --business ./contracts/sales.yaml \
   --output ./contracts/sales.merged.yaml
@@ -436,10 +436,10 @@ Platform-specific importers should not own:
 
 ## Repository Structure
 
-The current package still uses the legacy `contracthub` module name during the SemaPact migration.
+The current package still uses the legacy `semapact` module name during the SemaPact migration.
 
 ```text
-contracthub/
+semapact/
   core/
     draft_normalizer.py
     editor_contract.py
@@ -503,7 +503,7 @@ uv sync --all-extras --group dev --frozen
 
 ## Configuration
 
-The current CLI uses `.contracthub.yaml` during the rename transition.
+The current CLI uses `.semapact.yaml` during the rename transition.
 
 Example:
 
@@ -539,19 +539,19 @@ Configuration and package naming will migrate to SemaPact terminology separately
 ### Initialize
 
 ```bash
-contracthub init
+semapact init
 ```
 
 Bootstrap repository templates:
 
 ```bash
-contracthub init --scaffold
+semapact init --scaffold
 ```
 
 ### Import from SQL
 
 ```bash
-contracthub import \
+semapact import \
   --format sql-folder \
   --source ./ddl/orders.sql \
   --output ./contracts/orders.yaml
@@ -560,7 +560,7 @@ contracthub import \
 ### Import from Delta DDL
 
 ```bash
-contracthub import \
+semapact import \
   --format delta-ddl \
   --source ./sql/orders \
   --output ./contracts/orders.yaml
@@ -569,7 +569,7 @@ contracthub import \
 ### Import from Unity Catalog
 
 ```bash
-contracthub import \
+semapact import \
   --format unity \
   --source main.silver.orders \
   --output ./contracts/orders.yaml
@@ -578,7 +578,7 @@ contracthub import \
 ### Merge a technical source with governed metadata
 
 ```bash
-contracthub merge \
+semapact merge \
   --base ./generated.yaml \
   --business ./contracts/orders.yaml \
   --output ./contracts/orders.merged.yaml
@@ -587,7 +587,7 @@ contracthub merge \
 ### Analyze a Unity Catalog source
 
 ```bash
-contracthub plan \
+semapact plan \
   --type unity \
   --source main.silver.orders \
   --base ./contracts/orders.yaml
@@ -596,14 +596,14 @@ contracthub plan \
 ### Optional LLM enrichment
 
 ```bash
-contracthub enrich \
+semapact enrich \
   --contract ./contracts/orders.yaml \
   --mode describe_columns \
   --concurrency 2
 ```
 
 ```bash
-contracthub enrich \
+semapact enrich \
   --contract ./contracts/orders.yaml \
   --mode suggest_quality \
   --concurrency 2

@@ -1,11 +1,11 @@
 ---
 name: draft-workflow
-description: Defines draft-based editing and change workflow for contracts including save, analyze, and promotion steps. Use when implementing or reviewing ContractHub draft retrieval, draft persistence, draft validation, main-vs-draft analysis, and future promotion flow. Apply this skill when main contracts must stay protected while drafts persist independently and provide safe iterative editing.
+description: Defines draft-based editing and change workflow for contracts including save, analyze, and promotion steps. Use when implementing or reviewing SemaPact draft retrieval, draft persistence, draft validation, main-vs-draft analysis, and future promotion flow. Apply this skill when main contracts must stay protected while drafts persist independently and provide safe iterative editing.
 ---
 
 # Draft & Change Workflow
 
-ContractHub uses a draft-based editing model.
+SemaPact uses a draft-based editing model.
 
 ------------------------------------------------
 FLOW
@@ -27,7 +27,7 @@ DRAFT STORAGE
 
 Recommended:
 
-`.contracthub/drafts/{user}/{contract_id}.yaml`
+`.semapact/drafts/{user}/{contract_id}.yaml`
 
 ------------------------------------------------
 RULES

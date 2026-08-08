@@ -1,6 +1,6 @@
 ---
 name: service-layer
-description: Defines the ContractHub backend service layer between the UI and system logic. Use when implementing or reviewing `contracthub/interfaces/streamlit/services/` for contract loading, draft management, validation, permissions, and governance integration. Apply this skill when services must remain UI-independent, reuse `contracthub.core`, `contracthub.lifecycle`, and `contracthub.utils`, and expose thin APIs such as `list_contracts`, `get_contract`, `get_draft`, `save_draft`, and `analyze`.
+description: Defines the SemaPact backend service layer between the UI and system logic. Use when implementing or reviewing `semapact/interfaces/streamlit/services/` for contract loading, draft management, validation, permissions, and governance integration. Apply this skill when services must remain UI-independent, reuse `semapact.core`, `semapact.lifecycle`, and `semapact.utils`, and expose thin APIs such as `list_contracts`, `get_contract`, `get_draft`, `save_draft`, and `analyze`.
 ---
 
 # Service Layer
@@ -28,9 +28,9 @@ STRICT RULES
 ------------------------------------------------
 ALLOWED DEPENDENCIES
 
-- `contracthub.core`
-- `contracthub.lifecycle`
-- `contracthub.utils`
+- `semapact.core`
+- `semapact.lifecycle`
+- `semapact.utils`
 
 ------------------------------------------------
 APIS
@@ -57,7 +57,7 @@ Keep services thin.
 Preferred flow:
 
 1. resolve paths and storage configuration
-2. read or write YAML via `contracthub.utils.yaml_utils`
+2. read or write YAML via `semapact.utils.yaml_utils`
 3. validate via shared core validation
 4. enforce permissions before mutation
 5. delegate governance analysis to lifecycle wrappers
@@ -75,7 +75,7 @@ FORBIDDEN
 ------------------------------------------------
 REVIEW CHECKLIST
 
-When reviewing a ContractHub service module, check:
+When reviewing a SemaPact service module, check:
 
 1. Does it keep UI and YAML access separated?
 2. Does it reuse `yaml_utils` instead of reimplementing file IO?
@@ -87,6 +87,6 @@ When reviewing a ContractHub service module, check:
 ------------------------------------------------
 Read these first-class Agent Skills when needed:
 
-- [contracthub-system](../../contracthub-system/SKILL.md) for system architecture rules
+- [semapact-system](../../semapact-system/SKILL.md) for system architecture rules
 - [lifecycle-policy](../../lifecycle-policy/SKILL.md) for contract lifecycle and deprecation logic
 - [streamlit-ui](../../streamlit-ui/SKILL.md) for UI UX guidelines

@@ -1,0 +1,59 @@
+name: Release Contracts
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_root:
+        description: 'Directory path for base contracts'
+        required: true
+        default: './contracts-main'
+      candidate_root:
+        description: 'Directory path for release candidates'
+        required: true
+        default: './contracts-release'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    env:
+      UV_NO_PROGRESS: "1"
+      SEMAPACT_RUNTIME_CONTEXT: "auto"
+      SEMAPACT_GIT_PROVIDER: "github"
+      SEMAPACT_GITHUB_OWNER: ${{ github.repository_owner }}
+      SEMAPACT_GITHUB_REPO: ${{ github.event.repository.name }}
+      SEMAPACT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --all-extras --group dev --frozen
+
+      - name: Build Release Manifest
+        run: |
+          mkdir -p artifacts
+          uv run semapact release build-manifest \
+            --base-root ${{ github.event.inputs.base_root || './contracts-main' }} \
+            --candidate-root ${{ github.event.inputs.candidate_root || './contracts-release' }} \
+            --output ./artifacts/release_manifest.json
+
+      - name: Upload Manifest Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release_manifest
+          path: ./artifacts/release_manifest.json
+
+      - name: Create Release PRs
+        run: |
+          uv run semapact release create-prs \
+            --manifest ./artifacts/release_manifest.json \
+            --repo-path . \
+            --push
