@@ -7,12 +7,14 @@ from typing import Any, Literal
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
-from semapact.lifecycle.helpers import (
-    lifecycle_from_custom_properties,
-    normalize_status,
+from semapact.lifecycle.identity import (
     normalize_identity_name,
     build_schema_index,
     build_property_index,
+)
+from semapact.lifecycle.helpers import (
+    lifecycle_from_custom_properties,
+    normalize_status,
 )
 from semapact.lifecycle.policy import BreakingChange, evaluate_merge_policy
 from semapact.utils.schema_utils import contract_to_dict, contract_to_model
@@ -270,9 +272,9 @@ def _has_schema_or_property_additions(
         base_obj = base_schema.get(schema_key)
         if base_obj is None:
             continue
-        base_props = set(build_property_index(base_obj))
-        candidate_props = set(build_property_index(candidate_obj))
-        if candidate_props - base_props:
+        base_prop_keys = set(build_property_index(base_obj))
+        candidate_prop_keys = set(build_property_index(candidate_obj))
+        if candidate_prop_keys - base_prop_keys:
             return True
     return False
 
