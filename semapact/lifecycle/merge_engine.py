@@ -12,6 +12,10 @@ from open_data_contract_standard.model import (
     SchemaObject,
     SchemaProperty,
 )
+from semapact.lifecycle.helpers import (
+    schema_object_identity,
+    normalize_identity_name,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -624,15 +628,11 @@ def _add_deprecated_tag(tags: list[str] | None) -> list[str]:
 
 
 def _schema_object_id(schema_obj: SchemaObject) -> str:
-    # ODCS defines `name` as the stable identity.
-    # `physicalName` is a technical attribute and must not be used as merge identity.
-    return str(schema_obj.name or "").lower()
+    return schema_object_identity(schema_obj)
 
 
 def _property_id(prop: SchemaProperty) -> str:
-    # ODCS defines `name` as the stable identity.
-    # `physicalName` is a technical attribute and must not be used as merge identity.
-    return str(prop.name or "").lower()
+    return normalize_identity_name(prop.name, "Property")
 
 
 def _is_active_contract(contract: OpenDataContractStandard) -> bool:

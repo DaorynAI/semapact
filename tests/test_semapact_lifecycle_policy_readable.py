@@ -1,6 +1,6 @@
-from __future__ import annotations
-
+import pytest
 from open_data_contract_standard.model import CustomProperty
+from semapact.exceptions import ValidationError
 
 from semapact.lifecycle.helpers import (
     allows_breaking_changes,
@@ -172,3 +172,73 @@ def test_policy_flags_removed_relationship_in_active_contract(
         "Relationship 'foreignKey:orders.user_id->users.id' removed" in item.message
         for item in evaluation.breaking_changes
     )
+
+
+def test_policy_case_insensitivity_matching(sample_odcs_model):
+    base = sample_odcs_model.model_copy(deep=True)
+    base.status = "active"
+    assert base.schema_ is not None
+    assert len(base.schema_) > 0
+    # Change case of schema name and property name in the base
+    base.schema_[0].name = "ORDERS"
+    assert base.schema_[0].properties is not None
+    base.schema_[0].properties[0].name = "ID"
+
+    merged = sample_odcs_model.model_copy(deep=True)
+    merged.status = "active"
+    assert merged.schema_ is not None
+    merged.schema_[0].name = "orders"
+    assert merged.schema_[0].properties is not None
+    merged.schema_[0].properties[0].name = "id"
+
+    # Evaluated policy should be valid since Orders/ID case-insensitively matches orders/id
+    evaluation = evaluate_merge_policy(base, merged)
+    assert evaluation.valid is True
+    assert evaluation.breaking_changes == []
+
+
+def test_policy_physical_name_does_not_override_logical_name(sample_odcs_model):
+    base = sample_odcs_model.model_copy(deep=True)
+    base.status = "active"
+    assert base.schema_ is not None
+    base.schema_[0].name = "orders"
+    base.schema_[0].physicalName = "orders_physical"
+
+    merged = sample_odcs_model.model_copy(deep=True)
+    merged.status = "active"
+    assert merged.schema_ is not None
+    merged.schema_[0].name = "orders"
+    # Even if physicalName is different, logical name dictates identity matching
+    merged.schema_[0].physicalName = "orders_physical_new"
+
+    evaluation = evaluate_merge_policy(base, merged)
+    assert evaluation.valid is True
+    assert evaluation.breaking_changes == []
+
+
+def test_policy_missing_or_invalid_names_raise_validation_error(sample_odcs_model):
+    base = sample_odcs_model.model_copy(deep=True)
+    base.status = "active"
+    
+    # Missing schema name
+    invalid_base = base.model_copy(deep=True)
+    assert invalid_base.schema_ is not None
+    invalid_base.schema_[0].name = None
+    with pytest.raises(ValidationError) as exc_info:
+        evaluate_merge_policy(invalid_base, base)
+    assert "Schema name is missing" in str(exc_info.value)
+
+    # Empty schema name
+    invalid_base.schema_[0].name = "   "
+    with pytest.raises(ValidationError) as exc_info:
+        evaluate_merge_policy(invalid_base, base)
+    assert "Schema name cannot be empty or whitespace-only" in str(exc_info.value)
+
+    # Missing property name
+    invalid_base2 = base.model_copy(deep=True)
+    assert invalid_base2.schema_ is not None
+    assert invalid_base2.schema_[0].properties is not None
+    invalid_base2.schema_[0].properties[0].name = None
+    with pytest.raises(ValidationError) as exc_info:
+        evaluate_merge_policy(invalid_base2, base)
+    assert "Property name is missing" in str(exc_info.value)

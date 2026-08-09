@@ -17,6 +17,8 @@ from semapact.lifecycle.helpers import (
     lifecycle_from_custom_properties,
     normalize_status,
     schema_items,
+    schema_object_identity,
+    normalize_identity_name,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -177,16 +179,14 @@ def _root_version_changed(
 
 
 def _schema_key(schema: SchemaObject) -> str:
-    value = schema.physicalName or schema.name or ""
-    return str(value).lower()
+    return schema_object_identity(schema)
 
 
 def _schema_index(contract: OpenDataContractStandard) -> dict[str, SchemaObject]:
     index: dict[str, SchemaObject] = {}
     for schema in schema_items(contract):
         key = _schema_key(schema)
-        if key:
-            index[key] = schema
+        index[key] = schema
     return index
 
 
@@ -197,9 +197,8 @@ def _prop_index(schema: SchemaObject) -> dict[str, SchemaProperty]:
 
     index: dict[str, SchemaProperty] = {}
     for prop in properties:
-        key = str(prop.physicalName or prop.name or "").lower()
-        if key:
-            index[key] = prop
+        key = normalize_identity_name(prop.name, "Property")
+        index[key] = prop
     return index
 
 
@@ -363,14 +362,14 @@ def _extract_relationship_hashes(
             to_val = getattr(rel, "to", None) or ""
 
             if isinstance(from_val, list):
-                from_str = ",".join(str(x) for x in from_val)
+                from_str = ",".join(str(x) for x in from_val).lower()
             else:
-                from_str = str(from_val)
+                from_str = str(from_val).lower()
 
             if isinstance(to_val, list):
-                to_str = ",".join(str(x) for x in to_val)
+                to_str = ",".join(str(x) for x in to_val).lower()
             else:
-                to_str = str(to_val)
+                to_str = str(to_val).lower()
 
             hashes.add(f"{rel_type}:{from_str}->{to_str}")
 
@@ -382,12 +381,12 @@ def _extract_relationship_hashes(
                 rel_type = getattr(rel, "type", "") or "foreignKey"
                 to_val = getattr(rel, "to", None) or ""
                 # from is implicit
-                from_str = f"{schema.name or schema.id}.{prop.name or prop.id}"
+                from_str = f"{schema.name or schema.id}.{prop.name or prop.id}".lower()
 
                 if isinstance(to_val, list):
-                    to_str = ",".join(str(x) for x in to_val)
+                    to_str = ",".join(str(x) for x in to_val).lower()
                 else:
-                    to_str = str(to_val)
+                    to_str = str(to_val).lower()
                 hashes.add(f"{rel_type}:{from_str}->{to_str}")
 
     return hashes

@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from open_data_contract_standard.model import CustomProperty, OpenDataContractStandard
+from semapact.exceptions import ValidationError
 
 ACTIVE_STATUSES = {"active"}
 NON_BREAKING_LIFECYCLE_STATUSES = {"draft", "deprecated"}
@@ -101,3 +102,40 @@ def _decimal_precision_scale(physical_type: Any) -> tuple[int, int] | None:
     if not match:
         return None
     return int(match.group(1)), int(match.group(2))
+
+
+# ---------------------------------------------------------------------------
+# Canonical identity resolution helpers (Issue #75)
+# ---------------------------------------------------------------------------
+
+
+def normalize_identity_name(name: str | None, entity_type: str = "Entity") -> str:
+    """Normalize whitespace and case, and fail on missing/empty names."""
+    if name is None:
+        raise ValidationError(f"{entity_type} name is missing")
+    val = str(name).strip()
+    if not val:
+        raise ValidationError(f"{entity_type} name cannot be empty or whitespace-only")
+    return val.lower()
+
+
+def get_schema_identity(schema_name: str | None) -> str:
+    """Return canonical schema identity: lowercase(schema.name)"""
+    return normalize_identity_name(schema_name, entity_type="Schema")
+
+
+def get_property_identity(schema_name: str | None, property_name: str | None) -> str:
+    """Return canonical property identity: lowercase(schema.name) + '/' + lowercase(property.name)"""
+    s_id = get_schema_identity(schema_name)
+    p_id = normalize_identity_name(property_name, entity_type="Property")
+    return f"{s_id}/{p_id}"
+
+
+def schema_object_identity(schema: Any) -> str:
+    """Return the canonical schema identity from a schema object."""
+    return get_schema_identity(getattr(schema, "name", None))
+
+
+def property_object_identity(schema_name: str | None, prop: Any) -> str:
+    """Return the canonical property identity from a property object."""
+    return get_property_identity(schema_name, getattr(prop, "name", None))
