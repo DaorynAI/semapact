@@ -192,8 +192,8 @@ class ContractMergeEngine:
             if _is_draft_or_deprecated(imported_schema_obj):
                 continue
 
-            existing_props = build_property_index(existing_schema_obj)
-            imported_props = build_property_index(imported_schema_obj)
+            existing_props = build_property_index(schema_id, existing_schema_obj.properties or [])
+            imported_props = build_property_index(schema_id, imported_schema_obj.properties or [])
 
             for prop_key, existing_prop in existing_props.items():
                 if _is_draft_or_deprecated(existing_prop):
@@ -404,21 +404,28 @@ def _merge_schema_object_models(
         existing_obj.quality, imported_obj.quality
     )
     merged_obj.properties = _merge_properties_models(
-        existing_schema=existing_obj,
-        imported_schema=imported_obj,
+        schema_id=schema_identity(existing_obj),
+        existing_props=existing_obj.properties or [],
+        imported_props=imported_obj.properties or [],
         deprecated_property_ids=deprecated_property_ids,
     )
     return merged_obj
 
 
 def _merge_properties_models(
-    existing_schema: SchemaObject,
-    imported_schema: SchemaObject,
+    schema_id: SchemaIdentity,
+    existing_props: list[SchemaProperty],
+    imported_props: list[SchemaProperty],
     deprecated_property_ids: set[PropertyIdentity],
 ) -> list[SchemaProperty]:
-    """Merge top-level schema properties using canonical PropertyIdentity keys."""
-    existing_index = build_property_index(existing_schema)
-    imported_index = build_property_index(imported_schema)
+    """Merge a property list using canonical PropertyIdentity keys.
+
+    Works for both top-level schema properties (schema_id = canonical schema
+    name) and nested struct fields (schema_id = canonical parent property
+    name).  This avoids duplicating merge logic for the two cases.
+    """
+    existing_index = build_property_index(schema_id, existing_props)
+    imported_index = build_property_index(schema_id, imported_props)
 
     merged_props: list[SchemaProperty] = []
     # All ordering must be identity-based to ensure stable Git diffs.
@@ -447,56 +454,6 @@ def _merge_properties_models(
     # Final deterministic ordering by canonical ODCS identity (`name`).
     merged_props.sort(key=_property_sort_key)
     return merged_props
-
-
-def _merge_nested_properties_models(
-    existing_props: list[SchemaProperty],
-    imported_props: list[SchemaProperty],
-) -> list[SchemaProperty]:
-    """Merge nested properties (SchemaProperty.properties) using name-only keys.
-
-    Nested properties are children of a SchemaProperty (e.g. struct fields),
-    not of a SchemaObject, so schema context is unavailable.  A private
-    name-only index is used here; the public build_property_index is not called.
-    """
-    existing_index = _build_nested_prop_name_index(existing_props)
-    imported_index = _build_nested_prop_name_index(imported_props)
-
-    merged_props: list[SchemaProperty] = []
-    for name_key in sorted(existing_index):
-        existing_prop = existing_index[name_key]
-        imported_prop = imported_index.get(name_key)
-        if imported_prop is None:
-            merged_props.append(existing_prop.model_copy(deep=True))
-            continue
-        merged_props.append(
-            _merge_matching_property_models(
-                existing_prop=existing_prop,
-                imported_prop=imported_prop,
-            )
-        )
-    for name_key in sorted(imported_index):
-        if name_key in existing_index:
-            continue
-        merged_props.append(imported_index[name_key].model_copy(deep=True))
-
-    merged_props.sort(key=_property_sort_key)
-    return merged_props
-
-
-def _build_nested_prop_name_index(
-    props: list[SchemaProperty],
-) -> dict[str, SchemaProperty]:
-    """Build a name-only index for nested property lists (no schema context)."""
-    from semapact.exceptions import ValidationError as VE
-
-    index: dict[str, SchemaProperty] = {}
-    for prop in props:
-        key = normalize_identity_name(getattr(prop, "name", None), "Property")
-        if key in index:
-            raise VE(f"Duplicate nested property name: '{key}'")
-        index[key] = prop
-    return index
 
 
 def _merge_matching_property_models(
@@ -547,9 +504,14 @@ def _merge_matching_property_models(
     merged_prop.customProperties = _sort_custom_properties(merged_prop.customProperties)
 
     if existing_prop.properties or imported_prop.properties:
-        merged_prop.properties = _merge_nested_properties_models(
+        parent_id = normalize_identity_name(
+            getattr(existing_prop, "name", None), "Property"
+        )
+        merged_prop.properties = _merge_properties_models(
+            schema_id=parent_id,
             existing_props=existing_prop.properties or [],
             imported_props=imported_prop.properties or [],
+            deprecated_property_ids=set(),
         )
 
     if existing_prop.items or imported_prop.items:

@@ -6,21 +6,19 @@ themselves.
 
 Public interface
 ----------------
-SchemaIdentity         = str                  e.g. "orders"
-PropertyIdentity       = tuple[str, str]       e.g. ("orders", "order_id")
+SchemaIdentity  = str                    e.g. "orders"
+PropertyIdentity = tuple[str, str]       e.g. ("orders", "order_id")
 
-normalize_identity_name(name, entity_type)     -> str
-schema_identity(schema)                        -> SchemaIdentity
-property_identity(schema, prop)                -> PropertyIdentity
-build_schema_index(contract_or_schemas)        -> dict[SchemaIdentity, SchemaObject]
-build_property_index(schema)                   -> dict[PropertyIdentity, SchemaProperty]
-normalize_relationship_endpoint(val)           -> str
-normalize_endpoint_value(val)                  -> str
-relationship_from_identity(schema, prop)       -> str
+normalize_identity_name(name, entity_type)  -> str
+schema_identity(schema)                     -> SchemaIdentity
+build_schema_index(contract_or_schemas)     -> dict[SchemaIdentity, SchemaObject]
+build_property_index(schema_id, properties) -> dict[PropertyIdentity, SchemaProperty]
+normalize_relationship_endpoint(val)        -> str
+normalize_endpoint_value(val)               -> str
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
 
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
@@ -38,10 +36,11 @@ SchemaIdentity = str
 """Canonical schema identity: strip + lowercase of schema.name."""
 
 PropertyIdentity = tuple[str, str]
-"""Canonical property identity: (schema_canonical_name, property_canonical_name).
+"""Canonical property identity: (schema_id, property_canonical_name).
 
 Using a tuple rather than a string separator avoids any dependence on a
 delimiter convention and makes schema membership explicit at the type level.
+For nested properties, schema_id is the canonical name of the parent property.
 """
 
 
@@ -67,7 +66,7 @@ def normalize_identity_name(name: str | None, entity_type: str = "Entity") -> st
 
 
 # ---------------------------------------------------------------------------
-# Schema / property identity
+# Schema identity
 # ---------------------------------------------------------------------------
 
 
@@ -79,20 +78,6 @@ def schema_identity(schema: SchemaObject) -> SchemaIdentity:
     decisions.
     """
     return normalize_identity_name(getattr(schema, "name", None), "Schema")
-
-
-def property_identity(
-    schema: SchemaObject, prop: SchemaProperty
-) -> PropertyIdentity:
-    """Return the canonical identity for a property within a schema.
-
-    Returns:
-        A ``(schema_canonical, property_canonical)`` tuple so that schema
-        membership is explicit and no delimiter convention is required.
-    """
-    s_id = schema_identity(schema)
-    p_id = normalize_identity_name(getattr(prop, "name", None), "Property")
-    return (s_id, p_id)
 
 
 # ---------------------------------------------------------------------------
@@ -108,10 +93,11 @@ def build_schema_index(
     Each call performs:
 
     1. Canonical normalization (``strip + lower``) of each schema name.
-    2. Missing-name validation (raises :class:`~semapact.exceptions.ValidationError`).
-    3. Duplicate canonical identity detection (raises on collision).
-    4. Eager ``build_property_index`` on every schema so property-level
-       violations surface at index-build time rather than later.
+    2. Missing-name validation.
+    3. Duplicate canonical identity detection.
+
+    Property-level validation is the responsibility of callers via
+    :func:`build_property_index` when they actually need the property index.
 
     Raises:
         ValidationError: on missing schema name, empty schema name, or
@@ -130,17 +116,20 @@ def build_schema_index(
                 f"Duplicate canonical schema identity found: '{key}'"
             )
         index[key] = schema
-        build_property_index(schema)  # eager validation of nested properties
     return index
 
 
 def build_property_index(
-    schema: SchemaObject,
+    schema_id: SchemaIdentity,
+    properties: Iterable[SchemaProperty],
 ) -> dict[PropertyIdentity, SchemaProperty]:
     """Build a canonical ``PropertyIdentity -> SchemaProperty`` index.
 
-    ``PropertyIdentity`` is ``(schema_canonical_name, property_canonical_name)``
-    so that property keys carry their schema membership explicitly.
+    ``PropertyIdentity`` is ``(schema_id, property_canonical_name)`` where
+    *schema_id* is the caller's canonical context key — typically the
+    canonical schema name for top-level properties, or the canonical parent
+    property name for nested struct fields.  This unified signature means
+    the same function works for both cases without duplication.
 
     Each call performs:
 
@@ -150,24 +139,32 @@ def build_property_index(
 
     Raises:
         ValidationError: on missing property name, empty property name, or
-            duplicate canonical property identity within this schema.
+            duplicate canonical property identity within this scope.
     """
-    properties = schema.properties
-    if not isinstance(properties, list):
-        return {}
-
-    s_id = schema_identity(schema)
     index: dict[PropertyIdentity, SchemaProperty] = {}
     for prop in properties:
         p_id = normalize_identity_name(getattr(prop, "name", None), "Property")
-        key: PropertyIdentity = (s_id, p_id)
+        key: PropertyIdentity = (schema_id, p_id)
         if key in index:
             raise ValidationError(
                 f"Duplicate canonical property identity found: '{p_id}'"
-                f" in schema '{schema.name}'"
+                f" in schema '{schema_id}'"
             )
         index[key] = prop
     return index
+
+
+def validate_contract_identities(
+    contract_or_schemas: OpenDataContractStandard | list[SchemaObject],
+) -> None:
+    """Validate schema and property identities across all schemas.
+
+    Raises ValidationError on missing names or duplicate canonical identities
+    at either schema or property level.
+    """
+    schemas = build_schema_index(contract_or_schemas)
+    for schema_key, schema in schemas.items():
+        build_property_index(schema_key, schema.properties or [])
 
 
 # ---------------------------------------------------------------------------
@@ -192,22 +189,11 @@ def normalize_endpoint_value(val: Any) -> str:
     """Normalize a relationship endpoint value (scalar or list).
 
     When *val* is a list (combined/multi-column key), each element is
-    normalized individually and the results are sorted and joined with
-    a comma so the order is canonical.
+    normalized individually **in the original order** and joined with a
+    comma.  Preserving order is intentional: composite FK column positions
+    encode column mapping (``[a, b] -> [x, y]`` differs from
+    ``[a, b] -> [y, x]``), so sorting would silently erase that distinction.
     """
     if isinstance(val, list):
-        normalized = sorted(normalize_relationship_endpoint(item) for item in val)
-        return ",".join(normalized)
+        return ",".join(normalize_relationship_endpoint(item) for item in val)
     return normalize_relationship_endpoint(val)
-
-
-def relationship_from_identity(schema: SchemaObject, prop: SchemaProperty) -> str:
-    """Return the normalized ``"schema.property"`` endpoint for a property.
-
-    This is the canonical *from* value for property-level relationship hashes.
-    For combined multi-column keys, the raw relationship attribute value
-    should be passed to :func:`normalize_endpoint_value` directly instead.
-    """
-    s_id = schema_identity(schema)
-    p_id = normalize_identity_name(getattr(prop, "name", None), "Property")
-    return f"{s_id}.{p_id}"

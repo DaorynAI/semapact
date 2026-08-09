@@ -16,15 +16,13 @@ from semapact.lifecycle.helpers import (
     is_active_contract,
     lifecycle_from_custom_properties,
     normalize_status,
-    schema_items,
 )
 from semapact.lifecycle.identity import (
     PropertyIdentity,
-    schema_identity,
     build_schema_index,
     build_property_index,
+    validate_contract_identities,
     normalize_endpoint_value,
-    relationship_from_identity,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -88,11 +86,13 @@ def evaluate_merge_policy(
             )
         )
 
+    validate_contract_identities(base_contract)
+    validate_contract_identities(merged_contract)
+
+    base_schema_index = build_schema_index(base_contract)
     merged_schema_index = build_schema_index(merged_contract)
 
-    for schema in schema_items(base_contract):
-        schema_key = schema_identity(schema)
-
+    for schema_key, schema in base_schema_index.items():
         if _is_draft_or_deprecated(schema):
             continue
 
@@ -106,8 +106,8 @@ def evaluate_merge_policy(
             )
             continue
 
-        base_props = build_property_index(schema)
-        target_props = build_property_index(target_schema)
+        base_props = build_property_index(schema_key, schema.properties or [])
+        target_props = build_property_index(schema_key, target_schema.properties or [])
 
         base_rels = _extract_relationship_hashes(schema, base_props)
         target_rels = _extract_relationship_hashes(target_schema, target_props)
@@ -347,15 +347,14 @@ def _extract_relationship_hashes(
 
             hashes.add(f"{rel_type}:{from_str}->{to_str}")
 
-    # 2. Property-level relationships
+    # 2. Property-level relationships: from_str derived from PropertyIdentity
     for prop_key, prop in schema_properties.items():
         prop_rels = getattr(prop, "relationships", None)
         if prop_rels:
             for rel in prop_rels:
                 rel_type = getattr(rel, "type", "") or "foreignKey"
                 to_val = getattr(rel, "to", None) or ""
-                # from is derived from the schema+property identity
-                from_str = relationship_from_identity(schema, prop)
+                from_str = f"{prop_key[0]}.{prop_key[1]}"
                 to_str = normalize_endpoint_value(to_val)
                 hashes.add(f"{rel_type}:{from_str}->{to_str}")
 

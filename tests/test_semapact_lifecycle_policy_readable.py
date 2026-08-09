@@ -330,14 +330,15 @@ def test_missing_property_name_in_new_schema(sample_odcs_model):
 
 
 def test_cross_layer_entity_consistency(sample_odcs_model):
-    # Test that policy, merge, and release classification consistently resolve matching entities
-    # even when there are case differences, whitespace differences, and conflicting physicalNames.
+    # Test that policy, merge, and release classification consistently resolve
+    # matching entities when the base uses uppercase + padded name with a
+    # different physicalName from the candidate.
     base = sample_odcs_model.model_copy(deep=True)
     base.status = "active"
     assert base.schema_ is not None
     assert base.schema_[0].properties is not None
     base.schema_[0].name = "  Orders  "
-    base.schema_[0].physicalName = "phys"
+    base.schema_[0].physicalName = "orders_v1"          # deliberately different
     base.schema_[0].properties[0].name = "  Id  "
 
     candidate = sample_odcs_model.model_copy(deep=True)
@@ -345,22 +346,57 @@ def test_cross_layer_entity_consistency(sample_odcs_model):
     assert candidate.schema_ is not None
     assert candidate.schema_[0].properties is not None
     candidate.schema_[0].name = "orders"
-    candidate.schema_[0].physicalName = "phys"
+    candidate.schema_[0].physicalName = "orders_v2"     # different physical name
     candidate.schema_[0].properties[0].name = "id"
 
-    # 1. Policy Evaluation
+    # 1. Policy: case/whitespace difference must NOT trigger breaking changes
     evaluation = evaluate_merge_policy(base, candidate)
     assert evaluation.valid is True
     assert evaluation.breaking_changes == []
 
-    # 2. Merge Engine
+    # 2. Merge Engine: schemas must be merged (not duplicated) by canonical key
     engine = ContractMergeEngine()
     merged = engine.merge(base, candidate)
     assert merged.contract.schema_ is not None
-    # The merged schema name should stay consistent and merged without duplicate entries
-    assert len(merged.contract.schema_) == len(base.schema_)
-    assert len(merged.contract.schema_[0].properties) == len(base.schema_[0].properties)
+    assert len(merged.contract.schema_) == len(base.schema_), (
+        "Merged schema count should equal base — no duplication by physicalName"
+    )
+    assert len(merged.contract.schema_[0].properties) == len(base.schema_[0].properties), (
+        "Property count must not change; canonical matching must have worked"
+    )
 
-    # 3. Release Classification
+    # 3. Release: physicalName change alone is a non-breaking minor bump;
+    #    the bump must NOT be classified as an addition (which would also be minor
+    #    but for the wrong reason).
     bump = classify_contract_change(base, candidate)
     assert bump.required_bump == "minor"
+    assert not any(
+        "Schema or property additions" in r for r in bump.reasons
+    ), "A physicalName-only change should not be classified as a schema/property addition"
+
+
+def test_duplicate_canonical_schema_in_base_raises_validation_error(sample_odcs_model):
+    # base contract has Orders + orders — after normalization both resolve to 'orders'.
+    # Policy must validate base, not silently match two base schemas to one target.
+    from open_data_contract_standard.model import SchemaObject
+
+    base = sample_odcs_model.model_copy(deep=True)
+    base.status = "active"
+    assert base.schema_ is not None
+    # Duplicate: existing schema has name 'tbl' (from fixture); add 'TBL'
+    base.schema_.append(SchemaObject(name="TBL", properties=[]))
+
+    candidate = sample_odcs_model.model_copy(deep=True)
+    candidate.status = "active"
+
+    with pytest.raises(ValidationError) as exc_info:
+        evaluate_merge_policy(base, candidate)
+    assert "Duplicate canonical schema identity found: 'tbl'" in str(exc_info.value)
+
+
+def test_composite_relationship_endpoint_order_preserved():
+    from semapact.lifecycle.identity import normalize_endpoint_value
+
+    assert normalize_endpoint_value([" Users.id ", " Orders.user_id "]) == "users.id,orders.user_id"
+    assert normalize_endpoint_value([" Orders.user_id ", " Users.id "]) == "orders.user_id,users.id"
+    assert normalize_endpoint_value(["a", "b"]) != normalize_endpoint_value(["b", "a"])

@@ -272,8 +272,8 @@ def _has_schema_or_property_additions(
         base_obj = base_schema.get(schema_key)
         if base_obj is None:
             continue
-        base_prop_keys = set(build_property_index(base_obj))
-        candidate_prop_keys = set(build_property_index(candidate_obj))
+        base_prop_keys = set(build_property_index(schema_key, base_obj.properties or []))
+        candidate_prop_keys = set(build_property_index(schema_key, candidate_obj.properties or []))
         if candidate_prop_keys - base_prop_keys:
             return True
     return False
@@ -292,8 +292,8 @@ def _has_new_deprecations(
         if not _is_deprecated(base_obj) and _is_deprecated(candidate_obj):
             return True
 
-        base_props = build_property_index(base_obj)
-        candidate_props = build_property_index(candidate_obj)
+        base_props = build_property_index(schema_key, base_obj.properties or [])
+        candidate_props = build_property_index(schema_key, candidate_obj.properties or [])
         for prop_key, base_prop in base_props.items():
             candidate_prop = candidate_props.get(prop_key)
             if candidate_prop is None:
