@@ -3,7 +3,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from open_data_contract_standard.model import CustomProperty, OpenDataContractStandard
+from open_data_contract_standard.model import (
+    CustomProperty,
+    OpenDataContractStandard,
+    SchemaObject,
+    SchemaProperty,
+)
 from semapact.exceptions import ValidationError
 
 ACTIVE_STATUSES = {"active"}
@@ -139,3 +144,73 @@ def schema_object_identity(schema: Any) -> str:
 def property_object_identity(schema_name: str | None, prop: Any) -> str:
     """Return the canonical property identity from a property object."""
     return get_property_identity(schema_name, getattr(prop, "name", None))
+
+
+def build_schema_index(
+    contract_or_schemas: OpenDataContractStandard | list[SchemaObject],
+) -> dict[str, SchemaObject]:
+    """Build a map of canonical schema identity to SchemaObject.
+
+    Raises ValidationError if a duplicate canonical identity is found.
+    """
+    index: dict[str, SchemaObject] = {}
+    schemas = (
+        schema_items(contract_or_schemas)
+        if isinstance(contract_or_schemas, OpenDataContractStandard)
+        else contract_or_schemas
+    )
+    for schema in schemas:
+        key = schema_object_identity(schema)
+        if key in index:
+            raise ValidationError(f"Duplicate canonical schema identity found: '{key}'")
+        index[key] = schema
+        # Validate properties inside the schema to prevent any silent missing/duplicate property name
+        build_property_index(schema)
+    return index
+
+
+def build_property_index(
+    schema_or_properties: SchemaObject | list[SchemaProperty],
+) -> dict[str, SchemaProperty]:
+    """Build a map of canonical property name to SchemaProperty.
+
+    Raises ValidationError if a duplicate canonical property is found.
+    """
+    properties = (
+        schema_or_properties.properties
+        if isinstance(schema_or_properties, SchemaObject)
+        else schema_or_properties
+    )
+    if not isinstance(properties, list):
+        return {}
+    index: dict[str, SchemaProperty] = {}
+    for prop in properties:
+        key = normalize_identity_name(prop.name, "Property")
+        if key in index:
+            schema_name_str = (
+                f" in schema '{schema_or_properties.name}'"
+                if isinstance(schema_or_properties, SchemaObject)
+                else ""
+            )
+            raise ValidationError(
+                f"Duplicate canonical property identity found: '{key}'{schema_name_str}"
+            )
+        index[key] = prop
+    return index
+
+
+def normalize_relationship_endpoint(val: Any) -> str:
+    """Normalize a relationship endpoint string by splitting by dots, stripping, and lowercasing."""
+    if val is None:
+        return ""
+    parts = [p.strip().lower() for p in str(val).split(".")]
+    return ".".join(parts)
+
+
+def normalize_endpoint_value(val: Any) -> str:
+    """Normalize relationship endpoint values, supporting list and scalar types."""
+    if isinstance(val, list):
+        normalized_items = [normalize_relationship_endpoint(item) for item in val]
+        normalized_items.sort()
+        return ",".join(normalized_items)
+    return normalize_relationship_endpoint(val)

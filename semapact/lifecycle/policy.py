@@ -18,7 +18,11 @@ from semapact.lifecycle.helpers import (
     normalize_status,
     schema_items,
     schema_object_identity,
+    get_schema_identity,
     normalize_identity_name,
+    build_schema_index,
+    build_property_index,
+    normalize_endpoint_value,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -183,23 +187,11 @@ def _schema_key(schema: SchemaObject) -> str:
 
 
 def _schema_index(contract: OpenDataContractStandard) -> dict[str, SchemaObject]:
-    index: dict[str, SchemaObject] = {}
-    for schema in schema_items(contract):
-        key = _schema_key(schema)
-        index[key] = schema
-    return index
+    return build_schema_index(contract)
 
 
 def _prop_index(schema: SchemaObject) -> dict[str, SchemaProperty]:
-    properties = schema.properties
-    if not isinstance(properties, list):
-        return {}
-
-    index: dict[str, SchemaProperty] = {}
-    for prop in properties:
-        key = normalize_identity_name(prop.name, "Property")
-        index[key] = prop
-    return index
+    return build_property_index(schema)
 
 
 def _is_draft_or_deprecated(entity: SchemaObject | SchemaProperty) -> bool:
@@ -361,15 +353,8 @@ def _extract_relationship_hashes(
             from_val = getattr(rel, "from_", None) or getattr(rel, "from", None) or ""
             to_val = getattr(rel, "to", None) or ""
 
-            if isinstance(from_val, list):
-                from_str = ",".join(str(x) for x in from_val).lower()
-            else:
-                from_str = str(from_val).lower()
-
-            if isinstance(to_val, list):
-                to_str = ",".join(str(x) for x in to_val).lower()
-            else:
-                to_str = str(to_val).lower()
+            from_str = normalize_endpoint_value(from_val)
+            to_str = normalize_endpoint_value(to_val)
 
             hashes.add(f"{rel_type}:{from_str}->{to_str}")
 
@@ -381,12 +366,10 @@ def _extract_relationship_hashes(
                 rel_type = getattr(rel, "type", "") or "foreignKey"
                 to_val = getattr(rel, "to", None) or ""
                 # from is implicit
-                from_str = f"{schema.name or schema.id}.{prop.name or prop.id}".lower()
-
-                if isinstance(to_val, list):
-                    to_str = ",".join(str(x) for x in to_val).lower()
-                else:
-                    to_str = str(to_val).lower()
+                schema_id = get_schema_identity(schema.name)
+                prop_id = normalize_identity_name(prop.name, "Property")
+                from_str = f"{schema_id}.{prop_id}"
+                to_str = normalize_endpoint_value(to_val)
                 hashes.add(f"{rel_type}:{from_str}->{to_str}")
 
     return hashes

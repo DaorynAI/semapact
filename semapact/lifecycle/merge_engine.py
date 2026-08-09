@@ -15,6 +15,8 @@ from open_data_contract_standard.model import (
 from semapact.lifecycle.helpers import (
     schema_object_identity,
     normalize_identity_name,
+    build_schema_index,
+    build_property_index,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -174,16 +176,8 @@ class ContractMergeEngine:
         if not _is_active_contract(target_model):
             return analysis
 
-        existing_schema = {
-            _schema_object_id(schema): schema
-            for schema in (target_model.schema_ or [])
-            if _schema_object_id(schema)
-        }
-        imported_schema = {
-            _schema_object_id(schema): schema
-            for schema in (source_model.schema_ or [])
-            if _schema_object_id(schema)
-        }
+        existing_schema = build_schema_index(target_model)
+        imported_schema = build_schema_index(source_model)
 
         for schema_id, existing_schema_obj in existing_schema.items():
             if _is_draft_or_deprecated(existing_schema_obj):
@@ -196,16 +190,8 @@ class ContractMergeEngine:
             if _is_draft_or_deprecated(imported_schema_obj):
                 continue
 
-            existing_props = {
-                _property_id(prop): prop
-                for prop in (existing_schema_obj.properties or [])
-                if _property_id(prop)
-            }
-            imported_props = {
-                _property_id(prop): prop
-                for prop in (imported_schema_obj.properties or [])
-                if _property_id(prop)
-            }
+            existing_props = build_property_index(existing_schema_obj)
+            imported_props = build_property_index(imported_schema_obj)
 
             for prop_id, existing_prop in existing_props.items():
                 if _is_draft_or_deprecated(existing_prop):
@@ -358,12 +344,8 @@ def _merge_schema_objects_models(
     imported_schema: list[SchemaObject],
     analysis: MergeAnalysis,
 ) -> list[SchemaObject]:
-    existing_index = {
-        _schema_object_id(obj): obj for obj in existing_schema if _schema_object_id(obj)
-    }
-    imported_index = {
-        _schema_object_id(obj): obj for obj in imported_schema if _schema_object_id(obj)
-    }
+    existing_index = build_schema_index(existing_schema)
+    imported_index = build_schema_index(imported_schema)
 
     merged_schema: list[SchemaObject] = []
     # All ordering must be identity-based to ensure stable Git diffs.
@@ -431,12 +413,8 @@ def _merge_properties_models(
     imported_props: list[SchemaProperty],
     deprecated_property_ids: set[str],
 ) -> list[SchemaProperty]:
-    existing_index = {
-        _property_id(prop): prop for prop in existing_props if _property_id(prop)
-    }
-    imported_index = {
-        _property_id(prop): prop for prop in imported_props if _property_id(prop)
-    }
+    existing_index = build_property_index(existing_props)
+    imported_index = build_property_index(imported_props)
 
     merged_props: list[SchemaProperty] = []
     # All ordering must be identity-based to ensure stable Git diffs.

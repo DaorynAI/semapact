@@ -10,9 +10,9 @@ from open_data_contract_standard.model import OpenDataContractStandard
 from semapact.lifecycle.helpers import (
     lifecycle_from_custom_properties,
     normalize_status,
-    schema_items,
-    get_schema_identity,
     normalize_identity_name,
+    build_schema_index,
+    build_property_index,
 )
 from semapact.lifecycle.policy import BreakingChange, evaluate_merge_policy
 from semapact.utils.schema_utils import contract_to_dict, contract_to_model
@@ -261,14 +261,8 @@ def _parse_semver(version: str) -> tuple[int, int, int]:
 def _has_schema_or_property_additions(
     base: OpenDataContractStandard, candidate: OpenDataContractStandard
 ) -> bool:
-    base_schema = {
-        get_schema_identity(schema.name): schema
-        for schema in schema_items(base)
-    }
-    candidate_schema = {
-        get_schema_identity(schema.name): schema
-        for schema in schema_items(candidate)
-    }
+    base_schema = build_schema_index(base)
+    candidate_schema = build_schema_index(candidate)
     if set(candidate_schema) - set(base_schema):
         return True
 
@@ -276,14 +270,8 @@ def _has_schema_or_property_additions(
         base_obj = base_schema.get(schema_key)
         if base_obj is None:
             continue
-        base_props = {
-            normalize_identity_name(prop.name, "Property")
-            for prop in (base_obj.properties or [])
-        }
-        candidate_props = {
-            normalize_identity_name(prop.name, "Property")
-            for prop in (candidate_obj.properties or [])
-        }
+        base_props = set(build_property_index(base_obj))
+        candidate_props = set(build_property_index(candidate_obj))
         if candidate_props - base_props:
             return True
     return False
@@ -292,14 +280,8 @@ def _has_schema_or_property_additions(
 def _has_new_deprecations(
     base: OpenDataContractStandard, candidate: OpenDataContractStandard
 ) -> bool:
-    base_schema = {
-        get_schema_identity(schema.name): schema
-        for schema in schema_items(base)
-    }
-    candidate_schema = {
-        get_schema_identity(schema.name): schema
-        for schema in schema_items(candidate)
-    }
+    base_schema = build_schema_index(base)
+    candidate_schema = build_schema_index(candidate)
 
     for schema_key, base_obj in base_schema.items():
         candidate_obj = candidate_schema.get(schema_key)
@@ -308,14 +290,8 @@ def _has_new_deprecations(
         if not _is_deprecated(base_obj) and _is_deprecated(candidate_obj):
             return True
 
-        base_props = {
-            normalize_identity_name(prop.name, "Property"): prop
-            for prop in (base_obj.properties or [])
-        }
-        candidate_props = {
-            normalize_identity_name(prop.name, "Property"): prop
-            for prop in (candidate_obj.properties or [])
-        }
+        base_props = build_property_index(base_obj)
+        candidate_props = build_property_index(candidate_obj)
         for prop_key, base_prop in base_props.items():
             candidate_prop = candidate_props.get(prop_key)
             if candidate_prop is None:

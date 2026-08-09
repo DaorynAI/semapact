@@ -9,6 +9,8 @@ from semapact.lifecycle.helpers import (
     schema_items,
 )
 from semapact.lifecycle.policy import evaluate_merge_policy
+from semapact.lifecycle.merge_engine import ContractMergeEngine
+from semapact.core.release import classify_contract_change
 
 
 def test_policy_skips_breaking_checks_for_non_active_contract(sample_odcs_model):
@@ -242,3 +244,123 @@ def test_policy_missing_or_invalid_names_raise_validation_error(sample_odcs_mode
     with pytest.raises(ValidationError) as exc_info:
         evaluate_merge_policy(invalid_base2, base)
     assert "Property name is missing" in str(exc_info.value)
+
+
+def test_duplicate_canonical_identity_validation(sample_odcs_model):
+    sample_odcs_model.status = "active"
+
+    # 1. Duplicate schema name (using existing 'tbl')
+    invalid_contract = sample_odcs_model.model_copy(deep=True)
+    invalid_contract.status = "active"
+    assert invalid_contract.schema_ is not None
+    from open_data_contract_standard.model import SchemaObject
+    duplicate_schema = SchemaObject(name="TBL", properties=[])
+    invalid_contract.schema_.append(duplicate_schema)
+
+    # Verify policy raises duplicate error
+    with pytest.raises(ValidationError) as exc_info:
+        evaluate_merge_policy(sample_odcs_model, invalid_contract)
+    assert "Duplicate canonical schema identity found: 'tbl'" in str(exc_info.value)
+
+    # Verify merge engine raises duplicate error
+    engine = ContractMergeEngine()
+    with pytest.raises(ValidationError) as exc_info:
+        engine.merge(sample_odcs_model, invalid_contract)
+    assert "Duplicate canonical schema identity found: 'tbl'" in str(exc_info.value)
+
+    # Verify release classification raises duplicate error
+    with pytest.raises(ValidationError) as exc_info:
+        classify_contract_change(sample_odcs_model, invalid_contract)
+    assert "Duplicate canonical schema identity found: 'tbl'" in str(exc_info.value)
+
+    # 2. Duplicate property name (using existing 'rcvr_id')
+    invalid_contract2 = sample_odcs_model.model_copy(deep=True)
+    invalid_contract2.status = "active"
+    assert invalid_contract2.schema_ is not None
+    assert invalid_contract2.schema_[0].properties is not None
+    from open_data_contract_standard.model import SchemaProperty
+    duplicate_prop = SchemaProperty(name="RCVR_ID", type="string")
+    invalid_contract2.schema_[0].properties.append(duplicate_prop)
+
+    # Verify policy raises duplicate property error
+    with pytest.raises(ValidationError) as exc_info:
+        evaluate_merge_policy(sample_odcs_model, invalid_contract2)
+    assert "Duplicate canonical property identity found: 'rcvr_id'" in str(exc_info.value)
+
+    # Verify merge engine raises duplicate property error
+    with pytest.raises(ValidationError) as exc_info:
+        engine.merge(sample_odcs_model, invalid_contract2)
+    assert "Duplicate canonical property identity found: 'rcvr_id'" in str(exc_info.value)
+
+    # Verify release classification raises duplicate property error
+    with pytest.raises(ValidationError) as exc_info:
+        classify_contract_change(sample_odcs_model, invalid_contract2)
+    assert "Duplicate canonical property identity found: 'rcvr_id'" in str(exc_info.value)
+
+
+def test_relationship_endpoint_case_whitespace_normalization(relationship_base_contract_model):
+    # Ensure whitespace and case differences in relationship endpoints are normalized.
+    relationship_base_contract_model.status = "active"
+    target = relationship_base_contract_model.model_copy(deep=True)
+    target.status = "active"
+    assert target.schema_ is not None
+    assert target.schema_[1].properties is not None
+    assert target.schema_[1].properties[0].relationships is not None
+    # Modify to have extra whitespaces and uppercase
+    target.schema_[1].properties[0].relationships[0].to = "  Users.ID  "
+
+    evaluation = evaluate_merge_policy(relationship_base_contract_model, target)
+    assert evaluation.valid is True
+    assert evaluation.breaking_changes == []
+
+
+def test_missing_property_name_in_new_schema(sample_odcs_model):
+    # A candidate has a new schema, but a property inside it has no name
+    sample_odcs_model.status = "active"
+    candidate = sample_odcs_model.model_copy(deep=True)
+    candidate.status = "active"
+    assert candidate.schema_ is not None
+    from open_data_contract_standard.model import SchemaObject, SchemaProperty
+    new_schema = SchemaObject(name="new_schema", properties=[SchemaProperty(name=None, type="string")])
+    candidate.schema_.append(new_schema)
+
+    with pytest.raises(ValidationError) as exc_info:
+        evaluate_merge_policy(sample_odcs_model, candidate)
+    assert "Property name is missing" in str(exc_info.value)
+
+
+def test_cross_layer_entity_consistency(sample_odcs_model):
+    # Test that policy, merge, and release classification consistently resolve matching entities
+    # even when there are case differences, whitespace differences, and conflicting physicalNames.
+    base = sample_odcs_model.model_copy(deep=True)
+    base.status = "active"
+    assert base.schema_ is not None
+    assert base.schema_[0].properties is not None
+    base.schema_[0].name = "  Orders  "
+    base.schema_[0].physicalName = "phys"
+    base.schema_[0].properties[0].name = "  Id  "
+
+    candidate = sample_odcs_model.model_copy(deep=True)
+    candidate.status = "active"
+    assert candidate.schema_ is not None
+    assert candidate.schema_[0].properties is not None
+    candidate.schema_[0].name = "orders"
+    candidate.schema_[0].physicalName = "phys"
+    candidate.schema_[0].properties[0].name = "id"
+
+    # 1. Policy Evaluation
+    evaluation = evaluate_merge_policy(base, candidate)
+    assert evaluation.valid is True
+    assert evaluation.breaking_changes == []
+
+    # 2. Merge Engine
+    engine = ContractMergeEngine()
+    merged = engine.merge(base, candidate)
+    assert merged.contract.schema_ is not None
+    # The merged schema name should stay consistent and merged without duplicate entries
+    assert len(merged.contract.schema_) == len(base.schema_)
+    assert len(merged.contract.schema_[0].properties) == len(base.schema_[0].properties)
+
+    # 3. Release Classification
+    bump = classify_contract_change(base, candidate)
+    assert bump.required_bump == "minor"
