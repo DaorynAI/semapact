@@ -55,7 +55,7 @@ def test_build_property_index_accepts_scope_key_and_detects_duplicates():
     p_dup = SchemaProperty(name="ORDER_ID", type="string")
     with pytest.raises(ValidationError) as exc_info:
         build_property_index("orders", [p1, p_dup])
-    assert "Duplicate canonical property identity found: 'order_id' in schema 'orders'" in str(
+    assert "Duplicate canonical property identity found: 'order_id' in scope 'orders'" in str(
         exc_info.value
     )
 
@@ -76,6 +76,6 @@ def test_validate_contract_identities_recursively_validates_nested_properties():
 
     with pytest.raises(ValidationError) as exc_info:
         validate_contract_identities([invalid_schema])
-    assert "Duplicate canonical property identity found: 'street' in schema 'address'" in str(
+    assert "Duplicate canonical property identity found: 'street' in scope 'address'" in str(
         exc_info.value
     )

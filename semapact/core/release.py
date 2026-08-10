@@ -8,7 +8,6 @@ from typing import Any, Literal
 from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.lifecycle.identity import (
-    normalize_identity_name,
     build_schema_index,
     build_property_index,
 )
@@ -337,7 +336,7 @@ def _sort_identity_list(items: list[Any]) -> list[Any]:
     if not items:
         return items
     if all(isinstance(item, dict) and "name" in item for item in items):
-        return sorted(items, key=lambda item: normalize_identity_name(item.get("name"), "Schema"))
+        return sorted(items, key=lambda item: str(item.get("name") or "").strip().lower())
     if all(isinstance(item, dict) and "property" in item for item in items):
         return sorted(
             items,

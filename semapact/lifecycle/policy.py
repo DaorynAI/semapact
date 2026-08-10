@@ -50,11 +50,9 @@ def evaluate_merge_policy(
     base_contract: OpenDataContractStandard,
     merged_contract: OpenDataContractStandard,
 ) -> PolicyEvaluation:
-    """Evaluate breaking-change policy for a merged contract.
+    validate_contract_identities(base_contract)
+    validate_contract_identities(merged_contract)
 
-    Breaking checks apply only when contract status is active and schema/field
-    lifecycleStatus is not draft/deprecated.
-    """
     if not is_active_contract(base_contract):
         return PolicyEvaluation(valid=True)
 
@@ -85,9 +83,6 @@ def evaluate_merge_policy(
                 message="Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change and use 'semapact release prepare'.",
             )
         )
-
-    validate_contract_identities(base_contract)
-    validate_contract_identities(merged_contract)
 
     base_schema_index = build_schema_index(base_contract)
     merged_schema_index = build_schema_index(merged_contract)

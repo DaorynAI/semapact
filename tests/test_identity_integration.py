@@ -179,3 +179,17 @@ def test_missing_property_name_in_new_schema(sample_odcs_model):
     with pytest.raises(ValidationError) as exc_info:
         evaluate_merge_policy(sample_odcs_model, candidate)
     assert "Property name is missing" in str(exc_info.value)
+
+
+def test_draft_contract_duplicate_identity_raises_validation_error(sample_odcs_model):
+    base = sample_odcs_model.model_copy(deep=True)
+    base.status = "draft"  # Contract is draft
+    assert base.schema_ is not None
+    base.schema_.append(SchemaObject(name="TBL", properties=[]))  # TBL duplicates existing tbl
+
+    candidate = sample_odcs_model.model_copy(deep=True)
+    candidate.status = "draft"
+
+    with pytest.raises(ValidationError) as exc_info:
+        evaluate_merge_policy(base, candidate)
+    assert "Duplicate canonical schema identity found: 'tbl'" in str(exc_info.value)

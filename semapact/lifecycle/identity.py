@@ -114,7 +114,7 @@ def build_schema_index(
 
 
 def build_property_index(
-    scope_key: SchemaIdentity,
+    scope_key: str,
     properties: Iterable[SchemaProperty],
 ) -> dict[PropertyIdentity, SchemaProperty]:
     """Build a canonical ``PropertyIdentity -> SchemaProperty`` index.
@@ -140,7 +140,7 @@ def build_property_index(
         if key in index:
             raise ValidationError(
                 f"Duplicate canonical property identity found: '{p_id}'"
-                f" in schema '{scope_key}'"
+                f" in scope '{scope_key}'"
             )
         index[key] = prop
     return index

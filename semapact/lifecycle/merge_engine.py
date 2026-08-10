@@ -404,7 +404,7 @@ def _merge_schema_object_models(
         existing_obj.quality, imported_obj.quality
     )
     merged_obj.properties = _merge_properties_models(
-        schema_id=schema_identity(existing_obj),
+        scope_key=schema_identity(existing_obj),
         existing_props=existing_obj.properties or [],
         imported_props=imported_obj.properties or [],
         deprecated_property_ids=deprecated_property_ids,
@@ -413,19 +413,19 @@ def _merge_schema_object_models(
 
 
 def _merge_properties_models(
-    schema_id: SchemaIdentity,
+    scope_key: str,
     existing_props: list[SchemaProperty],
     imported_props: list[SchemaProperty],
     deprecated_property_ids: set[PropertyIdentity],
 ) -> list[SchemaProperty]:
     """Merge a property list using canonical PropertyIdentity keys.
 
-    Works for both top-level schema properties (schema_id = canonical schema
-    name) and nested struct fields (schema_id = canonical parent property
+    Works for both top-level schema properties (scope_key = canonical schema
+    name) and nested struct fields (scope_key = canonical parent property
     name).  This avoids duplicating merge logic for the two cases.
     """
-    existing_index = build_property_index(schema_id, existing_props)
-    imported_index = build_property_index(schema_id, imported_props)
+    existing_index = build_property_index(scope_key, existing_props)
+    imported_index = build_property_index(scope_key, imported_props)
 
     merged_props: list[SchemaProperty] = []
     # All ordering must be identity-based to ensure stable Git diffs.
@@ -508,7 +508,7 @@ def _merge_matching_property_models(
             getattr(existing_prop, "name", None), "Property"
         )
         merged_prop.properties = _merge_properties_models(
-            schema_id=parent_id,
+            scope_key=parent_id,
             existing_props=existing_prop.properties or [],
             imported_props=imported_prop.properties or [],
             deprecated_property_ids=set(),
