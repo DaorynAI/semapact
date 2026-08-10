@@ -22,8 +22,8 @@ from semapact.lifecycle.identity import (
     build_schema_index,
     build_property_index,
     validate_contract_identities,
-    normalize_endpoint_value,
 )
+from semapact.lifecycle.relationships import normalize_endpoint_value
 
 LOGGER = logging.getLogger(__name__)
 

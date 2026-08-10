@@ -342,8 +342,8 @@ def _sort_identity_list(items: list[Any]) -> list[Any]:
         return sorted(
             items,
             key=lambda item: (
-                str(item.get("property") or "").strip().lower(),
-                str(item.get("value") or "").strip().lower(),
+                str(item.get("property") or ""),
+                str(item.get("value") or ""),
             ),
         )
     return items

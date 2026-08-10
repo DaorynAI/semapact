@@ -20,6 +20,10 @@ from semapact.lifecycle.policy import (
     PolicyEvaluation,
     evaluate_merge_policy,
 )
+from semapact.lifecycle.relationships import (
+    normalize_endpoint_value,
+    normalize_relationship_endpoint,
+)
 
 __all__ = [
     "normalize_status",
@@ -30,6 +34,8 @@ __all__ = [
     "PropertyIdentity",
     "build_schema_index",
     "build_property_index",
+    "normalize_relationship_endpoint",
+    "normalize_endpoint_value",
     "ContractMergeEngine",
     "MergeConflict",
     "MergeResult",
