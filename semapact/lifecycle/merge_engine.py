@@ -12,6 +12,14 @@ from open_data_contract_standard.model import (
     SchemaObject,
     SchemaProperty,
 )
+from semapact.lifecycle.identity import (
+    SchemaIdentity,
+    PropertyIdentity,
+    schema_identity,
+    normalize_identity_name,
+    build_schema_index,
+    build_property_index,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -92,8 +100,8 @@ class MergeAnalysis:
     """Analyze phase output used by apply phase."""
 
     conflicts: list[MergeConflict] = field(default_factory=list)
-    deprecated_schemas: set[str] = field(default_factory=set)
-    deprecated_properties: dict[str, set[str]] = field(default_factory=dict)
+    deprecated_schemas: set[SchemaIdentity] = field(default_factory=set)
+    deprecated_properties: dict[SchemaIdentity, set[PropertyIdentity]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -170,16 +178,8 @@ class ContractMergeEngine:
         if not _is_active_contract(target_model):
             return analysis
 
-        existing_schema = {
-            _schema_object_id(schema): schema
-            for schema in (target_model.schema_ or [])
-            if _schema_object_id(schema)
-        }
-        imported_schema = {
-            _schema_object_id(schema): schema
-            for schema in (source_model.schema_ or [])
-            if _schema_object_id(schema)
-        }
+        existing_schema = build_schema_index(target_model)
+        imported_schema = build_schema_index(source_model)
 
         for schema_id, existing_schema_obj in existing_schema.items():
             if _is_draft_or_deprecated(existing_schema_obj):
@@ -192,31 +192,24 @@ class ContractMergeEngine:
             if _is_draft_or_deprecated(imported_schema_obj):
                 continue
 
-            existing_props = {
-                _property_id(prop): prop
-                for prop in (existing_schema_obj.properties or [])
-                if _property_id(prop)
-            }
-            imported_props = {
-                _property_id(prop): prop
-                for prop in (imported_schema_obj.properties or [])
-                if _property_id(prop)
-            }
+            existing_props = build_property_index(schema_id, existing_schema_obj.properties or [])
+            imported_props = build_property_index(schema_id, imported_schema_obj.properties or [])
 
-            for prop_id, existing_prop in existing_props.items():
+            for prop_key, existing_prop in existing_props.items():
                 if _is_draft_or_deprecated(existing_prop):
                     continue
 
-                imported_prop = imported_props.get(prop_id)
+                imported_prop = imported_props.get(prop_key)
                 if imported_prop is None:
                     analysis.deprecated_properties.setdefault(schema_id, set()).add(
-                        prop_id
+                        prop_key
                     )
                     continue
                 if _is_draft_or_deprecated(imported_prop):
                     continue
 
-                path = f"schema[{schema_id}].properties[{prop_id}]"
+                prop_name = prop_key[1]  # (schema_id, prop_id) -> prop_id
+                path = f"schema[{schema_id}].properties[{prop_name}]"
                 analysis.conflicts.extend(
                     self._property_conflicts(path, imported_prop, existing_prop)
                 )
@@ -354,12 +347,8 @@ def _merge_schema_objects_models(
     imported_schema: list[SchemaObject],
     analysis: MergeAnalysis,
 ) -> list[SchemaObject]:
-    existing_index = {
-        _schema_object_id(obj): obj for obj in existing_schema if _schema_object_id(obj)
-    }
-    imported_index = {
-        _schema_object_id(obj): obj for obj in imported_schema if _schema_object_id(obj)
-    }
+    existing_index = build_schema_index(existing_schema)
+    imported_index = build_schema_index(imported_schema)
 
     merged_schema: list[SchemaObject] = []
     # All ordering must be identity-based to ensure stable Git diffs.
@@ -395,14 +384,14 @@ def _merge_schema_objects_models(
 def _merge_schema_object_models(
     existing_obj: SchemaObject,
     imported_obj: SchemaObject,
-    deprecated_property_ids: set[str],
+    deprecated_property_ids: set[PropertyIdentity],
 ) -> SchemaObject:
     merged_obj = existing_obj.model_copy(deep=True)
 
     # Schema-level lifecycle metadata is merged; schema identity is ODCS `name`.
     for field_name in SCHEMA_OBJECT_OVERWRITE_FIELDS:
         _copy_if_provided(merged_obj, imported_obj, field_name)
-        
+
     merged_obj.relationships = _merge_relationships_models(
         getattr(existing_obj, "relationships", None),
         getattr(imported_obj, "relationships", None),
@@ -415,6 +404,7 @@ def _merge_schema_object_models(
         existing_obj.quality, imported_obj.quality
     )
     merged_obj.properties = _merge_properties_models(
+        scope_key=schema_identity(existing_obj),
         existing_props=existing_obj.properties or [],
         imported_props=imported_obj.properties or [],
         deprecated_property_ids=deprecated_property_ids,
@@ -423,24 +413,27 @@ def _merge_schema_object_models(
 
 
 def _merge_properties_models(
+    scope_key: str,
     existing_props: list[SchemaProperty],
     imported_props: list[SchemaProperty],
-    deprecated_property_ids: set[str],
+    deprecated_property_ids: set[PropertyIdentity],
 ) -> list[SchemaProperty]:
-    existing_index = {
-        _property_id(prop): prop for prop in existing_props if _property_id(prop)
-    }
-    imported_index = {
-        _property_id(prop): prop for prop in imported_props if _property_id(prop)
-    }
+    """Merge a property list using canonical PropertyIdentity keys.
+
+    Works for both top-level schema properties (scope_key = canonical schema
+    name) and nested struct fields (scope_key = canonical parent property
+    name).  This avoids duplicating merge logic for the two cases.
+    """
+    existing_index = build_property_index(scope_key, existing_props)
+    imported_index = build_property_index(scope_key, imported_props)
 
     merged_props: list[SchemaProperty] = []
     # All ordering must be identity-based to ensure stable Git diffs.
-    for existing_id in sorted(existing_index):
-        existing_prop = existing_index[existing_id]
-        imported_prop = imported_index.get(existing_id)
+    for prop_key in sorted(existing_index):
+        existing_prop = existing_index[prop_key]
+        imported_prop = imported_index.get(prop_key)
         if imported_prop is None:
-            if existing_id in deprecated_property_ids:
+            if prop_key in deprecated_property_ids:
                 merged_props.append(_deprecate_property_model(existing_prop))
             else:
                 merged_props.append(existing_prop.model_copy(deep=True))
@@ -453,13 +446,13 @@ def _merge_properties_models(
             )
         )
 
-    for imported_id in sorted(imported_index):
-        if imported_id in existing_index:
+    for prop_key in sorted(imported_index):
+        if prop_key in existing_index:
             continue
-        merged_props.append(imported_index[imported_id].model_copy(deep=True))
+        merged_props.append(imported_index[prop_key].model_copy(deep=True))
 
     # Final deterministic ordering by canonical ODCS identity (`name`).
-    merged_props.sort(key=_property_id)
+    merged_props.sort(key=_property_sort_key)
     return merged_props
 
 
@@ -511,7 +504,11 @@ def _merge_matching_property_models(
     merged_prop.customProperties = _sort_custom_properties(merged_prop.customProperties)
 
     if existing_prop.properties or imported_prop.properties:
+        parent_id = normalize_identity_name(
+            getattr(existing_prop, "name", None), "Property"
+        )
         merged_prop.properties = _merge_properties_models(
+            scope_key=parent_id,
             existing_props=existing_prop.properties or [],
             imported_props=imported_prop.properties or [],
             deprecated_property_ids=set(),
@@ -624,15 +621,12 @@ def _add_deprecated_tag(tags: list[str] | None) -> list[str]:
 
 
 def _schema_object_id(schema_obj: SchemaObject) -> str:
-    # ODCS defines `name` as the stable identity.
-    # `physicalName` is a technical attribute and must not be used as merge identity.
-    return str(schema_obj.name or "").lower()
+    return schema_identity(schema_obj)
 
 
-def _property_id(prop: SchemaProperty) -> str:
-    # ODCS defines `name` as the stable identity.
-    # `physicalName` is a technical attribute and must not be used as merge identity.
-    return str(prop.name or "").lower()
+def _property_sort_key(prop: SchemaProperty) -> str:
+    """Sort key for SchemaProperty lists: canonical property name."""
+    return normalize_identity_name(getattr(prop, "name", None), "Property")
 
 
 def _is_active_contract(contract: OpenDataContractStandard) -> bool:

@@ -7,10 +7,13 @@ from typing import Any, Literal
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
+from semapact.lifecycle.identity import (
+    build_schema_index,
+    build_property_index,
+)
 from semapact.lifecycle.helpers import (
     lifecycle_from_custom_properties,
     normalize_status,
-    schema_items,
 )
 from semapact.lifecycle.policy import BreakingChange, evaluate_merge_policy
 from semapact.utils.schema_utils import contract_to_dict, contract_to_model
@@ -259,34 +262,18 @@ def _parse_semver(version: str) -> tuple[int, int, int]:
 def _has_schema_or_property_additions(
     base: OpenDataContractStandard, candidate: OpenDataContractStandard
 ) -> bool:
-    base_schema = {
-        str(schema.name or ""): schema
-        for schema in schema_items(base)
-        if str(schema.name or "")
-    }
-    candidate_schema = {
-        str(schema.name or ""): schema
-        for schema in schema_items(candidate)
-        if str(schema.name or "")
-    }
+    base_schema = build_schema_index(base)
+    candidate_schema = build_schema_index(candidate)
     if set(candidate_schema) - set(base_schema):
         return True
 
-    for schema_name, candidate_obj in candidate_schema.items():
-        base_obj = base_schema.get(schema_name)
+    for schema_key, candidate_obj in candidate_schema.items():
+        base_obj = base_schema.get(schema_key)
         if base_obj is None:
             continue
-        base_props = {
-            str(prop.name or "")
-            for prop in (base_obj.properties or [])
-            if str(prop.name or "")
-        }
-        candidate_props = {
-            str(prop.name or "")
-            for prop in (candidate_obj.properties or [])
-            if str(prop.name or "")
-        }
-        if candidate_props - base_props:
+        base_prop_keys = set(build_property_index(schema_key, base_obj.properties or []))
+        candidate_prop_keys = set(build_property_index(schema_key, candidate_obj.properties or []))
+        if candidate_prop_keys - base_prop_keys:
             return True
     return False
 
@@ -294,36 +281,20 @@ def _has_schema_or_property_additions(
 def _has_new_deprecations(
     base: OpenDataContractStandard, candidate: OpenDataContractStandard
 ) -> bool:
-    base_schema = {
-        str(schema.name or ""): schema
-        for schema in schema_items(base)
-        if str(schema.name or "")
-    }
-    candidate_schema = {
-        str(schema.name or ""): schema
-        for schema in schema_items(candidate)
-        if str(schema.name or "")
-    }
+    base_schema = build_schema_index(base)
+    candidate_schema = build_schema_index(candidate)
 
-    for schema_name, base_obj in base_schema.items():
-        candidate_obj = candidate_schema.get(schema_name)
+    for schema_key, base_obj in base_schema.items():
+        candidate_obj = candidate_schema.get(schema_key)
         if candidate_obj is None:
             continue
         if not _is_deprecated(base_obj) and _is_deprecated(candidate_obj):
             return True
 
-        base_props = {
-            str(prop.name or ""): prop
-            for prop in (base_obj.properties or [])
-            if str(prop.name or "")
-        }
-        candidate_props = {
-            str(prop.name or ""): prop
-            for prop in (candidate_obj.properties or [])
-            if str(prop.name or "")
-        }
-        for prop_name, base_prop in base_props.items():
-            candidate_prop = candidate_props.get(prop_name)
+        base_props = build_property_index(schema_key, base_obj.properties or [])
+        candidate_props = build_property_index(schema_key, candidate_obj.properties or [])
+        for prop_key, base_prop in base_props.items():
+            candidate_prop = candidate_props.get(prop_key)
             if candidate_prop is None:
                 continue
             if not _is_deprecated(base_prop) and _is_deprecated(candidate_prop):
@@ -365,7 +336,7 @@ def _sort_identity_list(items: list[Any]) -> list[Any]:
     if not items:
         return items
     if all(isinstance(item, dict) and "name" in item for item in items):
-        return sorted(items, key=lambda item: str(item.get("name") or ""))
+        return sorted(items, key=lambda item: str(item.get("name") or "").strip().lower())
     if all(isinstance(item, dict) and "property" in item for item in items):
         return sorted(
             items,

@@ -3,7 +3,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from open_data_contract_standard.model import CustomProperty, OpenDataContractStandard
+from open_data_contract_standard.model import (
+    CustomProperty,
+    OpenDataContractStandard,
+)
 
 ACTIVE_STATUSES = {"active"}
 NON_BREAKING_LIFECYCLE_STATUSES = {"draft", "deprecated"}

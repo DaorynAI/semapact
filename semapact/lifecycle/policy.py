@@ -16,8 +16,14 @@ from semapact.lifecycle.helpers import (
     is_active_contract,
     lifecycle_from_custom_properties,
     normalize_status,
-    schema_items,
 )
+from semapact.lifecycle.identity import (
+    PropertyIdentity,
+    build_schema_index,
+    build_property_index,
+    validate_contract_identities,
+)
+from semapact.lifecycle.relationships import normalize_endpoint_value
 
 LOGGER = logging.getLogger(__name__)
 
@@ -44,11 +50,10 @@ def evaluate_merge_policy(
     base_contract: OpenDataContractStandard,
     merged_contract: OpenDataContractStandard,
 ) -> PolicyEvaluation:
-    """Evaluate breaking-change policy for a merged contract.
+    """Validate identities for all contracts and evaluate breaking changes for active contracts."""
+    validate_contract_identities(base_contract)
+    validate_contract_identities(merged_contract)
 
-    Breaking checks apply only when contract status is active and schema/field
-    lifecycleStatus is not draft/deprecated.
-    """
     if not is_active_contract(base_contract):
         return PolicyEvaluation(valid=True)
 
@@ -80,13 +85,10 @@ def evaluate_merge_policy(
             )
         )
 
-    merged_schema_index = _schema_index(merged_contract)
+    base_schema_index = build_schema_index(base_contract)
+    merged_schema_index = build_schema_index(merged_contract)
 
-    for schema in schema_items(base_contract):
-        schema_key = _schema_key(schema)
-        if not schema_key:
-            continue
-
+    for schema_key, schema in base_schema_index.items():
         if _is_draft_or_deprecated(schema):
             continue
 
@@ -100,8 +102,8 @@ def evaluate_merge_policy(
             )
             continue
 
-        base_props = _prop_index(schema)
-        target_props = _prop_index(target_schema)
+        base_props = build_property_index(schema_key, schema.properties or [])
+        target_props = build_property_index(schema_key, target_schema.properties or [])
 
         base_rels = _extract_relationship_hashes(schema, base_props)
         target_rels = _extract_relationship_hashes(target_schema, target_props)
@@ -117,9 +119,10 @@ def evaluate_merge_policy(
             if _is_draft_or_deprecated(base_prop):
                 continue
             if prop_key not in target_props:
+                prop_name = prop_key[1]  # (schema_id, prop_id) -> prop_id
                 breaks.append(
                     BreakingChange(
-                        path=f"schema[{schema_key}].properties[{prop_key}]",
+                        path=f"schema[{schema_key}].properties[{prop_name}]",
                         message="Property removed from active lifecycle scope",
                     )
                 )
@@ -130,7 +133,7 @@ def evaluate_merge_policy(
                 _property_breaking_changes(
                     base_prop=base_prop,
                     target_prop=target_prop,
-                    path=f"schema[{schema_key}].properties[{prop_key}]",
+                    path=f"schema[{schema_key}].properties[{prop_key[1]}]",
                 )
             )
 
@@ -174,33 +177,6 @@ def _root_version_changed(
     if not base_version and not merged_version:
         return False
     return base_version != merged_version
-
-
-def _schema_key(schema: SchemaObject) -> str:
-    value = schema.physicalName or schema.name or ""
-    return str(value).lower()
-
-
-def _schema_index(contract: OpenDataContractStandard) -> dict[str, SchemaObject]:
-    index: dict[str, SchemaObject] = {}
-    for schema in schema_items(contract):
-        key = _schema_key(schema)
-        if key:
-            index[key] = schema
-    return index
-
-
-def _prop_index(schema: SchemaObject) -> dict[str, SchemaProperty]:
-    properties = schema.properties
-    if not isinstance(properties, list):
-        return {}
-
-    index: dict[str, SchemaProperty] = {}
-    for prop in properties:
-        key = str(prop.physicalName or prop.name or "").lower()
-        if key:
-            index[key] = prop
-    return index
 
 
 def _is_draft_or_deprecated(entity: SchemaObject | SchemaProperty) -> bool:
@@ -350,7 +326,7 @@ def _enum_values(prop: SchemaProperty) -> set[str]:
 
 
 def _extract_relationship_hashes(
-    schema: SchemaObject, schema_properties: dict[str, SchemaProperty]
+    schema: SchemaObject, schema_properties: dict[PropertyIdentity, SchemaProperty]
 ) -> set[str]:
     hashes = set()
 
@@ -362,32 +338,20 @@ def _extract_relationship_hashes(
             from_val = getattr(rel, "from_", None) or getattr(rel, "from", None) or ""
             to_val = getattr(rel, "to", None) or ""
 
-            if isinstance(from_val, list):
-                from_str = ",".join(str(x) for x in from_val)
-            else:
-                from_str = str(from_val)
-
-            if isinstance(to_val, list):
-                to_str = ",".join(str(x) for x in to_val)
-            else:
-                to_str = str(to_val)
+            from_str = normalize_endpoint_value(from_val)
+            to_str = normalize_endpoint_value(to_val)
 
             hashes.add(f"{rel_type}:{from_str}->{to_str}")
 
-    # 2. Property-level relationships
+    # 2. Property-level relationships: from_str derived from PropertyIdentity
     for prop_key, prop in schema_properties.items():
         prop_rels = getattr(prop, "relationships", None)
         if prop_rels:
             for rel in prop_rels:
                 rel_type = getattr(rel, "type", "") or "foreignKey"
                 to_val = getattr(rel, "to", None) or ""
-                # from is implicit
-                from_str = f"{schema.name or schema.id}.{prop.name or prop.id}"
-
-                if isinstance(to_val, list):
-                    to_str = ",".join(str(x) for x in to_val)
-                else:
-                    to_str = str(to_val)
+                from_str = f"{prop_key[0]}.{prop_key[1]}"
+                to_str = normalize_endpoint_value(to_val)
                 hashes.add(f"{rel_type}:{from_str}->{to_str}")
 
     return hashes

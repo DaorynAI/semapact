@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from open_data_contract_standard.model import CustomProperty
 
 from semapact.lifecycle.helpers import (
