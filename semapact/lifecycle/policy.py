@@ -50,6 +50,7 @@ def evaluate_merge_policy(
     base_contract: OpenDataContractStandard,
     merged_contract: OpenDataContractStandard,
 ) -> PolicyEvaluation:
+    """Validate identities for all contracts and evaluate breaking changes for active contracts."""
     validate_contract_identities(base_contract)
     validate_contract_identities(merged_contract)
 
