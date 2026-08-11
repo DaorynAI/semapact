@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from unittest import mock
 import pytest
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
@@ -10,6 +11,7 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
+from semapact.devops.ci_cd import evaluate_ci_gate
 from semapact.governance import (
     DecisionResult,
     GovernanceDecision,
@@ -17,6 +19,7 @@ from semapact.governance import (
     evaluate_governance_decision,
 )
 from semapact.lifecycle.merge_engine import MergeConflict
+from semapact.orchestrator.pipeline import ContractPipeline, MergeResult
 
 
 def _get_schemas(contract: OpenDataContractStandard) -> list[SchemaObject]:
@@ -209,7 +212,7 @@ def test_governance_decision_review_for_merge_conflicts():
 
 
 def test_governance_decision_fingerprint_deterministic_and_message_insensitive():
-    """decision_id is deterministic and excludes human-readable message text from fingerprint."""
+    """decision_id is deterministic, insensitive to message text changes, but sensitive to code/path changes."""
     base = _make_contract()
     candidate = _make_contract()
 
@@ -217,6 +220,39 @@ def test_governance_decision_fingerprint_deterministic_and_message_insensitive()
     dec2 = evaluate_governance_decision(base, candidate)
 
     assert dec1.decision_id == dec2.decision_id
+
+    # Create two decisions with different reason message text
+    r1 = GovernanceReason(code="POLICY_BREAKING_CHANGE", message="Message text A", path="orders.id")
+    r2 = GovernanceReason(code="POLICY_BREAKING_CHANGE", message="Message text B", path="orders.id")
+
+    from semapact.governance.evaluator import _generate_decision_id
+    id1 = _generate_decision_id(base, candidate, merge_conflicts=(), reasons=(r1,))
+    id2 = _generate_decision_id(base, candidate, merge_conflicts=(), reasons=(r2,))
+
+    assert id1 == id2, "Fingerprint should exclude human-readable message text"
+
+    # Different code or path should produce different decision_id
+    r3 = GovernanceReason(code="CONTRACT_ID_MISMATCH", message="Message text A", path="orders.id")
+    id3 = _generate_decision_id(base, candidate, merge_conflicts=(), reasons=(r3,))
+    assert id1 != id3, "Fingerprint should be sensitive to reason code"
+
+
+def test_deserialization_fails_closed_and_raises_validation_error():
+    """GovernanceDecision.from_dict raises ValueError on invalid or empty payloads."""
+    with pytest.raises(ValueError, match="missing required field"):
+        GovernanceDecision.from_dict({})
+
+    with pytest.raises(ValueError, match="missing required field"):
+        GovernanceDecision.from_dict({"decision": "ALLOW"})
+
+    # evaluate_ci_gate fails closed on bad dicts
+    gate_empty = evaluate_ci_gate({})
+    assert gate_empty.allowed is False
+    assert gate_empty.reason == "invalid_governance_decision"
+
+    gate_bad_type = evaluate_ci_gate("not a dict")  # type: ignore
+    assert gate_bad_type.allowed is False
+    assert gate_bad_type.reason == "invalid_governance_decision"
 
 
 def test_governance_decision_input_immutability():
@@ -248,3 +284,33 @@ def test_governance_decision_serialization_round_trip():
     assert decision == reconstructed
     assert reconstructed.decision == DecisionResult.REVIEW
     assert reconstructed.required_version_bump == "minor"
+
+
+def test_single_pass_governance_execution_spy(monkeypatch, tmp_path):
+    """Verify ContractPipeline.run executes governance evaluation and helpers exactly once."""
+    base = _make_contract()
+    candidate = _make_contract()
+
+    pipeline = ContractPipeline()
+
+    monkeypatch.setattr(ContractPipeline, "import_schema", lambda *args, **kwargs: candidate)
+    monkeypatch.setattr(type(pipeline.loader), "load", lambda self, _: base)
+    monkeypatch.setattr(
+        ContractPipeline,
+        "merge_contract_updates",
+        lambda *args, **kwargs: MergeResult(contract=candidate, conflicts=[]),
+    )
+
+    with mock.patch(
+        "semapact.orchestrator.pipeline.evaluate_governance_decision",
+        wraps=evaluate_governance_decision,
+    ) as spy_eval:
+        pipeline.run(
+            source_type="sql",
+            source="sql_folder",
+            business_contract_path="examples/sample_odcs.yaml",
+            merged_contract_output_path=str(tmp_path / "merged.yaml"),
+            ge_suite_output_path=str(tmp_path / "suite.json"),
+            ci_manifest_output_path=str(tmp_path / "manifest.json"),
+        )
+        assert spy_eval.call_count == 1

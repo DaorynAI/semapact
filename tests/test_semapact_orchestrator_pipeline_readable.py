@@ -130,11 +130,13 @@ def test_pipeline_prepare_ci_cd_artifacts_writes_manifest_and_outputs(
         lambda self, *args, **kwargs: fake_suite_path,
     )
 
+    from semapact.governance import evaluate_governance_decision
+    decision = evaluate_governance_decision(merged_contract, merged_contract)
+
     artifacts = pipeline.prepare_ci_cd_artifacts(
         merged_contract,
         merge_result,
-        validation,
-        policy,
+        decision,
         merged_contract_output_path=str(tmp_path / "merged.yaml"),
         ge_suite_output_path=str(tmp_path / "suite.json"),
         ci_manifest_output_path=str(tmp_path / "manifest.json"),

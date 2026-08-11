@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import uuid
 from typing import Sequence
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
-from semapact.core.release import classify_contract_change
+from semapact.core.release import ContractChangeAssessment, classify_contract_change
 from semapact.core.validator import ContractValidator
+from semapact.exceptions import ValidationError
 from semapact.governance.models import (
     ChangeEvidence,
     DecisionResult,
@@ -21,7 +22,8 @@ from semapact.governance.models import (
 )
 from semapact.lifecycle.helpers import normalize_status
 from semapact.lifecycle.merge_engine import MergeConflict
-from semapact.lifecycle.policy import evaluate_merge_policy
+from semapact.lifecycle.identity import validate_contract_identities
+from semapact.lifecycle.policy import PolicyEvaluation, evaluate_merge_policy
 from semapact.utils.schema_utils import contract_to_dict
 
 SEMAPACT_GOVERNANCE_NAMESPACE = uuid.UUID("a9b8c7d6-e5f4-4321-8765-43210fedcba9")
@@ -40,43 +42,102 @@ def evaluate_governance_decision(
         raise TypeError(f"candidate_contract must be OpenDataContractStandard, got {type(candidate_contract).__name__}")
 
     # 1. Validation outcome
-    val_report = ContractValidator().validate(candidate_contract)
-    val_issues = list(
-        GovernanceReason(code="VALIDATION_ERROR", message=issue.message, path=issue.path)
-        for issue in val_report.issues
+    validation_outcome = _build_validation_outcome(candidate_contract)
+
+    # 2. Policy outcome and change classification
+    policy_outcome, change_assessment, retired_transition = _build_policy_outcome(
+        base_contract, candidate_contract
     )
 
-    # 2. Lifecycle policy outcome
-    policy_eval = None
+    # 3. Reason aggregation (deduplication & sorting)
+    reasons = _aggregate_reasons(
+        validation_outcome=validation_outcome,
+        policy_outcome=policy_outcome,
+        change_assessment=change_assessment,
+        merge_conflicts=merge_conflicts,
+        retired_transition=retired_transition,
+    )
+
+    # 4. Decision mapping
+    decision_result = _determine_decision(
+        validation_outcome=validation_outcome,
+        policy_outcome=policy_outcome,
+        change_assessment=change_assessment,
+        merge_conflicts=merge_conflicts,
+        retired_transition=retired_transition,
+    )
+
+    # 5. Fingerprint & Decision ID generation
+    decision_id = _generate_decision_id(
+        base_contract=base_contract,
+        candidate_contract=candidate_contract,
+        merge_conflicts=merge_conflicts,
+        reasons=reasons,
+    )
+
+    contract_id = str(base_contract.id or candidate_contract.id or "")
+    evidence = ChangeEvidence(
+        has_changes=change_assessment.has_changes,
+        merge_conflicts_count=len(merge_conflicts),
+    )
+
+    return GovernanceDecision(
+        decision_id=decision_id,
+        decision=decision_result,
+        contract_id=contract_id,
+        breaking=bool(change_assessment.breaking_changes),
+        required_version_bump=change_assessment.required_bump,
+        reasons=reasons,
+        validation=validation_outcome,
+        policy=policy_outcome,
+        evidence=evidence,
+    )
+
+
+def _build_validation_outcome(candidate_contract: OpenDataContractStandard) -> ValidationOutcome:
+    """Evaluate schema and field validation using ContractValidator and identity validation."""
+    val_issues: list[GovernanceReason] = []
+    valid = True
     try:
-        policy_eval = evaluate_merge_policy(base_contract, candidate_contract)
-    except Exception as e:
-        val_issues.append(
-            GovernanceReason(code="VALIDATION_ERROR", message=str(e), path="schema")
-        )
-        val_report = type(val_report)(valid=False, issues=val_report.issues)
+        validate_contract_identities(candidate_contract)
+        val_report = ContractValidator().validate(candidate_contract)
+        for issue in val_report.issues:
+            val_issues.append(
+                GovernanceReason(code="VALIDATION_ERROR", message=issue.message, path=issue.path)
+            )
+        valid = val_report.valid and not bool(val_issues)
+    except ValidationError as exc:
+        val_issues.append(GovernanceReason(code="VALIDATION_ERROR", message=str(exc), path="schema"))
+        valid = False
 
-    validation_outcome = ValidationOutcome(valid=val_report.valid and not bool(val_issues and not val_report.valid), issues=tuple(val_issues))
+    return ValidationOutcome(valid=valid, issues=tuple(val_issues))
 
-    if policy_eval is None:
-        policy_eval = type("DummyPolicy", (), {"valid": False, "id_violation": False, "version_violation": False, "breaking_changes": []})()
 
-    # 3. Version change classification (reusing policy_eval)
+def _build_policy_outcome(
+    base_contract: OpenDataContractStandard,
+    candidate_contract: OpenDataContractStandard,
+) -> tuple[PolicyOutcome, ContractChangeAssessment, bool]:
+    """Evaluate lifecycle policy rules and change classification without duplicate evaluation."""
     try:
-        change_assessment = classify_contract_change(
+        policy_eval: PolicyEvaluation = evaluate_merge_policy(base_contract, candidate_contract)
+    except ValidationError:
+        policy_eval = PolicyEvaluation(valid=False)
+
+    try:
+        change_assessment: ContractChangeAssessment = classify_contract_change(
             base_contract, candidate_contract, policy_evaluation=policy_eval
         )
-    except Exception:
-        change_assessment = type("DummyAssessment", (), {"has_changes": True, "required_bump": "major", "breaking_changes": [], "reasons": ["Classification error"]})()
+    except ValidationError:
+        change_assessment = ContractChangeAssessment(
+            has_changes=True, required_bump="major", breaking_changes=[], reasons=["Validation error"]
+        )
 
-    # 4. Lifecycle status resolution for retired rules
     base_status = _resolve_status(base_contract)
     candidate_status = _resolve_status(candidate_contract)
 
     retired_mutation = base_status == "retired" and change_assessment.has_changes
     retired_transition = base_status != "retired" and candidate_status == "retired"
 
-    # Collect policy violations
     policy_violations: list[GovernanceReason] = []
     if policy_eval.id_violation:
         policy_violations.append(
@@ -127,13 +188,26 @@ def evaluate_governance_decision(
         violations=tuple(policy_violations),
     )
 
-    # 5. Merge conflict reasons
-    conflict_reasons: list[GovernanceReason] = []
+    return policy_outcome, change_assessment, retired_transition
+
+
+def _aggregate_reasons(
+    validation_outcome: ValidationOutcome,
+    policy_outcome: PolicyOutcome,
+    change_assessment: ContractChangeAssessment,
+    merge_conflicts: Sequence[MergeConflict],
+    retired_transition: bool,
+) -> tuple[GovernanceReason, ...]:
+    """Aggregate, deduplicate, and deterministically sort all governance reasons."""
+    raw_reasons: list[GovernanceReason] = []
+    raw_reasons.extend(validation_outcome.issues)
+    raw_reasons.extend(policy_outcome.violations)
+
     for c in merge_conflicts:
         path = c.path
         if not path and (c.schema_id or c.property_name):
             path = f"{c.schema_id or ''}.{c.property_name or ''}".strip(".")
-        conflict_reasons.append(
+        raw_reasons.append(
             GovernanceReason(
                 code="MERGE_CONFLICT",
                 message=c.message or "Metadata merge conflict",
@@ -141,11 +215,6 @@ def evaluate_governance_decision(
             )
         )
 
-    # 6. Reasons deduplication and deterministic sorting
-    raw_reasons: list[GovernanceReason] = []
-    raw_reasons.extend(val_issues)
-    raw_reasons.extend(policy_violations)
-    raw_reasons.extend(conflict_reasons)
     for r_str in change_assessment.reasons:
         raw_reasons.append(GovernanceReason(code="CHANGE_ASSESSMENT", message=r_str))
 
@@ -155,64 +224,45 @@ def evaluate_governance_decision(
         if key not in dedup_map:
             dedup_map[key] = r
 
-    sorted_reasons = tuple(
+    return tuple(
         dedup_map[key]
         for key in sorted(dedup_map.keys(), key=lambda k: (k[0], k[1], k[2]))
     )
 
-    # 7. Decision Mapping
+
+def _determine_decision(
+    validation_outcome: ValidationOutcome,
+    policy_outcome: PolicyOutcome,
+    change_assessment: ContractChangeAssessment,
+    merge_conflicts: Sequence[MergeConflict],
+    retired_transition: bool,
+) -> DecisionResult:
+    """Map outcome signals to BLOCK, REVIEW, or ALLOW decision."""
     is_blocking = (
         not validation_outcome.valid
-        or policy_eval.id_violation
-        or policy_eval.version_violation
-        or retired_mutation
-    )
-
-    is_review = (
-        not is_blocking
-        and (
-            retired_transition
-            or bool(change_assessment.breaking_changes)
-            or change_assessment.required_bump in ("minor", "major")
-            or bool(merge_conflicts)
-        )
+        or policy_outcome.id_violation
+        or policy_outcome.version_violation
+        or policy_outcome.retired_violation
     )
 
     if is_blocking:
-        decision = DecisionResult.BLOCK
-    elif is_review:
-        decision = DecisionResult.REVIEW
-    else:
-        decision = DecisionResult.ALLOW
+        return DecisionResult.BLOCK
 
-    # 8. Deterministic decision_id generation (excluding message string)
-    evidence = ChangeEvidence(
-        has_changes=change_assessment.has_changes,
-        merge_conflicts_count=len(merge_conflicts),
+    is_review = (
+        retired_transition
+        or bool(change_assessment.breaking_changes)
+        or change_assessment.required_bump in ("minor", "major")
+        or bool(merge_conflicts)
     )
 
-    contract_id = str(base_contract.id or candidate_contract.id or "")
-    decision_id = _generate_decision_id(
-        base_contract=base_contract,
-        candidate_contract=candidate_contract,
-        merge_conflicts=merge_conflicts,
-        reasons=sorted_reasons,
-    )
+    if is_review:
+        return DecisionResult.REVIEW
 
-    return GovernanceDecision(
-        decision_id=decision_id,
-        decision=decision,
-        contract_id=contract_id,
-        breaking=bool(change_assessment.breaking_changes),
-        required_version_bump=change_assessment.required_bump,
-        reasons=sorted_reasons,
-        validation=validation_outcome,
-        policy=policy_outcome,
-        evidence=evidence,
-    )
+    return DecisionResult.ALLOW
 
 
 def _resolve_status(contract: OpenDataContractStandard) -> str:
+    """Extract and normalize status from contract model or customProperties."""
     val = getattr(contract, "status", None)
     if not val:
         for prop in getattr(contract, "customProperties", None) or []:
@@ -228,6 +278,7 @@ def _generate_decision_id(
     merge_conflicts: Sequence[MergeConflict],
     reasons: tuple[GovernanceReason, ...],
 ) -> str:
+    """Generate a deterministic UUID5 decision_id excluding human-readable messages."""
     base_fp = _contract_fingerprint(base_contract)
     candidate_fp = _contract_fingerprint(candidate_contract)
     conflict_paths = sorted(
@@ -249,6 +300,7 @@ def _generate_decision_id(
 
 
 def _contract_fingerprint(contract: OpenDataContractStandard) -> str:
+    """Compute a canonical digest fingerprint for an OpenDataContractStandard instance."""
     d = contract_to_dict(contract)
     canonical_json = json.dumps(d, sort_keys=True)
     digest = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()

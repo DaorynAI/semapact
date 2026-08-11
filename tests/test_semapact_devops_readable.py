@@ -33,25 +33,37 @@ def test_audit_metadata_builder_returns_actor_source_and_timestamp():
 
 
 def test_ci_gate_allows_only_when_validation_and_policy_are_valid():
-    invalid_contract = evaluate_ci_gate(
-        ValidationReport(valid=False), PolicyEvaluation(valid=True)
+    from semapact.governance.models import DecisionResult, GovernanceDecision
+
+    dec_allow = GovernanceDecision(
+        decision_id="id1",
+        decision=DecisionResult.ALLOW,
+        contract_id="c1",
+        breaking=False,
+        required_version_bump="none",
     )
-    invalid_policy = evaluate_ci_gate(
-        ValidationReport(valid=True), PolicyEvaluation(valid=False)
+    dec_review = GovernanceDecision(
+        decision_id="id2",
+        decision=DecisionResult.REVIEW,
+        contract_id="c1",
+        breaking=False,
+        required_version_bump="minor",
     )
-    all_valid = evaluate_ci_gate(
-        ValidationReport(valid=True), PolicyEvaluation(valid=True)
+    dec_block = GovernanceDecision(
+        decision_id="id3",
+        decision=DecisionResult.BLOCK,
+        contract_id="c1",
+        breaking=True,
+        required_version_bump="major",
     )
 
-    assert (
-        invalid_contract.allowed is False
-        and invalid_contract.reason == "contract_validation_failed"
-    )
-    assert (
-        invalid_policy.allowed is False
-        and invalid_policy.reason == "lifecycle_policy_failed"
-    )
-    assert all_valid.allowed is True and all_valid.reason == "ok"
+    res_allow = evaluate_ci_gate(dec_allow)
+    res_review = evaluate_ci_gate(dec_review)
+    res_block = evaluate_ci_gate(dec_block)
+
+    assert res_allow.allowed is True and res_allow.reason == "ok"
+    assert res_review.allowed is False and res_review.reason == "review_required"
+    assert res_block.allowed is False and res_block.reason == "blocked"
 
 
 def test_ci_summary_writer_persists_json_payload(tmp_path):

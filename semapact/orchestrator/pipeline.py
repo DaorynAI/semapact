@@ -59,7 +59,7 @@ def write_decision_manifest(
         "idViolation": decision.policy.id_violation,
         "versionViolation": decision.policy.version_violation,
         "issues": [asdict(issue) for issue in decision.validation.issues],
-        "breakingChanges": [asdict(b) for b in decision.policy.violations],
+        "breakingChanges": [v.to_dict() for v in decision.policy.violations if v.code == "POLICY_BREAKING_CHANGE"],
         "conflicts": [],
         "artifacts": {},
         "audit": asdict(audit_metadata) if audit_metadata is not None else None,
@@ -156,7 +156,7 @@ class ContractPipeline:
         *,
         fail_on_conflict: bool = False,
     ) -> MergeResult:
-        """Merge a technical source contract into the governed business contract."""
+        """Merge a technical source contract into a business contract."""
         return self.merge_engine.merge(
             source_contract,
             business_contract,
@@ -166,7 +166,7 @@ class ContractPipeline:
     def validate_contract(
         self, contract: OpenDataContractStandard
     ) -> ValidationReport:
-        """Validate an ODCS contract model."""
+        """Validate a contract using the standard validator."""
         return self.validator.validate(contract)
 
     def evaluate_policy(
@@ -181,8 +181,7 @@ class ContractPipeline:
         self,
         merged_contract: OpenDataContractStandard,
         merge_result: MergeResult,
-        decision_or_validation: GovernanceDecision | ValidationReport,
-        policy_evaluation: PolicyEvaluation | None = None,
+        decision: GovernanceDecision,
         *,
         merged_contract_output_path: str,
         ge_suite_output_path: str,
@@ -192,12 +191,8 @@ class ContractPipeline:
         audit_metadata: AuditMetadata | None = None,
     ) -> PipelineArtifacts:
         """Write the merged contract and downstream CI/CD artifacts to disk."""
-        if isinstance(decision_or_validation, GovernanceDecision):
-            decision = decision_or_validation
-        else:
-            decision = evaluate_governance_decision(
-                merged_contract, merged_contract, merge_conflicts=merge_result.conflicts
-            )
+        if not isinstance(decision, GovernanceDecision):
+            raise TypeError(f"prepare_ci_cd_artifacts requires GovernanceDecision, got {type(decision).__name__}")
 
         merged_contract_path = dump_yaml(
             contract_to_dict(merged_contract), merged_contract_output_path
@@ -218,7 +213,7 @@ class ContractPipeline:
             "idViolation": decision.policy.id_violation,
             "versionViolation": decision.policy.version_violation,
             "issues": [asdict(issue) for issue in decision.validation.issues],
-            "breakingChanges": [asdict(b) for b in decision.policy.violations],
+            "breakingChanges": [v.to_dict() for v in decision.policy.violations if v.code == "POLICY_BREAKING_CHANGE"],
             "conflicts": [asdict(conflict) for conflict in merge_result.conflicts],
             "artifacts": {
                 "mergedContract": str(merged_contract_path),
@@ -273,7 +268,7 @@ class ContractPipeline:
                 manifest_path=manifest_path,
             )
 
-        # Merge updates with fail_on_conflict=False so we can evaluate decision
+        # Merge updates with fail_on_conflict=False so governance decision evaluates all conflicts and changes
         merge_result = self.merge_contract_updates(
             imported_contract,
             business_contract,
@@ -301,13 +296,18 @@ class ContractPipeline:
                 manifest_path=manifest_path,
             )
 
+        # Handle fail_on_conflict: Write decision manifest FIRST, then raise ValueError
         if merge_result.conflicts and fail_on_conflict:
+            write_decision_manifest(
+                decision, ci_manifest_output_path, audit_metadata=audit_metadata
+            )
             message = "; ".join(
                 f"{c.schema_id}.{c.property_name}: {c.message}"
                 for c in merge_result.conflicts
             )
             raise ValueError(f"Merge conflicts detected: {message}")
 
+        # ALLOW or REVIEW: Write artifacts and manifest
         artifacts = self.prepare_ci_cd_artifacts(
             merge_result.contract,
             merge_result,

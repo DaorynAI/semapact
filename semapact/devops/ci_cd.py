@@ -1,14 +1,11 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import json
-
 from semapact.governance.models import DecisionResult, GovernanceDecision
-from semapact.lifecycle.policy import PolicyEvaluation
-from semapact.core.validator import ValidationReport
 
 
 @dataclass(slots=True)
@@ -20,28 +17,27 @@ class CIDecision:
 
 
 def evaluate_ci_gate(
-    decision_or_validation: GovernanceDecision | dict[str, Any] | ValidationReport,
-    policy: PolicyEvaluation | None = None,
+    decision: GovernanceDecision | dict[str, Any],
 ) -> CIDecision:
-    """Evaluate if a contract change can pass CI/CD gates based on GovernanceDecision."""
-    if isinstance(decision_or_validation, ValidationReport):
-        if not decision_or_validation.valid:
-            return CIDecision(allowed=False, reason="contract_validation_failed")
-        if policy is not None and not policy.valid:
-            return CIDecision(allowed=False, reason="lifecycle_policy_failed")
-        return CIDecision(allowed=True, reason="ok")
+    """Evaluate if a contract change can pass CI/CD gates based strictly on GovernanceDecision.
 
-    if isinstance(decision_or_validation, dict):
-        decision_obj = GovernanceDecision.from_dict(decision_or_validation)
+    Fail-closed: Invalid, corrupted, or non-conforming payloads return allowed=False with reason="invalid_governance_decision".
+    """
+    if isinstance(decision, dict):
+        try:
+            decision_obj = GovernanceDecision.from_dict(decision)
+        except Exception:
+            return CIDecision(allowed=False, reason="invalid_governance_decision")
+    elif isinstance(decision, GovernanceDecision):
+        decision_obj = decision
     else:
-        decision_obj = decision_or_validation
+        return CIDecision(allowed=False, reason="invalid_governance_decision")
 
     if decision_obj.decision == DecisionResult.ALLOW:
         return CIDecision(allowed=True, reason="ok")
-    elif decision_obj.decision == DecisionResult.REVIEW:
+    if decision_obj.decision == DecisionResult.REVIEW:
         return CIDecision(allowed=False, reason="review_required")
-    else:
-        return CIDecision(allowed=False, reason="blocked")
+    return CIDecision(allowed=False, reason="blocked")
 
 
 def write_ci_summary(path: str | Path, payload: dict[str, Any]) -> Path:
