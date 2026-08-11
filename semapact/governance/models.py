@@ -17,38 +17,37 @@ class DecisionResult(str, Enum):
     REVIEW = "REVIEW"
 
 
-class GovernanceReason(BaseModel):
-    """Structured, machine-readable reason for a governance decision."""
+class _FrozenGovernanceModel(BaseModel):
+    """Shared base for all immutable governance models.
+
+    Enforces frozen=True (immutability) and extra="forbid" (no undeclared fields).
+    Subclasses use Field(strict=True) on individual fields where strict type
+    coercion is required.
+    """
 
     model_config = ConfigDict(
         frozen=True,
         extra="forbid",
     )
+
+
+class GovernanceReason(_FrozenGovernanceModel):
+    """Structured, machine-readable reason for a governance decision."""
 
     code: str
     message: str
     path: str | None = None
 
 
-class ValidationOutcome(BaseModel):
+class ValidationOutcome(_FrozenGovernanceModel):
     """Outcome of contract schema and quality validation."""
-
-    model_config = ConfigDict(
-        frozen=True,
-        extra="forbid",
-    )
 
     valid: bool = Field(strict=True)
     issues: tuple[GovernanceReason, ...] = ()
 
 
-class PolicyOutcome(BaseModel):
+class PolicyOutcome(_FrozenGovernanceModel):
     """Outcome of lifecycle policy evaluation."""
-
-    model_config = ConfigDict(
-        frozen=True,
-        extra="forbid",
-    )
 
     valid: bool = Field(strict=True)
     id_violation: bool = Field(default=False, strict=True)
@@ -57,25 +56,15 @@ class PolicyOutcome(BaseModel):
     violations: tuple[GovernanceReason, ...] = ()
 
 
-class ChangeEvidence(BaseModel):
+class ChangeEvidence(_FrozenGovernanceModel):
     """Evidence summarizing contract changes and merge conflicts."""
 
-    model_config = ConfigDict(
-        frozen=True,
-        extra="forbid",
-    )
-
     has_changes: bool = Field(default=False, strict=True)
-    merge_conflicts_count: int = Field(default=0, ge=0)
+    merge_conflicts_count: int = Field(default=0, ge=0, strict=True)
 
 
-class GovernanceDecision(BaseModel):
+class GovernanceDecision(_FrozenGovernanceModel):
     """Authoritative, deterministic governance decision for a contract change."""
-
-    model_config = ConfigDict(
-        frozen=True,
-        extra="forbid",
-    )
 
     decision_id: str
     decision: DecisionResult

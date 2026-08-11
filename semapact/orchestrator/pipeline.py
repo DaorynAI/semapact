@@ -44,6 +44,36 @@ from semapact.utils.yaml_utils import dump_yaml
 ImportSourceType = str
 
 
+def _build_manifest_payload(
+    decision: GovernanceDecision,
+    *,
+    merge_conflicts: Sequence[MergeConflict] = (),
+    artifacts: dict[str, str] | None = None,
+    audit_metadata: AuditMetadata | None = None,
+) -> dict[str, Any]:
+    """Build the canonical CI/CD manifest payload dict from a GovernanceDecision.
+
+    Both write_decision_manifest and prepare_ci_cd_artifacts call this to ensure
+    a single source of truth for manifest field names and serialization.
+    """
+    return {
+        "governanceDecision": decision.model_dump(mode="json"),
+        "valid": decision.validation.valid,
+        "policyValid": decision.policy.valid,
+        "idViolation": decision.policy.id_violation,
+        "versionViolation": decision.policy.version_violation,
+        "issues": [issue.model_dump(mode="json") for issue in decision.validation.issues],
+        "breakingChanges": [
+            v.model_dump(mode="json")
+            for v in decision.policy.violations
+            if v.code == "POLICY_BREAKING_CHANGE"
+        ],
+        "conflicts": [asdict(conflict) for conflict in merge_conflicts],
+        "artifacts": artifacts or {},
+        "audit": asdict(audit_metadata) if audit_metadata is not None else None,
+    }
+
+
 def write_decision_manifest(
     decision: GovernanceDecision,
     ci_manifest_path: str | Path,
@@ -53,18 +83,11 @@ def write_decision_manifest(
     """Write decision-only manifest without requiring external artifact creation."""
     resolved_path = Path(ci_manifest_path).expanduser().resolve()
     resolved_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest = {
-        "governanceDecision": decision.model_dump(mode="json"),
-        "valid": decision.validation.valid,
-        "policyValid": decision.policy.valid,
-        "idViolation": decision.policy.id_violation,
-        "versionViolation": decision.policy.version_violation,
-        "issues": [issue.model_dump(mode="json") for issue in decision.validation.issues],
-        "breakingChanges": [v.model_dump(mode="json") for v in decision.policy.violations if v.code == "POLICY_BREAKING_CHANGE"],
-        "conflicts": [asdict(conflict) for conflict in merge_conflicts],
-        "artifacts": {},
-        "audit": asdict(audit_metadata) if audit_metadata is not None else None,
-    }
+    manifest = _build_manifest_payload(
+        decision,
+        merge_conflicts=merge_conflicts,
+        audit_metadata=audit_metadata,
+    )
     resolved_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
     )
@@ -207,21 +230,15 @@ class ContractPipeline:
 
         ci_manifest_path = Path(ci_manifest_output_path).expanduser().resolve()
         ci_manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest = {
-            "governanceDecision": decision.model_dump(mode="json"),
-            "valid": decision.validation.valid,
-            "policyValid": decision.policy.valid,
-            "idViolation": decision.policy.id_violation,
-            "versionViolation": decision.policy.version_violation,
-            "issues": [issue.model_dump(mode="json") for issue in decision.validation.issues],
-            "breakingChanges": [v.model_dump(mode="json") for v in decision.policy.violations if v.code == "POLICY_BREAKING_CHANGE"],
-            "conflicts": [asdict(conflict) for conflict in merge_result.conflicts],
-            "artifacts": {
+        manifest = _build_manifest_payload(
+            decision,
+            merge_conflicts=merge_result.conflicts,
+            artifacts={
                 "mergedContract": str(merged_contract_path),
                 "greatExpectationsSuite": str(ge_suite_path),
             },
-            "audit": asdict(audit_metadata) if audit_metadata is not None else None,
-        }
+            audit_metadata=audit_metadata,
+        )
         ci_manifest_path.write_text(
             json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
         )
