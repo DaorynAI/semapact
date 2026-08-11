@@ -32,7 +32,7 @@ from semapact.governance import (
     evaluate_governance_decision,
 )
 from semapact.importers.unity_importer import import_unity_contract
-from semapact.core.loader import ContractLoader
+from semapact.core.loader import ContractLoader, RuntimeContext
 from semapact.core.validator import ContractValidator, ValidationReport
 from semapact.devops.audit import AuditMetadata
 from semapact.lifecycle.merge_engine import ContractMergeEngine, MergeConflict, MergeConflictError, MergeResult
@@ -96,7 +96,7 @@ class ContractPipeline:
       the service layer and governance adapters.
     """
 
-    runtime_context: str = "auto"
+    runtime_context: RuntimeContext = "auto"
     loader: ContractLoader = field(init=False)
     validator: ContractValidator = field(init=False)
     merge_engine: ContractMergeEngine = field(init=False)
