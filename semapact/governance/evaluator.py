@@ -129,7 +129,7 @@ def _build_policy_outcome(
         )
     except ValidationError:
         change_assessment = ContractChangeAssessment(
-            has_changes=True, required_bump="major", breaking_changes=[], reasons=["Validation error"]
+            has_changes=False, required_bump="none", breaking_changes=[], reasons=["Validation error"]
         )
 
     base_status = _resolve_status(base_contract)

@@ -33,7 +33,17 @@ def test_audit_metadata_builder_returns_actor_source_and_timestamp():
 
 
 def test_ci_gate_allows_only_when_validation_and_policy_are_valid():
-    from semapact.governance.models import DecisionResult, GovernanceDecision
+    from semapact.governance.models import (
+        ChangeEvidence,
+        DecisionResult,
+        GovernanceDecision,
+        PolicyOutcome,
+        ValidationOutcome,
+    )
+
+    val = ValidationOutcome(valid=True)
+    pol = PolicyOutcome(valid=True)
+    evi = ChangeEvidence()
 
     dec_allow = GovernanceDecision(
         decision_id="id1",
@@ -41,6 +51,9 @@ def test_ci_gate_allows_only_when_validation_and_policy_are_valid():
         contract_id="c1",
         breaking=False,
         required_version_bump="none",
+        validation=val,
+        policy=pol,
+        evidence=evi,
     )
     dec_review = GovernanceDecision(
         decision_id="id2",
@@ -48,6 +61,9 @@ def test_ci_gate_allows_only_when_validation_and_policy_are_valid():
         contract_id="c1",
         breaking=False,
         required_version_bump="minor",
+        validation=val,
+        policy=pol,
+        evidence=evi,
     )
     dec_block = GovernanceDecision(
         decision_id="id3",
@@ -55,6 +71,9 @@ def test_ci_gate_allows_only_when_validation_and_policy_are_valid():
         contract_id="c1",
         breaking=True,
         required_version_bump="major",
+        validation=ValidationOutcome(valid=False),
+        policy=PolicyOutcome(valid=False),
+        evidence=evi,
     )
 
     res_allow = evaluate_ci_gate(dec_allow)

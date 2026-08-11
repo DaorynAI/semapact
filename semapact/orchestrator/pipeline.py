@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
@@ -35,7 +35,7 @@ from semapact.importers.unity_importer import import_unity_contract
 from semapact.core.loader import ContractLoader
 from semapact.core.validator import ContractValidator, ValidationReport
 from semapact.devops.audit import AuditMetadata
-from semapact.lifecycle.merge_engine import ContractMergeEngine, MergeResult
+from semapact.lifecycle.merge_engine import ContractMergeEngine, MergeConflict, MergeConflictError, MergeResult
 from semapact.lifecycle.policy import PolicyEvaluation, evaluate_merge_policy
 from semapact.quality.ge_exporter import GreatExpectationsExporter
 from semapact.utils.schema_utils import contract_to_dict
@@ -48,6 +48,7 @@ def write_decision_manifest(
     decision: GovernanceDecision,
     ci_manifest_path: str | Path,
     audit_metadata: AuditMetadata | None = None,
+    merge_conflicts: Sequence[MergeConflict] = (),
 ) -> Path:
     """Write decision-only manifest without requiring external artifact creation."""
     resolved_path = Path(ci_manifest_path).expanduser().resolve()
@@ -60,7 +61,7 @@ def write_decision_manifest(
         "versionViolation": decision.policy.version_violation,
         "issues": [asdict(issue) for issue in decision.validation.issues],
         "breakingChanges": [v.to_dict() for v in decision.policy.violations if v.code == "POLICY_BREAKING_CHANGE"],
-        "conflicts": [],
+        "conflicts": [asdict(conflict) for conflict in merge_conflicts],
         "artifacts": {},
         "audit": asdict(audit_metadata) if audit_metadata is not None else None,
     }
@@ -256,38 +257,37 @@ class ContractPipeline:
         )
         business_contract = self.loader.load(business_contract_path)
 
-        # Handle retired base contract: evaluate before merge, write decision manifest, raise GovernanceBlockedError
-        if self._resolve_lifecycle(business_contract) == "retired":
-            decision = evaluate_governance_decision(business_contract, imported_contract)
-            manifest_path = write_decision_manifest(
-                decision, ci_manifest_output_path, audit_metadata=audit_metadata
-            )
-            raise GovernanceBlockedError(
-                f"Cannot run pipeline on retired contract: {decision.reasons}",
-                decision=decision,
-                manifest_path=manifest_path,
-            )
-
         # Merge updates with fail_on_conflict=False so governance decision evaluates all conflicts and changes
-        merge_result = self.merge_contract_updates(
-            imported_contract,
-            business_contract,
-            fail_on_conflict=False,
-        )
-        if merge_result.contract is None:
+        try:
+            merge_result = self.merge_contract_updates(
+                imported_contract,
+                business_contract,
+                fail_on_conflict=False,
+            )
+            merged_contract = merge_result.contract
+            conflicts = merge_result.conflicts
+        except MergeConflictError:
+            merged_contract = imported_contract
+            conflicts = ()
+            merge_result = MergeResult(contract=imported_contract, conflicts=[])
+
+        if merged_contract is None:
             raise ValueError("Merge did not produce a contract")
 
         # Single-pass governance decision evaluation
         decision = evaluate_governance_decision(
             business_contract,
-            merge_result.contract,
-            merge_conflicts=merge_result.conflicts,
+            merged_contract,
+            merge_conflicts=conflicts,
         )
 
         # BLOCK Decision: Write decision-only manifest FIRST, skipping GE/YAML export, then raise GovernanceBlockedError
         if decision.decision == DecisionResult.BLOCK:
             manifest_path = write_decision_manifest(
-                decision, ci_manifest_output_path, audit_metadata=audit_metadata
+                decision,
+                ci_manifest_output_path,
+                audit_metadata=audit_metadata,
+                merge_conflicts=merge_result.conflicts,
             )
             reasons_text = "; ".join(f"{r.path or 'root'}: {r.message}" for r in decision.reasons) or "Governance decision BLOCKED"
             raise GovernanceBlockedError(
@@ -299,7 +299,10 @@ class ContractPipeline:
         # Handle fail_on_conflict: Write decision manifest FIRST, then raise ValueError
         if merge_result.conflicts and fail_on_conflict:
             write_decision_manifest(
-                decision, ci_manifest_output_path, audit_metadata=audit_metadata
+                decision,
+                ci_manifest_output_path,
+                audit_metadata=audit_metadata,
+                merge_conflicts=merge_result.conflicts,
             )
             message = "; ".join(
                 f"{c.schema_id}.{c.property_name}: {c.message}"

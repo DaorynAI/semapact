@@ -294,7 +294,7 @@ def test_pipeline_run_blocks_retired_contract(monkeypatch, sample_odcs_model):
     )
     monkeypatch.setattr(type(pipeline.loader), "load", lambda self, _: retired_contract)
 
-    with pytest.raises(Exception, match="Cannot run pipeline on retired contract"):
+    with pytest.raises(Exception, match="Governance decision BLOCKED"):
         pipeline.run(
             source_type="sql",
             source="sql_folder",

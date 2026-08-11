@@ -19,7 +19,7 @@ from semapact.governance import (
     evaluate_governance_decision,
 )
 from semapact.lifecycle.merge_engine import MergeConflict
-from semapact.orchestrator.pipeline import ContractPipeline, MergeResult
+from semapact.orchestrator.pipeline import ContractPipeline, MergeResult, PipelineArtifacts
 
 
 def _get_schemas(contract: OpenDataContractStandard) -> list[SchemaObject]:
@@ -299,6 +299,15 @@ def test_single_pass_governance_execution_spy(monkeypatch, tmp_path):
         ContractPipeline,
         "merge_contract_updates",
         lambda *args, **kwargs: MergeResult(contract=candidate, conflicts=[]),
+    )
+    monkeypatch.setattr(
+        ContractPipeline,
+        "prepare_ci_cd_artifacts",
+        lambda self, *args, **kwargs: PipelineArtifacts(
+            merged_contract_path=tmp_path / "merged.yaml",
+            ge_suite_path=tmp_path / "suite.json",
+            ci_manifest_path=tmp_path / "manifest.json",
+        ),
     )
 
     with mock.patch(

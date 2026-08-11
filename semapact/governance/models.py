@@ -137,10 +137,10 @@ class GovernanceDecision:
     contract_id: str
     breaking: bool
     required_version_bump: RequiredBump
+    validation: ValidationOutcome
+    policy: PolicyOutcome
+    evidence: ChangeEvidence
     reasons: tuple[GovernanceReason, ...] = ()
-    validation: ValidationOutcome = ValidationOutcome(valid=True)
-    policy: PolicyOutcome = PolicyOutcome(valid=True)
-    evidence: ChangeEvidence = ChangeEvidence()
 
     def to_dict(self) -> dict[str, Any]:
         return {
