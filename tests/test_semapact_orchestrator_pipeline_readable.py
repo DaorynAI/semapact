@@ -173,14 +173,13 @@ def test_pipeline_run_raises_on_failed_contract_validation(
         ),
     )
     monkeypatch.setattr(
-        ContractPipeline,
-        "validate_contract",
+        "semapact.orchestrator.pipeline.ContractValidator.validate",
         lambda self, _: ValidationReport(
             valid=False, issues=[ValidationIssue(path="schema", message="bad")]
         ),
     )
 
-    with pytest.raises(Exception, match="Merged contract validation failed"):
+    with pytest.raises(Exception, match="Governance decision BLOCKED"):
         pipeline.run(
             source_type="sql",
             source="sql_folder",
@@ -193,6 +192,8 @@ def test_pipeline_run_raises_on_failed_contract_validation(
 
 def test_pipeline_run_raises_on_failed_lifecycle_policy(monkeypatch, sample_odcs_model):
     pipeline = ContractPipeline()
+    changed_version_contract = sample_odcs_model.model_copy(deep=True)
+    changed_version_contract.version = "2.0.0"
 
     monkeypatch.setattr(
         ContractPipeline,
@@ -206,25 +207,11 @@ def test_pipeline_run_raises_on_failed_lifecycle_policy(monkeypatch, sample_odcs
         ContractPipeline,
         "merge_contract_updates",
         lambda self, *args, **kwargs: MergeResult(
-            contract=sample_odcs_model, conflicts=[]
-        ),
-    )
-    monkeypatch.setattr(
-        ContractPipeline,
-        "validate_contract",
-        lambda self, _: ValidationReport(valid=True, issues=[]),
-    )
-    monkeypatch.setattr(
-        ContractPipeline,
-        "evaluate_policy",
-        lambda self, *args, **kwargs: SimpleNamespace(
-            valid=False,
-            version_violation=True,
-            breaking_changes=[BreakingChange(path="schema[tbl]", message="removed")],
+            contract=changed_version_contract, conflicts=[]
         ),
     )
 
-    with pytest.raises(Exception, match="Policy Violation"):
+    with pytest.raises(Exception, match="Governance decision BLOCKED"):
         pipeline.run(
             source_type="sql",
             source="sql_folder",
@@ -712,7 +699,7 @@ def test_pipeline_run_blocks_root_version_change_outside_release_flow(
         lambda self, _: ValidationReport(valid=True, issues=[]),
     )
 
-    with pytest.raises(Exception, match="Policy Violation"):
+    with pytest.raises(Exception, match="Governance decision BLOCKED"):
         pipeline.run(
             source_type="sql",
             source="sql_folder",
@@ -751,7 +738,7 @@ def test_pipeline_run_blocks_root_id_change_after_contract_creation(
         lambda self, _: ValidationReport(valid=True, issues=[]),
     )
 
-    with pytest.raises(Exception, match="Policy Violation"):
+    with pytest.raises(Exception, match="Governance decision BLOCKED"):
         pipeline.run(
             source_type="sql",
             source="sql_folder",
@@ -760,3 +747,39 @@ def test_pipeline_run_blocks_root_id_change_after_contract_creation(
             ge_suite_output_path="/tmp/suite.json",
             ci_manifest_output_path="/tmp/manifest.json",
         )
+
+
+def test_pipeline_run_writes_manifest_on_blocked_decision(tmp_path, monkeypatch, sample_odcs_model):
+    """Pipeline writes decision manifest and raises GovernanceBlockedError when decision is BLOCKED."""
+    from semapact.exceptions import GovernanceBlockedError
+
+    pipeline = ContractPipeline()
+    changed_id_contract = sample_odcs_model.model_copy(deep=True)
+    changed_id_contract.id = "different-id"
+
+    monkeypatch.setattr(ContractPipeline, "import_schema", lambda self, *args, **kwargs: sample_odcs_model)
+    monkeypatch.setattr(type(pipeline.loader), "load", lambda self, _: sample_odcs_model)
+    monkeypatch.setattr(
+        ContractPipeline,
+        "merge_contract_updates",
+        lambda self, *args, **kwargs: MergeResult(contract=changed_id_contract, conflicts=[]),
+    )
+
+    manifest_path = tmp_path / "ci_manifest.json"
+
+    with pytest.raises(GovernanceBlockedError) as exc_info:
+        pipeline.run(
+            source_type="sql",
+            source="sql_folder",
+            business_contract_path="examples/sample_odcs.yaml",
+            merged_contract_output_path=str(tmp_path / "merged.yaml"),
+            ge_suite_output_path=str(tmp_path / "suite.json"),
+            ci_manifest_output_path=str(manifest_path),
+        )
+
+    assert exc_info.value.decision.decision.value == "BLOCK"
+    assert manifest_path.exists()
+    content = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert "governanceDecision" in content
+    assert content["governanceDecision"]["decision"] == "BLOCK"
+

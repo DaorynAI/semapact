@@ -54,9 +54,6 @@ def evaluate_merge_policy(
     validate_contract_identities(base_contract)
     validate_contract_identities(merged_contract)
 
-    if not is_active_contract(base_contract):
-        return PolicyEvaluation(valid=True)
-
     breaks: list[BreakingChange] = []
     id_violation = False
     version_violation = False
@@ -83,6 +80,14 @@ def evaluate_merge_policy(
                 path="version",
                 message="Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change and use 'semapact release prepare'.",
             )
+        )
+
+    if not is_active_contract(base_contract):
+        return PolicyEvaluation(
+            valid=not breaks,
+            breaking_changes=breaks,
+            id_violation=id_violation,
+            version_violation=version_violation,
         )
 
     base_schema_index = build_schema_index(base_contract)

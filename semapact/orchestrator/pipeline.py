@@ -25,6 +25,12 @@ from open_data_contract_standard.model import OpenDataContractStandard
 
 from datacontract.data_contract import DataContract
 
+from semapact.exceptions import GovernanceBlockedError
+from semapact.governance import (
+    DecisionResult,
+    GovernanceDecision,
+    evaluate_governance_decision,
+)
 from semapact.importers.unity_importer import import_unity_contract
 from semapact.core.loader import ContractLoader
 from semapact.core.validator import ContractValidator, ValidationReport
@@ -36,6 +42,32 @@ from semapact.utils.schema_utils import contract_to_dict
 from semapact.utils.yaml_utils import dump_yaml
 
 ImportSourceType = str
+
+
+def write_decision_manifest(
+    decision: GovernanceDecision,
+    ci_manifest_path: str | Path,
+    audit_metadata: AuditMetadata | None = None,
+) -> Path:
+    """Write decision-only manifest without requiring external artifact creation."""
+    resolved_path = Path(ci_manifest_path).expanduser().resolve()
+    resolved_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "governanceDecision": decision.to_dict(),
+        "valid": decision.validation.valid,
+        "policyValid": decision.policy.valid,
+        "idViolation": decision.policy.id_violation,
+        "versionViolation": decision.policy.version_violation,
+        "issues": [asdict(issue) for issue in decision.validation.issues],
+        "breakingChanges": [asdict(b) for b in decision.policy.violations],
+        "conflicts": [],
+        "artifacts": {},
+        "audit": asdict(audit_metadata) if audit_metadata is not None else None,
+    }
+    resolved_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    return resolved_path
 
 
 @dataclass(slots=True)
@@ -86,16 +118,7 @@ class ContractPipeline:
         uc_token: str | None = None,
         import_args: dict[str, Any] | None = None,
     ) -> OpenDataContractStandard:
-        """Import a technical contract from a supported source type.
-
-        This step creates the "source" side of the merge:
-        the latest contract representation generated from a system of record
-        such as SQL DDL, Delta metadata, or Unity Catalog metadata.
-
-        If `existing_contract` is provided, the importer result is immediately
-        merged against it using the merge engine. This is mainly useful for
-        importer-driven patch/update scenarios.
-        """
+        """Import a technical contract from a supported source type."""
         import_args = import_args or {}
         normalized = source_type.strip().lower()
 
@@ -104,6 +127,7 @@ class ContractPipeline:
                 table_fqn=source,
                 workspace_url=uc_workspace_url,
                 token=uc_token,
+                **import_args,
             )
 
         try:
@@ -127,30 +151,22 @@ class ContractPipeline:
 
     def merge_contract_updates(
         self,
-        imported_contract: OpenDataContractStandard,
+        source_contract: OpenDataContractStandard,
         business_contract: OpenDataContractStandard,
         *,
         fail_on_conflict: bool = False,
     ) -> MergeResult:
-        """Merge imported technical updates into the governed target contract.
-
-        Terminology:
-        - `imported_contract`: newly generated technical/source contract
-        - `business_contract`: lifecycle-governed target contract from Git
-
-        The merge engine preserves governed metadata while applying technical
-        schema updates and lifecycle rules.
-        """
-        # `business_contract` is the lifecycle-governed target contract in Git.
-        target_contract = business_contract
+        """Merge a technical source contract into the governed business contract."""
         return self.merge_engine.merge(
-            imported_contract,
-            target_contract,
+            source_contract,
+            business_contract,
             fail_on_conflict=fail_on_conflict,
         )
 
-    def validate_contract(self, contract: OpenDataContractStandard) -> ValidationReport:
-        """Run contract-level structural and quality-rule validation."""
+    def validate_contract(
+        self, contract: OpenDataContractStandard
+    ) -> ValidationReport:
+        """Validate an ODCS contract model."""
         return self.validator.validate(contract)
 
     def evaluate_policy(
@@ -158,21 +174,15 @@ class ContractPipeline:
         base_contract: OpenDataContractStandard,
         merged_contract: OpenDataContractStandard,
     ) -> PolicyEvaluation:
-        """Evaluate lifecycle policy on the merged contract result.
-
-        Current root-level governance rules:
-        - contract `id` is immutable after the governed contract is created
-        - contract `version` is release-managed and must not change in the
-          normal import/merge pipeline
-        """
+        """Evaluate lifecycle policy constraints between base and merged contracts."""
         return evaluate_merge_policy(base_contract, merged_contract)
 
     def prepare_ci_cd_artifacts(
         self,
         merged_contract: OpenDataContractStandard,
         merge_result: MergeResult,
-        validation: ValidationReport,
-        policy_evaluation: PolicyEvaluation,
+        decision_or_validation: GovernanceDecision | ValidationReport,
+        policy_evaluation: PolicyEvaluation | None = None,
         *,
         merged_contract_output_path: str,
         ge_suite_output_path: str,
@@ -181,13 +191,14 @@ class ContractPipeline:
         ge_suite_name: str | None = None,
         audit_metadata: AuditMetadata | None = None,
     ) -> PipelineArtifacts:
-        """Write the merged contract and downstream CI/CD artifacts to disk.
+        """Write the merged contract and downstream CI/CD artifacts to disk."""
+        if isinstance(decision_or_validation, GovernanceDecision):
+            decision = decision_or_validation
+        else:
+            decision = evaluate_governance_decision(
+                merged_contract, merged_contract, merge_conflicts=merge_result.conflicts
+            )
 
-        Artifacts currently include:
-        - merged contract YAML
-        - Great Expectations suite JSON
-        - CI manifest summarizing validation, policy, conflicts, and outputs
-        """
         merged_contract_path = dump_yaml(
             contract_to_dict(merged_contract), merged_contract_output_path
         )
@@ -201,14 +212,13 @@ class ContractPipeline:
         ci_manifest_path = Path(ci_manifest_output_path).expanduser().resolve()
         ci_manifest_path.parent.mkdir(parents=True, exist_ok=True)
         manifest = {
-            "valid": validation.valid,
-            "policyValid": policy_evaluation.valid,
-            "idViolation": policy_evaluation.id_violation,
-            "versionViolation": policy_evaluation.version_violation,
-            "issues": [asdict(issue) for issue in validation.issues],
-            "breakingChanges": [
-                asdict(change) for change in policy_evaluation.breaking_changes
-            ],
+            "governanceDecision": decision.to_dict(),
+            "valid": decision.validation.valid,
+            "policyValid": decision.policy.valid,
+            "idViolation": decision.policy.id_violation,
+            "versionViolation": decision.policy.version_violation,
+            "issues": [asdict(issue) for issue in decision.validation.issues],
+            "breakingChanges": [asdict(b) for b in decision.policy.violations],
             "conflicts": [asdict(conflict) for conflict in merge_result.conflicts],
             "artifacts": {
                 "mergedContract": str(merged_contract_path),
@@ -242,19 +252,7 @@ class ContractPipeline:
         ge_suite_name: str | None = None,
         audit_metadata: AuditMetadata | None = None,
     ) -> PipelineArtifacts:
-        """Execute the full SemaPact automation pipeline end to end.
-
-        Execution order:
-        1. import technical/source contract
-        2. load existing governed contract
-        3. block execution for retired contracts
-        4. merge imported updates into the governed contract
-        5. validate merged contract structure and rule completeness
-        6. evaluate lifecycle policy/version constraints
-        7. write merged contract + artifact outputs
-
-        This is the main API for CI/CD or scheduled automation jobs.
-        """
+        """Execute the full SemaPact automation pipeline end to end."""
         imported_contract = self.import_schema(
             source_type,
             source,
@@ -262,49 +260,58 @@ class ContractPipeline:
             uc_token=uc_token,
         )
         business_contract = self.loader.load(business_contract_path)
-        if self._resolve_lifecycle(business_contract) == "retired":
-            raise ValueError("Cannot run pipeline on retired contract")
 
+        # Handle retired base contract: evaluate before merge, write decision manifest, raise GovernanceBlockedError
+        if self._resolve_lifecycle(business_contract) == "retired":
+            decision = evaluate_governance_decision(business_contract, imported_contract)
+            manifest_path = write_decision_manifest(
+                decision, ci_manifest_output_path, audit_metadata=audit_metadata
+            )
+            raise GovernanceBlockedError(
+                f"Cannot run pipeline on retired contract: {decision.reasons}",
+                decision=decision,
+                manifest_path=manifest_path,
+            )
+
+        # Merge updates with fail_on_conflict=False so we can evaluate decision
         merge_result = self.merge_contract_updates(
             imported_contract,
             business_contract,
-            fail_on_conflict=fail_on_conflict,
+            fail_on_conflict=False,
         )
+        if merge_result.contract is None:
+            raise ValueError("Merge did not produce a contract")
+
+        # Single-pass governance decision evaluation
+        decision = evaluate_governance_decision(
+            business_contract,
+            merge_result.contract,
+            merge_conflicts=merge_result.conflicts,
+        )
+
+        # BLOCK Decision: Write decision-only manifest FIRST, skipping GE/YAML export, then raise GovernanceBlockedError
+        if decision.decision == DecisionResult.BLOCK:
+            manifest_path = write_decision_manifest(
+                decision, ci_manifest_output_path, audit_metadata=audit_metadata
+            )
+            reasons_text = "; ".join(f"{r.path or 'root'}: {r.message}" for r in decision.reasons) or "Governance decision BLOCKED"
+            raise GovernanceBlockedError(
+                f"Governance decision BLOCKED: {reasons_text}",
+                decision=decision,
+                manifest_path=manifest_path,
+            )
+
         if merge_result.conflicts and fail_on_conflict:
             message = "; ".join(
                 f"{c.schema_id}.{c.property_name}: {c.message}"
                 for c in merge_result.conflicts
             )
             raise ValueError(f"Merge conflicts detected: {message}")
-        if merge_result.contract is None:
-            raise ValueError("Merge did not produce a contract")
 
-        validation = self.validate_contract(merge_result.contract)
-        if not validation.valid:
-            message = "; ".join(
-                f"{item.path}: {item.message}" for item in validation.issues
-            )
-            raise ValueError(f"Merged contract validation failed: {message}")
-
-        policy_evaluation = self.evaluate_policy(
-            business_contract, merge_result.contract
-        )
-        id_violation = getattr(policy_evaluation, "id_violation", False)
-        version_violation = getattr(policy_evaluation, "version_violation", False)
-        if not policy_evaluation.valid and (id_violation or version_violation):
-            violations = [
-                item
-                for item in policy_evaluation.breaking_changes
-                if item.path in ("id", "version")
-            ]
-            message = "; ".join(f"❌ {item.message}" for item in violations)
-            raise ValueError(f"Policy Violation:\n{message}")
-
-        return self.prepare_ci_cd_artifacts(
+        artifacts = self.prepare_ci_cd_artifacts(
             merge_result.contract,
             merge_result,
-            validation,
-            policy_evaluation,
+            decision,
             merged_contract_output_path=merged_contract_output_path,
             ge_suite_output_path=ge_suite_output_path,
             ci_manifest_output_path=ci_manifest_output_path,
@@ -312,6 +319,8 @@ class ContractPipeline:
             ge_suite_name=ge_suite_name,
             audit_metadata=audit_metadata,
         )
+
+        return artifacts
 
     def _resolve_lifecycle(self, contract: OpenDataContractStandard) -> str:
         """Resolve lifecycle status from status or customProperties fallback."""
