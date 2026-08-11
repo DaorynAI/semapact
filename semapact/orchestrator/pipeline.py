@@ -258,6 +258,7 @@ class ContractPipeline:
         business_contract = self.loader.load(business_contract_path)
 
         # Merge updates with fail_on_conflict=False so governance decision evaluates all conflicts and changes
+        conflicts: Sequence[MergeConflict]
         try:
             merge_result = self.merge_contract_updates(
                 imported_contract,
@@ -268,7 +269,7 @@ class ContractPipeline:
             conflicts = merge_result.conflicts
         except MergeConflictError:
             merged_contract = imported_contract
-            conflicts = ()
+            conflicts = []
             merge_result = MergeResult(contract=imported_contract, conflicts=[])
 
         if merged_contract is None:
