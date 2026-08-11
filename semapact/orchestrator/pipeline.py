@@ -54,13 +54,13 @@ def write_decision_manifest(
     resolved_path = Path(ci_manifest_path).expanduser().resolve()
     resolved_path.parent.mkdir(parents=True, exist_ok=True)
     manifest = {
-        "governanceDecision": decision.to_dict(),
+        "governanceDecision": decision.model_dump(mode="json"),
         "valid": decision.validation.valid,
         "policyValid": decision.policy.valid,
         "idViolation": decision.policy.id_violation,
         "versionViolation": decision.policy.version_violation,
-        "issues": [asdict(issue) for issue in decision.validation.issues],
-        "breakingChanges": [v.to_dict() for v in decision.policy.violations if v.code == "POLICY_BREAKING_CHANGE"],
+        "issues": [issue.model_dump(mode="json") for issue in decision.validation.issues],
+        "breakingChanges": [v.model_dump(mode="json") for v in decision.policy.violations if v.code == "POLICY_BREAKING_CHANGE"],
         "conflicts": [asdict(conflict) for conflict in merge_conflicts],
         "artifacts": {},
         "audit": asdict(audit_metadata) if audit_metadata is not None else None,
@@ -208,13 +208,13 @@ class ContractPipeline:
         ci_manifest_path = Path(ci_manifest_output_path).expanduser().resolve()
         ci_manifest_path.parent.mkdir(parents=True, exist_ok=True)
         manifest = {
-            "governanceDecision": decision.to_dict(),
+            "governanceDecision": decision.model_dump(mode="json"),
             "valid": decision.validation.valid,
             "policyValid": decision.policy.valid,
             "idViolation": decision.policy.id_violation,
             "versionViolation": decision.policy.version_violation,
-            "issues": [asdict(issue) for issue in decision.validation.issues],
-            "breakingChanges": [v.to_dict() for v in decision.policy.violations if v.code == "POLICY_BREAKING_CHANGE"],
+            "issues": [issue.model_dump(mode="json") for issue in decision.validation.issues],
+            "breakingChanges": [v.model_dump(mode="json") for v in decision.policy.violations if v.code == "POLICY_BREAKING_CHANGE"],
             "conflicts": [asdict(conflict) for conflict in merge_result.conflicts],
             "artifacts": {
                 "mergedContract": str(merged_contract_path),

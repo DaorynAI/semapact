@@ -16,26 +16,18 @@ class CIDecision:
     reason: str
 
 
-def evaluate_ci_gate(
-    decision: GovernanceDecision | dict[str, Any],
-) -> CIDecision:
+def evaluate_ci_gate(decision: GovernanceDecision) -> CIDecision:
     """Evaluate if a contract change can pass CI/CD gates based strictly on GovernanceDecision.
 
-    Fail-closed: Invalid, corrupted, or non-conforming payloads return allowed=False with reason="invalid_governance_decision".
+    Signature enforces typed GovernanceDecision input without payload union.
+    Interface adapters must call GovernanceDecision.model_validate(payload) before calling evaluate_ci_gate.
     """
-    if isinstance(decision, dict):
-        try:
-            decision_obj = GovernanceDecision.from_dict(decision)
-        except Exception:
-            return CIDecision(allowed=False, reason="invalid_governance_decision")
-    elif isinstance(decision, GovernanceDecision):
-        decision_obj = decision
-    else:
-        return CIDecision(allowed=False, reason="invalid_governance_decision")
+    if not isinstance(decision, GovernanceDecision):
+        raise TypeError(f"evaluate_ci_gate requires GovernanceDecision, got {type(decision).__name__}")
 
-    if decision_obj.decision == DecisionResult.ALLOW:
+    if decision.decision == DecisionResult.ALLOW:
         return CIDecision(allowed=True, reason="ok")
-    if decision_obj.decision == DecisionResult.REVIEW:
+    if decision.decision == DecisionResult.REVIEW:
         return CIDecision(allowed=False, reason="review_required")
     return CIDecision(allowed=False, reason="blocked")
 

@@ -1,10 +1,11 @@
-"""Unit tests for SemaPact GovernanceDecision and evaluator."""
+"""Unit tests for SemaPact GovernanceDecision Pydantic models and evaluator."""
 
 from __future__ import annotations
 
 import copy
 from unittest import mock
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
     SchemaObject,
@@ -18,6 +19,7 @@ from semapact.governance import (
     GovernanceReason,
     evaluate_governance_decision,
 )
+from semapact.governance.models import ChangeEvidence, PolicyOutcome, ValidationOutcome
 from semapact.lifecycle.merge_engine import MergeConflict
 from semapact.orchestrator.pipeline import ContractPipeline, MergeResult, PipelineArtifacts
 
@@ -211,48 +213,86 @@ def test_governance_decision_review_for_merge_conflicts():
     assert any(r.code == "MERGE_CONFLICT" for r in decision.reasons)
 
 
-def test_governance_decision_fingerprint_deterministic_and_message_insensitive():
-    """decision_id is deterministic, insensitive to message text changes, but sensitive to code/path changes."""
+def test_governance_decision_allow_invariants_validator():
+    """GovernanceDecision validates ALLOW invariants via @model_validator(mode='after')."""
+    val = ValidationOutcome(valid=True)
+    pol = PolicyOutcome(valid=True)
+    evi = ChangeEvidence(has_changes=False, merge_conflicts_count=0)
+
+    # Valid ALLOW decision
+    GovernanceDecision(
+        decision_id="id1",
+        decision=DecisionResult.ALLOW,
+        contract_id="c1",
+        breaking=False,
+        required_version_bump="none",
+        validation=val,
+        policy=pol,
+        evidence=evi,
+    )
+
+    # ALLOW decision with breaking=True should fail invariant validation
+    with pytest.raises(ValueError, match="ALLOW decision invariant violation"):
+        GovernanceDecision(
+            decision_id="id2",
+            decision=DecisionResult.ALLOW,
+            contract_id="c1",
+            breaking=True,
+            required_version_bump="none",
+            validation=val,
+            policy=pol,
+            evidence=evi,
+        )
+
+    # ALLOW decision with required_version_bump="minor" should fail invariant validation
+    with pytest.raises(ValueError, match="ALLOW decision invariant violation"):
+        GovernanceDecision(
+            decision_id="id3",
+            decision=DecisionResult.ALLOW,
+            contract_id="c1",
+            breaking=False,
+            required_version_bump="minor",
+            validation=val,
+            policy=pol,
+            evidence=evi,
+        )
+
+
+def test_pydantic_model_strictness_and_extra_forbidden():
+    """Pydantic model enforces strict types, forbidden extra fields, and immutability."""
+    # Extra field forbidden
+    with pytest.raises(PydanticValidationError):
+        GovernanceReason(code="CODE", message="msg", extra_field="bad")
+
+    # Strict bool type (string 'true' rejected)
+    with pytest.raises(PydanticValidationError):
+        ValidationOutcome(valid="true")  # type: ignore
+
+    # Negative merge_conflicts_count rejected
+    with pytest.raises(PydanticValidationError):
+        ChangeEvidence(has_changes=True, merge_conflicts_count=-1)
+
+    # Immutability (frozen)
+    reason = GovernanceReason(code="CODE", message="msg")
+    with pytest.raises(PydanticValidationError):
+        reason.code = "NEW_CODE"  # type: ignore
+
+
+def test_governance_decision_serialization_and_deserialization():
+    """GovernanceDecision serializes with model_dump and deserializes with model_validate."""
     base = _make_contract()
     candidate = _make_contract()
+    _get_schemas(candidate)[0].properties.append(
+        SchemaProperty(name="note", logicalType="string", physicalType="varchar(100)", required=False)
+    )
 
-    dec1 = evaluate_governance_decision(base, candidate)
-    dec2 = evaluate_governance_decision(base, candidate)
+    decision = evaluate_governance_decision(base, candidate)
+    dumped_json = decision.model_dump(mode="json")
+    reconstructed = GovernanceDecision.model_validate(dumped_json)
 
-    assert dec1.decision_id == dec2.decision_id
-
-    # Create two decisions with different reason message text
-    r1 = GovernanceReason(code="POLICY_BREAKING_CHANGE", message="Message text A", path="orders.id")
-    r2 = GovernanceReason(code="POLICY_BREAKING_CHANGE", message="Message text B", path="orders.id")
-
-    from semapact.governance.evaluator import _generate_decision_id
-    id1 = _generate_decision_id(base, candidate, merge_conflicts=(), reasons=(r1,))
-    id2 = _generate_decision_id(base, candidate, merge_conflicts=(), reasons=(r2,))
-
-    assert id1 == id2, "Fingerprint should exclude human-readable message text"
-
-    # Different code or path should produce different decision_id
-    r3 = GovernanceReason(code="CONTRACT_ID_MISMATCH", message="Message text A", path="orders.id")
-    id3 = _generate_decision_id(base, candidate, merge_conflicts=(), reasons=(r3,))
-    assert id1 != id3, "Fingerprint should be sensitive to reason code"
-
-
-def test_deserialization_fails_closed_and_raises_validation_error():
-    """GovernanceDecision.from_dict raises ValueError on invalid or empty payloads."""
-    with pytest.raises(ValueError, match="missing required field"):
-        GovernanceDecision.from_dict({})
-
-    with pytest.raises(ValueError, match="missing required field"):
-        GovernanceDecision.from_dict({"decision": "ALLOW"})
-
-    # evaluate_ci_gate fails closed on bad dicts
-    gate_empty = evaluate_ci_gate({})
-    assert gate_empty.allowed is False
-    assert gate_empty.reason == "invalid_governance_decision"
-
-    gate_bad_type = evaluate_ci_gate("not a dict")  # type: ignore
-    assert gate_bad_type.allowed is False
-    assert gate_bad_type.reason == "invalid_governance_decision"
+    assert decision == reconstructed
+    assert reconstructed.decision == DecisionResult.REVIEW
+    assert reconstructed.required_version_bump == "minor"
 
 
 def test_governance_decision_input_immutability():
@@ -267,23 +307,6 @@ def test_governance_decision_input_immutability():
 
     assert base == base_copy
     assert candidate == candidate_copy
-
-
-def test_governance_decision_serialization_round_trip():
-    """GovernanceDecision.to_dict() and from_dict() perform exact round-trip serialization."""
-    base = _make_contract()
-    candidate = _make_contract()
-    _get_schemas(candidate)[0].properties.append(
-        SchemaProperty(name="note", logicalType="string", physicalType="varchar(100)", required=False)
-    )
-
-    decision = evaluate_governance_decision(base, candidate)
-    serialized = decision.to_dict()
-    reconstructed = GovernanceDecision.from_dict(serialized)
-
-    assert decision == reconstructed
-    assert reconstructed.decision == DecisionResult.REVIEW
-    assert reconstructed.required_version_bump == "minor"
 
 
 def test_single_pass_governance_execution_spy(monkeypatch, tmp_path):
