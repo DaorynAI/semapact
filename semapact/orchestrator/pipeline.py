@@ -265,7 +265,6 @@ class ContractPipeline:
         merged_contract_output_path: str,
         ge_suite_output_path: str,
         ci_manifest_output_path: str,
-        fail_on_conflict: bool = False,
         uc_workspace_url: str | None = None,
         uc_token: str | None = None,
         ge_schema_name: str = "all",
@@ -310,14 +309,6 @@ class ContractPipeline:
 
         # Centralized gate enforcement for CI operation (raises GovernanceBlockedError or GovernanceReviewRequiredError)
         enforce_governance_gate(decision, GovernanceOperation.CI, manifest_path=manifest_path)
-
-        # Handle fail_on_conflict: raise ValueError if conflicts remain
-        if merge_result.conflicts and fail_on_conflict:
-            message = "; ".join(
-                f"{c.schema_id}.{c.property_name}: {c.message}"
-                for c in merge_result.conflicts
-            )
-            raise ValueError(f"Merge conflicts detected: {message}")
 
         # ALLOW or REVIEW: Write artifacts and manifest
         artifacts = self.prepare_ci_cd_artifacts(

@@ -335,14 +335,13 @@ def test_pipeline_run_blocks_when_merge_returns_none_contract(
         )
 
 
-def test_pipeline_run_blocks_on_conflicts_when_fail_on_conflict(
+def test_pipeline_run_blocks_on_conflicts(
     monkeypatch, sample_odcs_model
 ):
     pipeline = ContractPipeline()
     conflict = MergeConflict(
         schema_id="orders", property_name="id", message="type mismatch"
     )
-
     monkeypatch.setattr(
         ContractPipeline,
         "import_schema",
@@ -359,9 +358,8 @@ def test_pipeline_run_blocks_on_conflicts_when_fail_on_conflict(
         ),
     )
 
-    with pytest.raises(
-        Exception, match="type mismatch"
-    ):
+    from semapact.exceptions import GovernanceReviewRequiredError
+    with pytest.raises(GovernanceReviewRequiredError):
         pipeline.run(
             source_type="sql",
             source="sql_folder",
@@ -369,7 +367,6 @@ def test_pipeline_run_blocks_on_conflicts_when_fail_on_conflict(
             merged_contract_output_path="/tmp/merged.yaml",
             ge_suite_output_path="/tmp/suite.json",
             ci_manifest_output_path="/tmp/manifest.json",
-            fail_on_conflict=True,
         )
 
 

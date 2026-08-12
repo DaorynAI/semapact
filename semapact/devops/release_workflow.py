@@ -54,7 +54,7 @@ class RepositoryContractChange:
     contract_id: str | None = None
     current_version: str | None = None
     candidate_version: str | None = None
-    required_bump: RequiredBump = "none"
+    required_bump: RequiredBump | None = "none"
     suggested_release_version: str | None = None
     reasons: list[str] | None = None
     governance_decision: GovernanceDecision | None = None
@@ -127,8 +127,8 @@ def create_release_pull_request(
     config: GitProviderConfig,
     repo_path: str,
     contract_repo_path: str,
-    base_contract: OpenDataContractStandard | dict[str, Any],
-    candidate_contract: OpenDataContractStandard | dict[str, Any],
+    base_contract: OpenDataContractStandard,
+    candidate_contract: OpenDataContractStandard,
     release_tag: str,
     source_branch: str,
     target_branch: str,
@@ -138,15 +138,12 @@ def create_release_pull_request(
     push: bool = False,
 ) -> dict[str, Any]:
     """Prepare one promoted contract and open a release PR for it."""
-    base_model = contract_to_model(base_contract)
-    candidate_model = contract_to_model(candidate_contract)
-
     # 1. Authoritative decision evaluation and PROPOSE gate enforcement before file write or Git/PR actions
-    decision = evaluate_governance_decision(base_model, candidate_model)
+    decision = evaluate_governance_decision(base_contract, candidate_contract)
     enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
     promotion = prepare_release_candidate(
-        base_model, candidate_model, release_tag
+        base_contract, candidate_contract, release_tag
     )
     repo_root = Path(repo_path).expanduser().resolve()
     contract_path = repo_root / contract_repo_path
@@ -307,8 +304,8 @@ def create_release_pull_requests_from_manifest(
     """Run explicit per-contract release PR automation from a batch manifest."""
     results: list[dict[str, Any]] = []
     for task in tasks:
-        base_contract = load_yaml(task.base)
-        candidate_contract = load_yaml(task.candidate)
+        base_contract = contract_to_model(load_yaml(task.base))
+        candidate_contract = contract_to_model(load_yaml(task.candidate))
 
         results.append(
             create_release_pull_request(

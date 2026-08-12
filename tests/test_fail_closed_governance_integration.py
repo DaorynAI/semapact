@@ -18,6 +18,7 @@ from semapact.devops.release_workflow import (
 )
 from semapact.exceptions import GovernanceBlockedError, GovernanceReviewRequiredError
 from semapact.governance import (
+    GovernanceOperation,
     evaluate_governance_decision,
 )
 from semapact.interfaces.commands.merge_cmd import run_merge
@@ -132,7 +133,7 @@ def test_injected_block_decision_prevents_side_effects(tmp_path, monkeypatch):
 
 
 def test_retired_contract_mutation_governance_block(tmp_path):
-    """Mutating a retired contract produces GovernanceDecision.BLOCK raised as GovernanceBlockedError."""
+    """Mutating a retired contract produces GovernanceDecision.BLOCK raised as GovernanceBlockedError with operation PROPOSE."""
     base_retired = _make_contract(status="retired")
     candidate = _make_contract(status="retired")
     candidate.schema_[0].properties.append(
@@ -153,8 +154,170 @@ def test_retired_contract_mutation_governance_block(tmp_path):
         run_merge(merge_args)
     assert exc_info.value.decision is not None
     assert exc_info.value.decision.decision.value == "BLOCK"
-    assert exc_info.value.operation is not None
+    assert exc_info.value.operation == GovernanceOperation.PROPOSE
     assert not (tmp_path / "retired_out.yaml").exists()
+
+
+def test_conflict_with_fail_on_conflict_does_not_bypass_gate(tmp_path):
+    """Verify run_merge with fail_on_conflict=True does not raise MergeConflictError directly, but enforces GovernanceOperation.PROPOSE gate."""
+    base = _make_contract(status="active")
+    candidate = _make_contract(status="active")
+    # Physical type change creates a conflict and REVIEW decision
+    candidate.schema_[0].properties[0].physicalType = "bigint"
+
+    base_path = dump_yaml(contract_to_dict(base), tmp_path / "base.yaml")
+    cand_path = dump_yaml(contract_to_dict(candidate), tmp_path / "cand.yaml")
+
+    merge_args = SimpleNamespace(
+        base=str(cand_path),
+        business=str(base_path),
+        output=str(tmp_path / "out.yaml"),
+        runtime_context="auto",
+        fail_on_conflict=True,
+    )
+
+    # Allowed for PROPOSE gate since REVIEW decision allows proposal creation
+    out_path = run_merge(merge_args)
+    assert out_path.exists()
+
+
+def test_import_existing_block_prevents_plugin_and_file_write(tmp_path, monkeypatch):
+    """Verify import --existing with a BLOCK decision prevents post-gate plugin hook execution and file writing."""
+    base_retired = _make_contract(status="retired")
+    candidate = _make_contract(status="active")
+
+    base_path = dump_yaml(contract_to_dict(base_retired), tmp_path / "existing_retired.yaml")
+    cand_path = dump_yaml(contract_to_dict(candidate), tmp_path / "source.yaml")
+    out_path = tmp_path / "import_out.yaml"
+
+    plugin_called = False
+
+    def fake_hook(name, **kwargs):
+        nonlocal plugin_called
+        plugin_called = True
+        return None
+
+    monkeypatch.setattr("semapact.core.plugin_registry.PluginRegistry.execute_hook", fake_hook)
+
+    import_args = SimpleNamespace(
+        format="sql",
+        source=str(cand_path),
+        existing=str(base_path),
+        output=str(out_path),
+        runtime_context="auto",
+    )
+
+    with mock.patch("datacontract.data_contract.DataContract.import_from_source", lambda **k: candidate):
+        from semapact.interfaces.commands.import_cmd import run_import
+        with pytest.raises(GovernanceBlockedError) as exc_info:
+            run_import(import_args)
+
+    assert exc_info.value.operation == GovernanceOperation.PROPOSE
+    assert not plugin_called, "Plugin hook must not execute when governance gate BLOCKS"
+    assert not out_path.exists(), "Output file must not be written when governance gate BLOCKS"
+
+
+def test_import_plugin_deepcopy_prevents_output_mutation(tmp_path, monkeypatch):
+    """Verify post-gate plugin hook receiving deepcopy cannot mutate the dumped output contract."""
+    base = _make_contract(contract_id="contract-1", status="active")
+    candidate = _make_contract(contract_id="contract-1", status="active")
+
+    base_path = dump_yaml(contract_to_dict(base), tmp_path / "existing.yaml")
+    cand_path = dump_yaml(contract_to_dict(candidate), tmp_path / "source.yaml")
+    out_path = tmp_path / "import_out.yaml"
+
+    def mutating_hook(name, **kwargs):
+        c = kwargs.get("contract")
+        if c:
+            c.id = "MUTATED_ID"
+        return None
+
+    monkeypatch.setattr("semapact.core.plugin_registry.PluginRegistry.execute_hook", mutating_hook)
+
+    import_args = SimpleNamespace(
+        format="sql",
+        source=str(cand_path),
+        existing=str(base_path),
+        output=str(out_path),
+        runtime_context="auto",
+    )
+
+    with mock.patch("datacontract.data_contract.DataContract.import_from_source", lambda **k: candidate):
+        from semapact.interfaces.commands.import_cmd import run_import
+        run_import(import_args)
+
+    assert out_path.exists()
+    from semapact.utils.yaml_utils import load_yaml
+    written_data = load_yaml(out_path)
+    assert written_data["id"] == "contract-1", "Written contract must not be mutated by plugin hook"
+
+
+def test_release_create_pr_block_prevents_all_side_effects(tmp_path):
+    """Verify create_release_pull_request with a BLOCK decision does not dump YAML, commit/push, or create PR."""
+    base = _make_contract(contract_id="contract-a", version="1.0.0", status="active")
+    candidate = _make_contract(contract_id="contract-a", version="1.0.0", status="active")
+    from open_data_contract_standard.model import DataQuality
+    candidate.schema_[0].properties[0].quality = [DataQuality(type="invalid_type")]
+
+    from semapact.devops.pr_creator import GitHubConfig
+    from semapact.devops.release_workflow import create_release_pull_request
+
+    config = GitHubConfig(owner="org", repo="repo", token="fake")
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    contract_repo_path = "contracts/my_contract.yaml"
+
+    with mock.patch("semapact.devops.pr_creator.PullRequestCreator.create_update_pr") as mock_pr:
+        with pytest.raises(GovernanceBlockedError) as exc_info:
+            create_release_pull_request(
+                config=config,
+                repo_path=str(repo_dir),
+                contract_repo_path=contract_repo_path,
+                base_contract=base,
+                candidate_contract=candidate,
+                release_tag="v1.0.1",
+                source_branch="release/v1.0.1",
+                target_branch="main",
+            )
+
+    assert exc_info.value.operation == GovernanceOperation.PROPOSE
+    assert not (repo_dir / contract_repo_path).exists(), "Candidate YAML must not be dumped when governance gate BLOCKS"
+    assert mock_pr.call_count == 0, "Pull request creator must not be called when governance gate BLOCKS"
+
+
+def test_batch_release_manifest_evaluates_governance_once_per_task(tmp_path, monkeypatch):
+    """Verify build_batch_release_manifest calls evaluate_governance_decision exactly once per contract pair."""
+    base_dir = tmp_path / "base_root"
+    cand_dir = tmp_path / "cand_root"
+    base_dir.mkdir()
+    cand_dir.mkdir()
+
+    for i in range(3):
+        base_c = _make_contract(contract_id=f"c{i}", version="1.0.0")
+        cand_c = _make_contract(contract_id=f"c{i}", version="1.0.0")
+        cand_c.schema_[0].properties.append(
+            SchemaProperty(name=f"new_{i}", logicalType="string", physicalType="varchar(10)", required=False)
+        )
+        dump_yaml(contract_to_dict(base_c), base_dir / f"c{i}.yaml")
+        dump_yaml(contract_to_dict(cand_c), cand_dir / f"c{i}.yaml")
+
+    eval_calls = 0
+    orig_eval = evaluate_governance_decision
+
+    def counted_eval(*args, **kwargs):
+        nonlocal eval_calls
+        eval_calls += 1
+        return orig_eval(*args, **kwargs)
+
+    monkeypatch.setattr("semapact.devops.release_workflow.evaluate_governance_decision", counted_eval)
+
+    build = build_batch_release_manifest(
+        base_root=str(base_dir),
+        candidate_root=str(cand_dir),
+    )
+
+    assert len(build.tasks) == 3
+    assert eval_calls == 3, f"Governance evaluator must be called exactly once per contract task, got {eval_calls}"
 
 
 def test_batch_release_manifest_skips_blocked_contracts(tmp_path):
@@ -249,6 +412,7 @@ def test_breaking_change_review_behavior(tmp_path, capsys):
     )
     with pytest.raises(GovernanceReviewRequiredError) as exc:
         apply_lifecycle(lifecycle_args, is_promote=False)
+    assert exc.value.operation == GovernanceOperation.APPLY
     assert "Governance decision REVIEW required" in str(exc.value)
 
     # 4. CI (evaluate_ci_gate & pipeline): Returns allowed=False / raises GovernanceReviewRequiredError
@@ -259,7 +423,7 @@ def test_breaking_change_review_behavior(tmp_path, capsys):
 
 
 def test_pipeline_merge_conflict_fail_closed_on_retired_contract(tmp_path):
-    """Verify that pipeline run on retired contract raises GovernanceBlockedError (not MergeConflictError) and writes audit manifest but no other artifacts."""
+    """Verify that pipeline run on retired contract raises GovernanceBlockedError and writes audit manifest but no other artifacts."""
     base_retired = _make_contract(status="retired")
     candidate = _make_contract(status="active")
 
@@ -285,6 +449,7 @@ def test_pipeline_merge_conflict_fail_closed_on_retired_contract(tmp_path):
     # Decision must be BLOCK due to retired-contract mutation
     assert exc_info.value.decision is not None
     assert exc_info.value.decision.decision.value == "BLOCK"
+    assert exc_info.value.operation == GovernanceOperation.CI
     # Fail closed: audit manifest written; merged contract and GE suite must NOT be written
     assert ci_out.exists(), "Audit manifest must be written even on BLOCK"
     assert not merged_out.exists()
@@ -305,17 +470,21 @@ def test_prepare_ci_cd_artifacts_enforces_ci_gate_directly(tmp_path):
     ge_out = tmp_path / "direct_ge.json"
     ci_out = tmp_path / "direct_ci.json"
 
+    from semapact.lifecycle.merge_engine import MergeResult
+    real_merge_result = MergeResult(contract=candidate, conflicts=[])
+
     pipeline = ContractPipeline()
-    with pytest.raises(GovernanceBlockedError):
+    with pytest.raises(GovernanceBlockedError) as exc_info:
         pipeline.prepare_ci_cd_artifacts(
             candidate,
-            mock.MagicMock(conflicts=[]),
+            real_merge_result,
             decision,
             merged_contract_output_path=str(merged_out),
             ge_suite_output_path=str(ge_out),
             ci_manifest_output_path=str(ci_out),
         )
 
+    assert exc_info.value.operation == GovernanceOperation.CI
     assert not merged_out.exists()
     assert not ge_out.exists()
 
@@ -329,3 +498,4 @@ def test_ci_cd_adapter_preserves_allowed_reason():
     ci_dec = evaluate_ci_gate(decision)
     assert ci_dec.allowed is True
     assert ci_dec.reason == "allowed"
+

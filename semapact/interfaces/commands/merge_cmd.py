@@ -18,7 +18,7 @@ def run_merge(args: argparse.Namespace) -> Path:
     result = ContractMergeEngine().merge(
         technical_source,
         business_contract,
-        fail_on_conflict=args.fail_on_conflict,
+        fail_on_conflict=False,
     )
 
     # Evaluate decision using business_contract as governed target base
