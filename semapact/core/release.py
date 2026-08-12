@@ -149,6 +149,58 @@ def classify_contract_change(
     )
 
 
+def apply_release_candidate(
+    base_contract: OpenDataContractStandard | dict[str, Any],
+    candidate_contract: OpenDataContractStandard | dict[str, Any],
+    release_tag: str,
+    *,
+    required_bump: RequiredBump,
+    reasons: list[str] | None = None,
+    breaking_changes: list[BreakingChange] | None = None,
+) -> PromotionResult:
+    """Apply a release candidate transformation using a pre-calculated required_bump.
+
+    Avoids duplicate policy evaluation and classification when an authoritative
+    GovernanceDecision is already available.
+    """
+    base_model = contract_to_model(base_contract)
+    candidate_model = contract_to_model(candidate_contract).model_copy(deep=True)
+
+    candidate_model.id = base_model.id
+    candidate_model.version = base_model.version
+
+    LOGGER.info(
+        "Applying release candidate for contract %s with tag %s (required bump: %s)",
+        base_model.id,
+        release_tag,
+        required_bump,
+    )
+
+    if required_bump == "none":
+        raise ValueError("Contract changes do not require a release version bump")
+
+    target_version = parse_release_tag_version(release_tag)
+    actual_bump = classify_version_bump(str(base_model.version or ""), target_version)
+    if VERSION_RANK[actual_bump] < VERSION_RANK[required_bump]:
+        raise ValueError(
+            f"Release tag '{release_tag}' applies a {actual_bump} bump, but contract requires at least a "
+            f"{required_bump} bump"
+        )
+
+    promoted = candidate_model.model_copy(deep=True)
+    promoted.version = target_version
+    return PromotionResult(
+        contract=promoted,
+        required_bump=required_bump,
+        current_version=str(base_model.version or ""),
+        target_version=target_version,
+        actual_bump=actual_bump,
+        release_tag=release_tag,
+        reasons=reasons or [],
+        breaking_changes=breaking_changes or [],
+    )
+
+
 def prepare_release_candidate(
     base_contract: OpenDataContractStandard | dict[str, Any],
     candidate_contract: OpenDataContractStandard | dict[str, Any],
@@ -156,48 +208,22 @@ def prepare_release_candidate(
 ) -> PromotionResult:
     """Prepare a promoted contract candidate from one governed contract.
 
-    This function is intentionally per-contract, not per-repo.
-    The release tag is supplied explicitly by the caller; core/service code
-    does not read Git tags or infer repo-level release units.
+    Maintained for backward compatibility. Runs classify_contract_change then
+    delegates to apply_release_candidate.
     """
     base_model = contract_to_model(base_contract)
-    candidate_model = contract_to_model(candidate_contract).model_copy(deep=True)
-
-    # Root contract identity and release version stay anchored to the governed contract
-    # until an explicit release tag is applied.
-    candidate_model.id = base_model.id
-    candidate_model.version = base_model.version
-
-    LOGGER.info(
-        "Preparing release candidate for contract %s with tag %s",
-        base_model.id,
-        release_tag,
-    )
+    candidate_model = contract_to_model(candidate_contract)
 
     assessment = classify_contract_change(base_model, candidate_model)
     if not assessment.has_changes:
         LOGGER.error("Preparation failed: contract %s has no changes", base_model.id)
         raise ValueError("Cannot promote a contract with no changes")
-    if assessment.required_bump == "none":
-        raise ValueError("Contract changes do not require a release version bump")
 
-    target_version = parse_release_tag_version(release_tag)
-    actual_bump = classify_version_bump(str(base_model.version or ""), target_version)
-    if VERSION_RANK[actual_bump] < VERSION_RANK[assessment.required_bump]:
-        raise ValueError(
-            f"Release tag '{release_tag}' applies a {actual_bump} bump, but contract requires at least a "
-            f"{assessment.required_bump} bump"
-        )
-
-    promoted = candidate_model.model_copy(deep=True)
-    promoted.version = target_version
-    return PromotionResult(
-        contract=promoted,
+    return apply_release_candidate(
+        base_model,
+        candidate_model,
+        release_tag,
         required_bump=assessment.required_bump,
-        current_version=str(base_model.version or ""),
-        target_version=target_version,
-        actual_bump=actual_bump,
-        release_tag=release_tag,
         reasons=assessment.reasons,
         breaking_changes=assessment.breaking_changes,
     )

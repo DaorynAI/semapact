@@ -45,8 +45,9 @@ def run_release_classify(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
+    from dataclasses import asdict
     from semapact.core.loader import ContractLoader
-    from semapact.core.release import prepare_release_candidate
+    from semapact.core.release import apply_release_candidate
     from semapact.governance import (
         GovernanceOperation,
         enforce_governance_gate,
@@ -54,7 +55,6 @@ def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
     )
     from semapact.utils.schema_utils import contract_to_dict
     from semapact.utils.yaml_utils import dump_yaml
-    from dataclasses import asdict
 
     loader = ContractLoader(runtime_context=args.runtime_context)
     base_contract = loader.load(args.base)
@@ -63,8 +63,12 @@ def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
     decision = evaluate_governance_decision(base_contract, candidate_contract)
     enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
-    result = prepare_release_candidate(
-        base_contract, candidate_contract, args.release_tag
+    result = apply_release_candidate(
+        base_contract,
+        candidate_contract,
+        args.release_tag,
+        required_bump=decision.required_version_bump,
+        reasons=[r.message for r in decision.reasons],
     )
     output_path = dump_yaml(contract_to_dict(result.contract), args.output)
     return {

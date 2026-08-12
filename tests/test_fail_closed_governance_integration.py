@@ -286,13 +286,15 @@ def test_release_create_pr_block_prevents_all_side_effects(tmp_path):
 
 
 def test_batch_release_manifest_evaluates_governance_once_per_task(tmp_path, monkeypatch):
-    """Verify build_batch_release_manifest calls evaluate_governance_decision exactly once per contract pair."""
+    """Verify build_batch_release_manifest and create_release_pull_requests_from_manifest evaluate underlying policy exactly ONCE per task per phase without duplicate evaluations."""
     base_dir = tmp_path / "base_root"
     cand_dir = tmp_path / "cand_root"
+    repo_dir = tmp_path / "repo"
     base_dir.mkdir()
     cand_dir.mkdir()
+    repo_dir.mkdir()
 
-    for i in range(3):
+    for i in range(2):
         base_c = _make_contract(contract_id=f"c{i}", version="1.0.0")
         cand_c = _make_contract(contract_id=f"c{i}", version="1.0.0")
         cand_c.schema_[0].properties.append(
@@ -301,23 +303,38 @@ def test_batch_release_manifest_evaluates_governance_once_per_task(tmp_path, mon
         dump_yaml(contract_to_dict(base_c), base_dir / f"c{i}.yaml")
         dump_yaml(contract_to_dict(cand_c), cand_dir / f"c{i}.yaml")
 
-    eval_calls = 0
-    orig_eval = evaluate_governance_decision
+    policy_eval_calls = 0
+    from semapact.lifecycle.policy import evaluate_merge_policy
+    orig_eval_policy = evaluate_merge_policy
 
-    def counted_eval(*args, **kwargs):
-        nonlocal eval_calls
-        eval_calls += 1
-        return orig_eval(*args, **kwargs)
+    def counted_policy_eval(*args, **kwargs):
+        nonlocal policy_eval_calls
+        policy_eval_calls += 1
+        return orig_eval_policy(*args, **kwargs)
 
-    monkeypatch.setattr("semapact.devops.release_workflow.evaluate_governance_decision", counted_eval)
+    monkeypatch.setattr("semapact.governance.evaluator.evaluate_merge_policy", counted_policy_eval)
 
+    # 1. Build manifest (2 tasks created, exactly 2 policy evaluations)
     build = build_batch_release_manifest(
         base_root=str(base_dir),
         candidate_root=str(cand_dir),
     )
+    assert len(build.tasks) == 2
+    assert policy_eval_calls == 2, f"Expected 2 policy evaluations during build, got {policy_eval_calls}"
 
-    assert len(build.tasks) == 3
-    assert eval_calls == 3, f"Governance evaluator must be called exactly once per contract task, got {eval_calls}"
+    # 2. Run PR creation from manifest tasks (exactly 2 more policy evaluations: 1 per task in evaluate_governance_decision, 0 in apply_release_candidate)
+    monkeypatch.setattr("semapact.devops.pr_creator.PullRequestCreator.create_update_pr", lambda *a, **k: {})
+    from semapact.devops.pr_creator import GitHubConfig
+    from semapact.devops.release_workflow import create_release_pull_requests_from_manifest
+
+    config = GitHubConfig(owner="org", repo="repo", token="fake")
+    create_release_pull_requests_from_manifest(
+        config=config,
+        repo_path=str(repo_dir),
+        tasks=build.tasks,
+    )
+
+    assert policy_eval_calls == 4, f"Expected exactly 4 total policy evaluations across build+create (1 per task per phase), got {policy_eval_calls}"
 
 
 def test_batch_release_manifest_skips_blocked_contracts(tmp_path):

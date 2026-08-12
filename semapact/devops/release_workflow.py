@@ -8,7 +8,7 @@ from typing import Any
 from semapact.core.release import (
     PromotionResult,
     RequiredBump,
-    prepare_release_candidate,
+    apply_release_candidate,
     suggest_release_version,
 )
 from semapact.devops.pr_creator import (
@@ -142,8 +142,12 @@ def create_release_pull_request(
     decision = evaluate_governance_decision(base_contract, candidate_contract)
     enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
-    promotion = prepare_release_candidate(
-        base_contract, candidate_contract, release_tag
+    promotion = apply_release_candidate(
+        base_contract,
+        candidate_contract,
+        release_tag,
+        required_bump=decision.required_version_bump,
+        reasons=[r.message for r in decision.reasons],
     )
     repo_root = Path(repo_path).expanduser().resolve()
     contract_path = repo_root / contract_repo_path
