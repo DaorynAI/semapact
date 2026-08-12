@@ -558,3 +558,13 @@ def test_classify_repo_sets_blocked_status(tmp_path):
     assert blocked_change.status == "blocked"
     assert blocked_change.governance_decision is not None
     assert blocked_change.governance_decision.decision.value == "BLOCK"
+
+
+def test_apply_release_candidate_requires_opendatacontractstandard_runtime():
+    """Verify apply_release_candidate raises TypeError at runtime when passed a dict instead of OpenDataContractStandard."""
+    base = _make_contract()
+    candidate_dict = contract_to_dict(base)
+
+    from semapact.core.release import apply_release_candidate
+    with pytest.raises(TypeError, match="candidate_contract must be OpenDataContractStandard"):
+        apply_release_candidate(base, candidate_dict, "v1.0.1", required_bump="patch")  # type: ignore[arg-type]

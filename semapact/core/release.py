@@ -155,14 +155,21 @@ def apply_release_candidate(
     release_tag: str,
     *,
     required_bump: RequiredBump,
-    reasons: list[str] | None = None,
-    breaking_changes: list[BreakingChange] | None = None,
 ) -> PromotionResult:
     """Apply a release candidate transformation using a pre-calculated required_bump.
 
     Avoids duplicate policy evaluation and classification when an authoritative
     GovernanceDecision is already available.
     """
+    if not isinstance(base_contract, OpenDataContractStandard):
+        raise TypeError(
+            f"base_contract must be OpenDataContractStandard, got {type(base_contract).__name__}"
+        )
+    if not isinstance(candidate_contract, OpenDataContractStandard):
+        raise TypeError(
+            f"candidate_contract must be OpenDataContractStandard, got {type(candidate_contract).__name__}"
+        )
+
     base_model = base_contract
     candidate_model = candidate_contract.model_copy(deep=True)
 
@@ -196,8 +203,8 @@ def apply_release_candidate(
         target_version=target_version,
         actual_bump=actual_bump,
         release_tag=release_tag,
-        reasons=reasons or [],
-        breaking_changes=breaking_changes or [],
+        reasons=[],
+        breaking_changes=[],
     )
 
 
@@ -219,11 +226,19 @@ def prepare_release_candidate(
         LOGGER.error("Preparation failed: contract %s has no changes", base_model.id)
         raise ValueError("Cannot promote a contract with no changes")
 
-    return apply_release_candidate(
+    res = apply_release_candidate(
         base_model,
         candidate_model,
         release_tag,
         required_bump=assessment.required_bump,
+    )
+    return PromotionResult(
+        contract=res.contract,
+        required_bump=res.required_bump,
+        current_version=res.current_version,
+        target_version=res.target_version,
+        actual_bump=res.actual_bump,
+        release_tag=res.release_tag,
         reasons=assessment.reasons,
         breaking_changes=assessment.breaking_changes,
     )

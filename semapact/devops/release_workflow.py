@@ -142,20 +142,11 @@ def create_release_pull_request(
     decision = evaluate_governance_decision(base_contract, candidate_contract)
     enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
-    from semapact.lifecycle.policy import BreakingChange
-    breaking_changes = [
-        BreakingChange(path=r.path or "", message=r.message)
-        for r in decision.policy.violations
-        if r.code == "POLICY_BREAKING_CHANGE"
-    ]
-
     promotion = apply_release_candidate(
         base_contract,
         candidate_contract,
         release_tag,
         required_bump=decision.required_version_bump,
-        reasons=[r.message for r in decision.reasons],
-        breaking_changes=breaking_changes,
     )
     repo_root = Path(repo_path).expanduser().resolve()
     contract_path = repo_root / contract_repo_path

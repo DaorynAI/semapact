@@ -56,8 +56,6 @@ def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
     from semapact.utils.schema_utils import contract_to_dict
     from semapact.utils.yaml_utils import dump_yaml
 
-    from semapact.lifecycle.policy import BreakingChange
-
     loader = ContractLoader(runtime_context=args.runtime_context)
     base_contract = loader.load(args.base)
     candidate_contract = loader.load(args.candidate)
@@ -65,19 +63,11 @@ def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
     decision = evaluate_governance_decision(base_contract, candidate_contract)
     enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
-    breaking_changes = [
-        BreakingChange(path=r.path or "", message=r.message)
-        for r in decision.policy.violations
-        if r.code == "POLICY_BREAKING_CHANGE"
-    ]
-
     result = apply_release_candidate(
         base_contract,
         candidate_contract,
         args.release_tag,
         required_bump=decision.required_version_bump,
-        reasons=[r.message for r in decision.reasons],
-        breaking_changes=breaking_changes,
     )
     output_path = dump_yaml(contract_to_dict(result.contract), args.output)
     return {
@@ -87,8 +77,8 @@ def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
         "requiredBump": result.required_bump,
         "actualBump": result.actual_bump,
         "releaseTag": result.release_tag,
-        "reasons": result.reasons,
-        "breakingChanges": [asdict(change) for change in result.breaking_changes],
+        "reasons": [r.message for r in decision.reasons],
+        "breakingChanges": [asdict(change) for change in decision.policy.breaking_changes],
         "output": str(output_path),
         "governanceDecision": decision.model_dump(mode="json"),
     }

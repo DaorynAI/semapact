@@ -7,6 +7,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from semapact.core.release import RequiredBump
+from semapact.lifecycle.policy import BreakingChange
 
 
 class DecisionResult(str, Enum):
@@ -28,6 +29,7 @@ class GovernanceModel(BaseModel):
     model_config = ConfigDict(
         frozen=True,
         extra="forbid",
+        arbitrary_types_allowed=True,
     )
 
 
@@ -54,6 +56,7 @@ class PolicyOutcome(GovernanceModel):
     version_violation: bool = Field(default=False, strict=True)
     retired_violation: bool = Field(default=False, strict=True)
     violations: tuple[GovernanceReason, ...] = ()
+    breaking_changes: tuple[BreakingChange, ...] = ()
 
 
 class ChangeEvidence(GovernanceModel):
