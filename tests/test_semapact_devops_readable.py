@@ -6,11 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from semapact.core.validator import ValidationReport
 from semapact.devops.audit import build_audit_metadata
 from semapact.devops.ci_cd import evaluate_ci_gate, write_ci_summary
 from semapact.devops.pr_creator import AzureDevOpsConfig, PullRequestCreator
-from semapact.lifecycle.policy import PolicyEvaluation
 
 
 def _creator() -> PullRequestCreator:

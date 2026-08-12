@@ -3,17 +3,23 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from semapact.core.release import (
     PromotionResult,
-    classify_contract_change,
     prepare_release_candidate,
+    suggest_release_version,
 )
-from semapact.core.release import suggest_release_version
 from semapact.devops.pr_creator import (
-    PullRequestCreator,
     GitProviderConfig,
+    PullRequestCreator,
+)
+from semapact.exceptions import GovernanceBlockedError
+from semapact.governance import (
+    GovernanceDecision,
+    GovernanceOperation,
+    enforce_governance_gate,
+    evaluate_governance_decision,
 )
 from semapact.utils.schema_utils import contract_to_model
 from semapact.utils.yaml_utils import dump_yaml, list_yaml_documents, load_yaml
@@ -49,6 +55,7 @@ class RepositoryContractChange:
     required_bump: str | None = None
     suggested_release_version: str | None = None
     reasons: list[str] | None = None
+    governance_decision: GovernanceDecision | None = None
 
 
 @dataclass(slots=True)
@@ -129,6 +136,13 @@ def create_release_pull_request(
     push: bool = False,
 ) -> dict[str, Any]:
     """Prepare one promoted contract and open a release PR for it."""
+    base_model = contract_to_model(base_contract)
+    candidate_model = contract_to_model(candidate_contract)
+
+    # 1. Authoritative decision evaluation and PROPOSE gate enforcement before file write or Git/PR actions
+    decision = evaluate_governance_decision(base_model, candidate_model)
+    enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
+
     promotion = prepare_release_candidate(
         base_contract, candidate_contract, release_tag
     )
@@ -170,6 +184,7 @@ def create_release_pull_request(
             "targetBranch": plan.target_branch,
         },
         "pullRequest": pr_payload,
+        "governanceDecision": decision.model_dump(mode="json"),
     }
 
 
@@ -183,11 +198,7 @@ def classify_contracts_in_repo(
     base_root: str | Path,
     candidate_root: str | Path,
 ) -> list[RepositoryContractChange]:
-    """Compare two contract roots and classify changes per contract file.
-
-    This is a repo-level orchestration helper only. Versioning remains
-    per-contract; this function just batches independent contract assessments.
-    """
+    """Compare two contract roots and classify changes per contract file based on GovernanceDecision."""
     base_root_path = Path(base_root).expanduser().resolve()
     candidate_root_path = Path(candidate_root).expanduser().resolve()
 
@@ -200,6 +211,7 @@ def classify_contracts_in_repo(
         candidate_path = candidate_index.get(relative_path)
 
         if base_path is None:
+            assert candidate_path is not None
             candidate_model = contract_to_model(load_yaml(candidate_path))
             results.append(
                 RepositoryContractChange(
@@ -213,6 +225,7 @@ def classify_contracts_in_repo(
                     reasons=[
                         "New governed contract; initial release handled separately"
                     ],
+                    governance_decision=None,
                 )
             )
             continue
@@ -231,14 +244,19 @@ def classify_contracts_in_repo(
                     reasons=[
                         "Governed contract missing from candidate root; manual review required"
                     ],
+                    governance_decision=None,
                 )
             )
             continue
 
         base_model = contract_to_model(load_yaml(base_path))
         candidate_model = contract_to_model(load_yaml(candidate_path))
-        assessment = classify_contract_change(base_model, candidate_model)
-        if assessment.has_changes:
+
+        # Rely strictly on GovernanceDecision properties for bump, breaking, and reasons
+        decision = evaluate_governance_decision(base_model, candidate_model)
+        reasons_list = [r.message for r in decision.reasons] or ["No contract changes detected"]
+
+        if decision.evidence.has_changes:
             results.append(
                 RepositoryContractChange(
                     contract_repo_path=relative_path,
@@ -246,16 +264,17 @@ def classify_contracts_in_repo(
                     contract_id=str(base_model.id or ""),
                     current_version=str(base_model.version or ""),
                     candidate_version=str(candidate_model.version or ""),
-                    required_bump=assessment.required_bump,
+                    required_bump=decision.required_version_bump,
                     suggested_release_version=(
                         suggest_release_version(
                             str(base_model.version or ""),
-                            assessment.required_bump,
+                            decision.required_version_bump,
                         )
-                        if assessment.required_bump != "none"
+                        if decision.required_version_bump != "none"
                         else None
                     ),
-                    reasons=assessment.reasons,
+                    reasons=reasons_list,
+                    governance_decision=decision,
                 )
             )
         else:
@@ -268,7 +287,8 @@ def classify_contracts_in_repo(
                     candidate_version=str(candidate_model.version or ""),
                     required_bump="none",
                     suggested_release_version=None,
-                    reasons=assessment.reasons,
+                    reasons=reasons_list,
+                    governance_decision=decision,
                 )
             )
 
@@ -285,13 +305,22 @@ def create_release_pull_requests_from_manifest(
     """Run explicit per-contract release PR automation from a batch manifest."""
     results: list[dict[str, Any]] = []
     for task in tasks:
+        base_contract = load_yaml(task.base)
+        candidate_contract = load_yaml(task.candidate)
+        base_model = contract_to_model(base_contract)
+        candidate_model = contract_to_model(candidate_contract)
+
+        # Dynamic re-evaluation of GovernanceDecision at execution time
+        decision = evaluate_governance_decision(base_model, candidate_model)
+        enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
+
         results.append(
             create_release_pull_request(
                 config=config,
                 repo_path=repo_path,
                 contract_repo_path=task.contract_path,
-                base_contract=load_yaml(task.base),
-                candidate_contract=load_yaml(task.candidate),
+                base_contract=base_contract,
+                candidate_contract=candidate_contract,
                 release_tag=task.release_tag,
                 source_branch=task.source_branch,
                 target_branch=task.target_branch,
@@ -311,11 +340,7 @@ def build_batch_release_manifest(
     target_branch: str = "release",
     source_branch_prefix: str = "release/",
 ) -> BatchReleaseManifestBuild:
-    """Build an editable batch manifest from repo-level contract changes.
-
-    Only changed contracts produce manifest tasks. Added and removed contracts
-    are skipped because initial releases/removals need explicit handling.
-    """
+    """Build an editable batch manifest from repo-level contract changes."""
     changes = classify_contracts_in_repo(
         base_root=base_root,
         candidate_root=candidate_root,
@@ -330,10 +355,21 @@ def build_batch_release_manifest(
             skipped.append(change)
             continue
 
+        # Enforce PROPOSE gate using GovernanceBlockedError exception catching to handle blocked changes
+        if change.governance_decision is not None:
+            try:
+                enforce_governance_gate(
+                    change.governance_decision,
+                    GovernanceOperation.PROPOSE,
+                )
+            except GovernanceBlockedError:
+                skipped.append(change)
+                continue
+
         contract_key = _contract_release_key(change)
         next_version = change.suggested_release_version or suggest_release_version(
             str(change.current_version or "0.0.0"),
-            str(change.required_bump or "none"),
+            cast(Any, change.required_bump or "none"),
         )
         release_tag = f"{contract_key}/v{next_version}"
         source_branch = (
@@ -365,7 +401,32 @@ def load_batch_release_tasks(path: str | Path) -> list[BatchReleaseTask]:
 
 def repository_change_to_dict(change: RepositoryContractChange) -> dict[str, Any]:
     """Serialize repo-level change result for CLI/JSON output."""
-    return asdict(change)
+    gov_dec = change.governance_decision
+    if isinstance(gov_dec, GovernanceDecision):
+        gov_dec_dict = gov_dec.model_dump(mode="json")
+    elif isinstance(gov_dec, dict):
+        gov_dec_dict = gov_dec
+    else:
+        gov_dec_dict = None
+
+    return {
+        "contract_repo_path": change.contract_repo_path,
+        "contractRepoPath": change.contract_repo_path,
+        "status": change.status,
+        "contract_id": change.contract_id,
+        "contractId": change.contract_id,
+        "current_version": change.current_version,
+        "currentVersion": change.current_version,
+        "candidate_version": change.candidate_version,
+        "candidateVersion": change.candidate_version,
+        "required_bump": change.required_bump,
+        "requiredBump": change.required_bump,
+        "suggested_release_version": change.suggested_release_version,
+        "suggestedReleaseVersion": change.suggested_release_version,
+        "reasons": change.reasons,
+        "governance_decision": gov_dec_dict,
+        "governanceDecision": gov_dec_dict,
+    }
 
 
 def batch_task_to_dict(task: BatchReleaseTask) -> dict[str, Any]:

@@ -1,6 +1,11 @@
 from datetime import datetime, timezone
 from typing import Any
 from semapact.core.loader import ContractLoader
+from semapact.governance import (
+    GovernanceOperation,
+    enforce_governance_gate,
+    evaluate_governance_decision,
+)
 from semapact.utils.schema_utils import contract_to_dict
 from semapact.utils.yaml_utils import dump_yaml
 from open_data_contract_standard.model import (
@@ -12,22 +17,29 @@ from open_data_contract_standard.model import (
 
 def apply_lifecycle(args: Any, is_promote: bool) -> dict[str, Any]:
     loader = ContractLoader(runtime_context=args.runtime_context)
-    contract = loader.load(args.contract)
+    base_contract = loader.load(args.contract)
 
     target_status = "active" if is_promote else "deprecated"
 
     if getattr(args, "property", None) and not getattr(args, "schema", None):
         raise ValueError("The '--schema' argument is required when '--property' is specified.")
 
+    # Construct candidate in memory
+    candidate_contract = base_contract.model_copy(deep=True)
+
     if getattr(args, "schema", None) and getattr(args, "property", None):
-        _apply_property(contract, args.schema, args.property, target_status)
+        _apply_property(candidate_contract, args.schema, args.property, target_status)
     elif getattr(args, "schema", None):
-        _apply_schema(contract, args.schema, target_status)
+        _apply_schema(candidate_contract, args.schema, target_status)
     else:
-        _apply_contract(contract, target_status)
+        _apply_contract(candidate_contract, target_status)
+
+    # Evaluate decision and enforce APPLY operation BEFORE file overwrite
+    decision = evaluate_governance_decision(base_contract, candidate_contract)
+    enforce_governance_gate(decision, GovernanceOperation.APPLY)
 
     output_path = args.output or args.contract
-    dump_yaml(contract_to_dict(contract), output_path)
+    dump_yaml(contract_to_dict(candidate_contract), output_path)
 
     return {
         "contract": args.contract,
@@ -35,6 +47,7 @@ def apply_lifecycle(args: Any, is_promote: bool) -> dict[str, Any]:
         "schema": getattr(args, "schema", None),
         "property": getattr(args, "property", None),
         "output": str(output_path),
+        "governanceDecision": decision.model_dump(mode="json"),
     }
 
 

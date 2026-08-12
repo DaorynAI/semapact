@@ -21,6 +21,8 @@ from semapact.lifecycle.identity import (
     build_property_index,
 )
 
+from semapact.exceptions import MergeConflictError
+
 LOGGER = logging.getLogger(__name__)
 
 BUSINESS_METADATA_KEYS = {
@@ -66,12 +68,6 @@ SCHEMA_OBJECT_OVERWRITE_FIELDS: tuple[str, ...] = (
     "description",
 )
 OdcModel = OpenDataContractStandard
-
-
-class MergeConflictError(Exception):
-    """Raised when a fatal conflict prevents any merge attempt (e.g., retired contract)."""
-
-    pass
 
 
 @dataclass(slots=True)

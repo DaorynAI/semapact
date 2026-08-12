@@ -25,10 +25,10 @@ from open_data_contract_standard.model import OpenDataContractStandard
 
 from datacontract.data_contract import DataContract
 
-from semapact.exceptions import GovernanceBlockedError
 from semapact.governance import (
-    DecisionResult,
     GovernanceDecision,
+    GovernanceOperation,
+    enforce_governance_gate,
     evaluate_governance_decision,
 )
 from semapact.importers.unity_importer import import_unity_contract
@@ -299,29 +299,19 @@ class ContractPipeline:
             merge_conflicts=conflicts,
         )
 
-        # BLOCK Decision: Write decision-only manifest FIRST, skipping GE/YAML export, then raise GovernanceBlockedError
-        if decision.decision == DecisionResult.BLOCK:
-            manifest_path = write_decision_manifest(
-                decision,
-                ci_manifest_output_path,
-                audit_metadata=audit_metadata,
-                merge_conflicts=merge_result.conflicts,
-            )
-            reasons_text = "; ".join(f"{r.path or 'root'}: {r.message}" for r in decision.reasons) or "Governance decision BLOCKED"
-            raise GovernanceBlockedError(
-                f"Governance decision BLOCKED: {reasons_text}",
-                decision=decision,
-                manifest_path=manifest_path,
-            )
+        # Write decision-only manifest FIRST as audit output before gate enforcement
+        manifest_path = write_decision_manifest(
+            decision,
+            ci_manifest_output_path,
+            audit_metadata=audit_metadata,
+            merge_conflicts=merge_result.conflicts,
+        )
 
-        # Handle fail_on_conflict: Write decision manifest FIRST, then raise ValueError
+        # Centralized gate enforcement for CI operation (raises GovernanceBlockedError or GovernanceReviewRequiredError)
+        enforce_governance_gate(decision, GovernanceOperation.CI, manifest_path=manifest_path)
+
+        # Handle fail_on_conflict: raise ValueError if conflicts remain
         if merge_result.conflicts and fail_on_conflict:
-            write_decision_manifest(
-                decision,
-                ci_manifest_output_path,
-                audit_metadata=audit_metadata,
-                merge_conflicts=merge_result.conflicts,
-            )
             message = "; ".join(
                 f"{c.schema_id}.{c.property_name}: {c.message}"
                 for c in merge_result.conflicts
