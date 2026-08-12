@@ -16,7 +16,7 @@ from semapact.devops.ci_cd import evaluate_ci_gate
 from semapact.devops.release_workflow import (
     build_batch_release_manifest,
 )
-from semapact.exceptions import GovernanceBlockedError, GovernanceReviewRequiredError, MergeConflictError
+from semapact.exceptions import GovernanceBlockedError, GovernanceReviewRequiredError
 from semapact.governance import (
     evaluate_governance_decision,
 )
@@ -132,7 +132,7 @@ def test_injected_block_decision_prevents_side_effects(tmp_path, monkeypatch):
 
 
 def test_retired_contract_mutation_governance_block(tmp_path):
-    """Mutating a retired contract triggers BLOCK or MergeConflictError and stops merge operation."""
+    """Mutating a retired contract produces GovernanceDecision.BLOCK raised as GovernanceBlockedError."""
     base_retired = _make_contract(status="retired")
     candidate = _make_contract(status="retired")
     candidate.schema_[0].properties.append(
@@ -149,8 +149,11 @@ def test_retired_contract_mutation_governance_block(tmp_path):
         runtime_context="auto",
         fail_on_conflict=False,
     )
-    with pytest.raises((GovernanceBlockedError, MergeConflictError)):
+    with pytest.raises(GovernanceBlockedError) as exc_info:
         run_merge(merge_args)
+    assert exc_info.value.decision is not None
+    assert exc_info.value.decision.decision.value == "BLOCK"
+    assert exc_info.value.operation is not None
     assert not (tmp_path / "retired_out.yaml").exists()
 
 
@@ -256,7 +259,7 @@ def test_breaking_change_review_behavior(tmp_path, capsys):
 
 
 def test_pipeline_merge_conflict_fail_closed_on_retired_contract(tmp_path):
-    """Verify that pipeline run on retired contract raises MergeConflictError fail-closed without writing any artifacts."""
+    """Verify that pipeline run on retired contract raises GovernanceBlockedError (not MergeConflictError) and writes audit manifest but no other artifacts."""
     base_retired = _make_contract(status="retired")
     candidate = _make_contract(status="active")
 
@@ -269,7 +272,7 @@ def test_pipeline_merge_conflict_fail_closed_on_retired_contract(tmp_path):
 
     pipeline = ContractPipeline()
     with mock.patch("semapact.orchestrator.pipeline.ContractPipeline.import_schema", lambda *a, **k: candidate):
-        with pytest.raises(MergeConflictError):
+        with pytest.raises(GovernanceBlockedError) as exc_info:
             pipeline.run(
                 source_type="sql",
                 source=str(cand_path),
@@ -279,10 +282,13 @@ def test_pipeline_merge_conflict_fail_closed_on_retired_contract(tmp_path):
                 ci_manifest_output_path=str(ci_out),
             )
 
-    # Fail closed: No artifacts should be written when merge raises MergeConflictError
+    # Decision must be BLOCK due to retired-contract mutation
+    assert exc_info.value.decision is not None
+    assert exc_info.value.decision.decision.value == "BLOCK"
+    # Fail closed: audit manifest written; merged contract and GE suite must NOT be written
+    assert ci_out.exists(), "Audit manifest must be written even on BLOCK"
     assert not merged_out.exists()
     assert not ge_out.exists()
-    assert not ci_out.exists()
 
 
 def test_prepare_ci_cd_artifacts_enforces_ci_gate_directly(tmp_path):

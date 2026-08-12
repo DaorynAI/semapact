@@ -6,7 +6,8 @@ in automated GitOps pipelines and programmatic API usage.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from semapact.governance.gate import GovernanceOperation
@@ -49,9 +50,9 @@ class GovernanceBlockedError(SemaPactError):
     def __init__(
         self,
         message: str,
-        decision: GovernanceDecision | Any = None,
-        operation: GovernanceOperation | Any = None,
-        manifest_path: Any | None = None,
+        decision: GovernanceDecision | None = None,
+        operation: GovernanceOperation | None = None,
+        manifest_path: Path | str | None = None,
     ) -> None:
         super().__init__(message)
         self.decision = decision
@@ -65,9 +66,9 @@ class GovernanceReviewRequiredError(SemaPactError):
     def __init__(
         self,
         message: str,
-        decision: GovernanceDecision | Any = None,
-        operation: GovernanceOperation | Any = None,
-        manifest_path: Any | None = None,
+        decision: GovernanceDecision | None = None,
+        operation: GovernanceOperation | None = None,
+        manifest_path: Path | str | None = None,
     ) -> None:
         super().__init__(message)
         self.decision = decision

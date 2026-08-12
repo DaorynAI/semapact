@@ -12,7 +12,7 @@ from semapact.core.validator import ValidationIssue, ValidationReport
 from semapact.devops.audit import AuditMetadata
 from semapact.lifecycle.merge_engine import MergeConflict, MergeResult
 from semapact.lifecycle.policy import BreakingChange, PolicyEvaluation
-from semapact.exceptions import MergeConflictError
+from semapact.exceptions import GovernanceBlockedError
 from semapact.governance import GovernanceGateResult
 from semapact.orchestrator.pipeline import ContractPipeline
 from deltalake import write_deltalake
@@ -294,7 +294,7 @@ def test_pipeline_run_blocks_retired_contract(monkeypatch, sample_odcs_model):
     )
     monkeypatch.setattr(type(pipeline.loader), "load", lambda self, _: retired_contract)
 
-    with pytest.raises(MergeConflictError, match="Retired contract cannot be modified"):
+    with pytest.raises(GovernanceBlockedError, match="retired contract"):
         pipeline.run(
             source_type="sql",
             source="sql_folder",

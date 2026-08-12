@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from semapact.core.release import (
     PromotionResult,
@@ -22,6 +22,7 @@ from semapact.governance import (
     enforce_governance_gate,
     evaluate_governance_decision,
 )
+from open_data_contract_standard.model import OpenDataContractStandard
 from semapact.utils.schema_utils import contract_to_model
 from semapact.utils.yaml_utils import dump_yaml, list_yaml_documents, load_yaml
 
@@ -126,8 +127,8 @@ def create_release_pull_request(
     config: GitProviderConfig,
     repo_path: str,
     contract_repo_path: str,
-    base_contract: Any,
-    candidate_contract: Any,
+    base_contract: OpenDataContractStandard | dict[str, Any],
+    candidate_contract: OpenDataContractStandard | dict[str, Any],
     release_tag: str,
     source_branch: str,
     target_branch: str,
@@ -145,7 +146,7 @@ def create_release_pull_request(
     enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
     promotion = prepare_release_candidate(
-        base_contract, candidate_contract, release_tag
+        base_model, candidate_model, release_tag
     )
     repo_root = Path(repo_path).expanduser().resolve()
     contract_path = repo_root / contract_repo_path
@@ -364,7 +365,7 @@ def build_batch_release_manifest(
         contract_key = _contract_release_key(change)
         next_version = change.suggested_release_version or suggest_release_version(
             str(change.current_version or "0.0.0"),
-            cast(Any, change.required_bump or "none"),
+            change.required_bump or "none",
         )
         release_tag = f"{contract_key}/v{next_version}"
         source_branch = (
