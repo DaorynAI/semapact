@@ -253,3 +253,73 @@ def test_breaking_change_review_behavior(tmp_path, capsys):
     ci_res = evaluate_ci_gate(decision)
     assert ci_res.allowed is False
     assert ci_res.reason == "review_required"
+
+
+def test_pipeline_merge_conflict_fail_closed_on_retired_contract(tmp_path):
+    """Verify that pipeline run on retired contract raises MergeConflictError fail-closed without writing any artifacts."""
+    base_retired = _make_contract(status="retired")
+    candidate = _make_contract(status="active")
+
+    base_path = dump_yaml(contract_to_dict(base_retired), tmp_path / "retired_base.yaml")
+    cand_path = dump_yaml(contract_to_dict(candidate), tmp_path / "cand.yaml")
+
+    merged_out = tmp_path / "merged_out.yaml"
+    ge_out = tmp_path / "ge_suite.json"
+    ci_out = tmp_path / "ci_manifest.json"
+
+    pipeline = ContractPipeline()
+    with mock.patch("semapact.orchestrator.pipeline.ContractPipeline.import_schema", lambda *a, **k: candidate):
+        with pytest.raises(MergeConflictError):
+            pipeline.run(
+                source_type="sql",
+                source=str(cand_path),
+                business_contract_path=str(base_path),
+                merged_contract_output_path=str(merged_out),
+                ge_suite_output_path=str(ge_out),
+                ci_manifest_output_path=str(ci_out),
+            )
+
+    # Fail closed: No artifacts should be written when merge raises MergeConflictError
+    assert not merged_out.exists()
+    assert not ge_out.exists()
+    assert not ci_out.exists()
+
+
+def test_prepare_ci_cd_artifacts_enforces_ci_gate_directly(tmp_path):
+    """Verify that calling prepare_ci_cd_artifacts directly with a BLOCK decision raises GovernanceBlockedError."""
+    base = _make_contract(contract_id="contract-a", version="1.0.0", status="active")
+    candidate = _make_contract(contract_id="contract-a", version="1.0.0", status="active")
+    from open_data_contract_standard.model import DataQuality
+    candidate.schema_[0].properties[0].quality = [DataQuality(type="invalid_quality_type_xyz")]
+
+    decision = evaluate_governance_decision(base, candidate)
+    assert decision.decision.value == "BLOCK"
+
+    merged_out = tmp_path / "direct_merged.yaml"
+    ge_out = tmp_path / "direct_ge.json"
+    ci_out = tmp_path / "direct_ci.json"
+
+    pipeline = ContractPipeline()
+    with pytest.raises(GovernanceBlockedError):
+        pipeline.prepare_ci_cd_artifacts(
+            candidate,
+            mock.MagicMock(conflicts=[]),
+            decision,
+            merged_contract_output_path=str(merged_out),
+            ge_suite_output_path=str(ge_out),
+            ci_manifest_output_path=str(ci_out),
+        )
+
+    assert not merged_out.exists()
+    assert not ge_out.exists()
+
+
+def test_ci_cd_adapter_preserves_allowed_reason():
+    """Verify that evaluate_ci_gate returns 'allowed' reason when allowed is True."""
+    base = _make_contract(status="active")
+    candidate = _make_contract(status="active")
+    decision = evaluate_governance_decision(base, candidate)
+
+    ci_dec = evaluate_ci_gate(decision)
+    assert ci_dec.allowed is True
+    assert ci_dec.reason == "allowed"

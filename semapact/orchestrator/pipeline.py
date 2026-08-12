@@ -35,7 +35,7 @@ from semapact.importers.unity_importer import import_unity_contract
 from semapact.core.loader import ContractLoader, RuntimeContext
 from semapact.core.validator import ContractValidator, ValidationReport
 from semapact.devops.audit import AuditMetadata
-from semapact.lifecycle.merge_engine import ContractMergeEngine, MergeConflict, MergeConflictError, MergeResult
+from semapact.lifecycle.merge_engine import ContractMergeEngine, MergeConflict, MergeResult
 from semapact.lifecycle.policy import PolicyEvaluation, evaluate_merge_policy
 from semapact.quality.ge_exporter import GreatExpectationsExporter
 from semapact.utils.schema_utils import contract_to_dict
@@ -218,6 +218,13 @@ class ContractPipeline:
         if not isinstance(decision, GovernanceDecision):
             raise TypeError(f"prepare_ci_cd_artifacts requires GovernanceDecision, got {type(decision).__name__}")
 
+        # Enforce CI gate before writing any side-effect artifacts
+        enforce_governance_gate(
+            decision,
+            GovernanceOperation.CI,
+            manifest_path=ci_manifest_output_path,
+        )
+
         merged_contract_path = dump_yaml(
             contract_to_dict(merged_contract), merged_contract_output_path
         )
@@ -275,19 +282,13 @@ class ContractPipeline:
         business_contract = self.loader.load(business_contract_path)
 
         # Merge updates with fail_on_conflict=False so governance decision evaluates all conflicts and changes
-        conflicts: Sequence[MergeConflict]
-        try:
-            merge_result = self.merge_contract_updates(
-                imported_contract,
-                business_contract,
-                fail_on_conflict=False,
-            )
-            merged_contract = merge_result.contract
-            conflicts = merge_result.conflicts
-        except MergeConflictError:
-            merged_contract = imported_contract
-            conflicts = []
-            merge_result = MergeResult(contract=imported_contract, conflicts=[])
+        merge_result = self.merge_contract_updates(
+            imported_contract,
+            business_contract,
+            fail_on_conflict=False,
+        )
+        merged_contract = merge_result.contract
+        conflicts = merge_result.conflicts
 
         if merged_contract is None:
             raise ValueError("Merge did not produce a contract")

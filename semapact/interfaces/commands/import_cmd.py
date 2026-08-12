@@ -86,13 +86,16 @@ def run_import(args: argparse.Namespace) -> Path:
         )
         enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
-    # Allow plugins to redirect output routing before write (only executed after gate passes)
+    # Allow plugins to redirect output routing before write (only executed after gate passes).
+    # Pass deepcopy of contract so post-gate hooks cannot mutate the validated contract.
+    from copy import deepcopy
+
     hook_result = PluginRegistry.execute_hook(
         "on_import_complete",
-        contract=contract,
+        contract=deepcopy(contract),
         format=args.format,
         source=args.source,
-        args=args
+        args=args,
     )
 
     output_path = hook_result if hook_result else args.output

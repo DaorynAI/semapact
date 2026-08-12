@@ -78,7 +78,7 @@ def test_ci_gate_allows_only_when_validation_and_policy_are_valid():
     res_review = evaluate_ci_gate(dec_review)
     res_block = evaluate_ci_gate(dec_block)
 
-    assert res_allow.allowed is True and res_allow.reason == "ok"
+    assert res_allow.allowed is True and res_allow.reason == "allowed"
     assert res_review.allowed is False and res_review.reason == "review_required"
     assert res_block.allowed is False and res_block.reason == "blocked"
 

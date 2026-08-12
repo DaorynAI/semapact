@@ -24,8 +24,7 @@ def evaluate_ci_gate(decision: GovernanceDecision) -> CIDecision:
     Interface adapters must call GovernanceDecision.model_validate(payload) before calling evaluate_ci_gate.
     """
     res = evaluate_governance_gate(decision, GovernanceOperation.CI)
-    reason_str = "ok" if res.allowed else res.reason
-    return CIDecision(allowed=res.allowed, reason=reason_str)
+    return CIDecision(allowed=res.allowed, reason=res.reason)
 
 
 def write_ci_summary(path: str | Path, payload: dict[str, Any]) -> Path:

@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from semapact.core.release import (
     PromotionResult,
+    RequiredBump,
     prepare_release_candidate,
     suggest_release_version,
 )
@@ -52,7 +53,7 @@ class RepositoryContractChange:
     contract_id: str | None = None
     current_version: str | None = None
     candidate_version: str | None = None
-    required_bump: str | None = None
+    required_bump: RequiredBump = "none"
     suggested_release_version: str | None = None
     reasons: list[str] | None = None
     governance_decision: GovernanceDecision | None = None
@@ -307,12 +308,6 @@ def create_release_pull_requests_from_manifest(
     for task in tasks:
         base_contract = load_yaml(task.base)
         candidate_contract = load_yaml(task.candidate)
-        base_model = contract_to_model(base_contract)
-        candidate_model = contract_to_model(candidate_contract)
-
-        # Dynamic re-evaluation of GovernanceDecision at execution time
-        decision = evaluate_governance_decision(base_model, candidate_model)
-        enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
         results.append(
             create_release_pull_request(
@@ -401,13 +396,11 @@ def load_batch_release_tasks(path: str | Path) -> list[BatchReleaseTask]:
 
 def repository_change_to_dict(change: RepositoryContractChange) -> dict[str, Any]:
     """Serialize repo-level change result for CLI/JSON output."""
-    gov_dec = change.governance_decision
-    if isinstance(gov_dec, GovernanceDecision):
-        gov_dec_dict = gov_dec.model_dump(mode="json")
-    elif isinstance(gov_dec, dict):
-        gov_dec_dict = gov_dec
-    else:
-        gov_dec_dict = None
+    gov_dec_dict = (
+        change.governance_decision.model_dump(mode="json")
+        if change.governance_decision is not None
+        else None
+    )
 
     return {
         "contract_repo_path": change.contract_repo_path,
