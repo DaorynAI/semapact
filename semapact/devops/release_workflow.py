@@ -17,6 +17,7 @@ from semapact.devops.pr_creator import (
 )
 from semapact.exceptions import GovernanceBlockedError
 from semapact.governance import (
+    DecisionResult,
     GovernanceDecision,
     GovernanceOperation,
     enforce_governance_gate,
@@ -256,8 +257,6 @@ def classify_contracts_in_repo(
 
         decision = evaluate_governance_decision(base_model, candidate_model)
         reasons_list = [r.message for r in decision.reasons] or ["No contract changes detected"]
-
-        from semapact.governance import DecisionResult
 
         status = (
             "blocked"

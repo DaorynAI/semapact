@@ -20,12 +20,10 @@ def run_release_classify(args: argparse.Namespace) -> dict[str, Any]:
     decision = evaluate_governance_decision(base_contract, candidate_contract)
     evaluate_governance_gate(decision, GovernanceOperation.ANALYZE)
 
+    from dataclasses import asdict
+
     current_version = str(base_contract.version or "")
-    breaking_list = [
-        v.model_dump(mode="json")
-        for v in decision.policy.violations
-        if v.code == "POLICY_BREAKING_CHANGE"
-    ]
+    breaking_list = [asdict(bc) for bc in decision.policy.breaking_changes]
     reasons_list = [r.message for r in decision.reasons] or ["No contract changes detected"]
 
     return {

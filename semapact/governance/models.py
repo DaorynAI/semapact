@@ -29,7 +29,6 @@ class GovernanceModel(BaseModel):
     model_config = ConfigDict(
         frozen=True,
         extra="forbid",
-        arbitrary_types_allowed=True,
     )
 
 
