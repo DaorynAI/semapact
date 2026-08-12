@@ -516,3 +516,45 @@ def test_ci_cd_adapter_preserves_allowed_reason():
     assert ci_dec.allowed is True
     assert ci_dec.reason == "allowed"
 
+
+def test_release_prepare_includes_breaking_changes(tmp_path):
+    """Verify run_release_prepare returns breaking changes when breaking policy violations exist."""
+    base = _make_contract(status="active")
+    candidate = _make_contract(status="active")
+    # Removing a property from active schema creates a breaking policy change
+    candidate.schema_[0].properties = []
+
+    base_path = dump_yaml(contract_to_dict(base), tmp_path / "base.yaml")
+    cand_path = dump_yaml(contract_to_dict(candidate), tmp_path / "cand.yaml")
+
+    prep_args = SimpleNamespace(
+        base=str(base_path),
+        candidate=str(cand_path),
+        release_tag="v2.0.0",
+        output=str(tmp_path / "prep_out.yaml"),
+        runtime_context="auto",
+    )
+
+    res = run_release_prepare(prep_args)
+    assert len(res["breakingChanges"]) > 0
+    assert any("removed" in str(bc.get("message", "")).lower() or "breaking" in str(bc.get("message", "")).lower() for bc in res["breakingChanges"])
+
+
+def test_classify_repo_sets_blocked_status(tmp_path):
+    """Verify classify_contracts_in_repo sets status='blocked' when a contract generates a BLOCK governance decision."""
+    base_dir = tmp_path / "base_root"
+    cand_dir = tmp_path / "cand_root"
+    base_dir.mkdir()
+    cand_dir.mkdir()
+
+    base_blocked = _make_contract(contract_id="contract-blocked", version="1.0.0")
+    cand_blocked = _make_contract(contract_id="contract-blocked", version="2.0.0")  # Version mismatch -> BLOCK
+    dump_yaml(contract_to_dict(base_blocked), base_dir / "blocked.yaml")
+    dump_yaml(contract_to_dict(cand_blocked), cand_dir / "blocked.yaml")
+
+    from semapact.devops.release_workflow import classify_contracts_in_repo
+    changes = classify_contracts_in_repo(base_root=str(base_dir), candidate_root=str(cand_dir))
+    blocked_change = next(c for c in changes if c.contract_repo_path == "blocked.yaml")
+    assert blocked_change.status == "blocked"
+    assert blocked_change.governance_decision is not None
+    assert blocked_change.governance_decision.decision.value == "BLOCK"

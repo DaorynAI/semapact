@@ -150,8 +150,8 @@ def classify_contract_change(
 
 
 def apply_release_candidate(
-    base_contract: OpenDataContractStandard | dict[str, Any],
-    candidate_contract: OpenDataContractStandard | dict[str, Any],
+    base_contract: OpenDataContractStandard,
+    candidate_contract: OpenDataContractStandard,
     release_tag: str,
     *,
     required_bump: RequiredBump,
@@ -163,8 +163,8 @@ def apply_release_candidate(
     Avoids duplicate policy evaluation and classification when an authoritative
     GovernanceDecision is already available.
     """
-    base_model = contract_to_model(base_contract)
-    candidate_model = contract_to_model(candidate_contract).model_copy(deep=True)
+    base_model = base_contract
+    candidate_model = candidate_contract.model_copy(deep=True)
 
     candidate_model.id = base_model.id
     candidate_model.version = base_model.version

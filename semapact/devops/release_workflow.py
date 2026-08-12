@@ -142,12 +142,20 @@ def create_release_pull_request(
     decision = evaluate_governance_decision(base_contract, candidate_contract)
     enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
+    from semapact.lifecycle.policy import BreakingChange
+    breaking_changes = [
+        BreakingChange(path=r.path or "", message=r.message)
+        for r in decision.policy.violations
+        if r.code == "POLICY_BREAKING_CHANGE"
+    ]
+
     promotion = apply_release_candidate(
         base_contract,
         candidate_contract,
         release_tag,
         required_bump=decision.required_version_bump,
         reasons=[r.message for r in decision.reasons],
+        breaking_changes=breaking_changes,
     )
     repo_root = Path(repo_path).expanduser().resolve()
     contract_path = repo_root / contract_repo_path
@@ -255,45 +263,37 @@ def classify_contracts_in_repo(
         base_model = contract_to_model(load_yaml(base_path))
         candidate_model = contract_to_model(load_yaml(candidate_path))
 
-        # Rely strictly on GovernanceDecision properties for bump, breaking, and reasons
         decision = evaluate_governance_decision(base_model, candidate_model)
         reasons_list = [r.message for r in decision.reasons] or ["No contract changes detected"]
 
-        if decision.evidence.has_changes:
-            results.append(
-                RepositoryContractChange(
-                    contract_repo_path=relative_path,
-                    status="changed",
-                    contract_id=str(base_model.id or ""),
-                    current_version=str(base_model.version or ""),
-                    candidate_version=str(candidate_model.version or ""),
-                    required_bump=decision.required_version_bump,
-                    suggested_release_version=(
-                        suggest_release_version(
-                            str(base_model.version or ""),
-                            decision.required_version_bump,
-                        )
-                        if decision.required_version_bump != "none"
-                        else None
-                    ),
-                    reasons=reasons_list,
-                    governance_decision=decision,
-                )
+        from semapact.governance import DecisionResult
+
+        status = (
+            "blocked"
+            if decision.decision == DecisionResult.BLOCK
+            else ("changed" if decision.evidence.has_changes else "unchanged")
+        )
+
+        results.append(
+            RepositoryContractChange(
+                contract_repo_path=relative_path,
+                status=status,
+                contract_id=str(base_model.id or ""),
+                current_version=str(base_model.version or ""),
+                candidate_version=str(candidate_model.version or ""),
+                required_bump=decision.required_version_bump,
+                suggested_release_version=(
+                    suggest_release_version(
+                        str(base_model.version or ""),
+                        decision.required_version_bump,
+                    )
+                    if decision.required_version_bump != "none"
+                    else None
+                ),
+                reasons=reasons_list,
+                governance_decision=decision,
             )
-        else:
-            results.append(
-                RepositoryContractChange(
-                    contract_repo_path=relative_path,
-                    status="unchanged",
-                    contract_id=str(base_model.id or ""),
-                    current_version=str(base_model.version or ""),
-                    candidate_version=str(candidate_model.version or ""),
-                    required_bump="none",
-                    suggested_release_version=None,
-                    reasons=reasons_list,
-                    governance_decision=decision,
-                )
-            )
+        )
 
     return results
 
