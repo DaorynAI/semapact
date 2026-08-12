@@ -1,32 +1,35 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import json
-
-from semapact.lifecycle.policy import PolicyEvaluation
-from semapact.core.validator import ValidationReport
+from semapact.governance.models import DecisionResult, GovernanceDecision
 
 
 @dataclass(slots=True)
 class CIDecision:
-    """CI/CD gate decision based on validation and lifecycle policy checks."""
+    """CI/CD gate decision based on GovernanceDecision."""
 
     allowed: bool
     reason: str
 
 
-def evaluate_ci_gate(
-    validation: ValidationReport, policy: PolicyEvaluation
-) -> CIDecision:
-    """Evaluate if a contract change can pass CI/CD gates."""
-    if not validation.valid:
-        return CIDecision(allowed=False, reason="contract_validation_failed")
-    if not policy.valid:
-        return CIDecision(allowed=False, reason="lifecycle_policy_failed")
-    return CIDecision(allowed=True, reason="ok")
+def evaluate_ci_gate(decision: GovernanceDecision) -> CIDecision:
+    """Evaluate if a contract change can pass CI/CD gates based strictly on GovernanceDecision.
+
+    Signature enforces typed GovernanceDecision input without payload union.
+    Interface adapters must call GovernanceDecision.model_validate(payload) before calling evaluate_ci_gate.
+    """
+    if not isinstance(decision, GovernanceDecision):
+        raise TypeError(f"evaluate_ci_gate requires GovernanceDecision, got {type(decision).__name__}")
+
+    if decision.decision == DecisionResult.ALLOW:
+        return CIDecision(allowed=True, reason="ok")
+    if decision.decision == DecisionResult.REVIEW:
+        return CIDecision(allowed=False, reason="review_required")
+    return CIDecision(allowed=False, reason="blocked")
 
 
 def write_ci_summary(path: str | Path, payload: dict[str, Any]) -> Path:

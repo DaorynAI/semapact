@@ -15,7 +15,7 @@ from semapact.lifecycle.helpers import (
     lifecycle_from_custom_properties,
     normalize_status,
 )
-from semapact.lifecycle.policy import BreakingChange, evaluate_merge_policy
+from semapact.lifecycle.policy import BreakingChange, PolicyEvaluation, evaluate_merge_policy
 from semapact.utils.schema_utils import contract_to_dict, contract_to_model
 
 LOGGER = logging.getLogger(__name__)
@@ -84,6 +84,8 @@ class PromotionResult:
 def classify_contract_change(
     base_contract: OpenDataContractStandard | dict[str, Any],
     candidate_contract: OpenDataContractStandard | dict[str, Any],
+    *,
+    policy_evaluation: PolicyEvaluation | None = None,
 ) -> ContractChangeAssessment:
     """Classify required version bump for one contract change set.
 
@@ -111,7 +113,7 @@ def classify_contract_change(
         base_model.version,
     )
 
-    policy = evaluate_merge_policy(base_model, candidate_model)
+    policy = policy_evaluation if policy_evaluation is not None else evaluate_merge_policy(base_model, candidate_model)
     if policy.breaking_changes:
         LOGGER.info(
             "Breaking changes detected in contract %s requiring major bump: %s",
