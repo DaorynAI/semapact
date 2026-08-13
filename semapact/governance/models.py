@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from semapact.change_context import ChangeContext
 from semapact.core.release import RequiredBump
 from semapact.governance_codes import GovernanceReasonCode, GovernanceSeverity
 from semapact.lifecycle.policy import BreakingChange
@@ -75,6 +76,7 @@ class GovernanceDecision(GovernanceModel):
     decision_id: str
     decision: DecisionResult
     contract_id: str
+    context: ChangeContext
     breaking: bool = Field(strict=True)
     required_version_bump: RequiredBump
     validation: ValidationOutcome

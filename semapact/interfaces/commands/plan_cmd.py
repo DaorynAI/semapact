@@ -5,12 +5,17 @@ from semapact.governance import (
     evaluate_governance_decision,
     evaluate_governance_gate,
 )
-from semapact.interfaces.commands.utils import _resolve_adls_oauth_token_from_config, _parse_table_uris
+from semapact.interfaces.commands.utils import (
+    _parse_table_uris,
+    _resolve_adls_oauth_token_from_config,
+)
+from semapact.services import GovernanceService
 
 def run_plan(args: argparse.Namespace) -> None:
     from semapact.orchestrator.pipeline import ContractPipeline
 
     pipeline = ContractPipeline()
+    change_context = GovernanceService.create_context(args.effective_date)
 
     print(f"\n🔍 Contract Analysis: {args.base}")
 
@@ -53,13 +58,19 @@ def run_plan(args: argparse.Namespace) -> None:
 
         # Merge them (to normalize and evaluate breaks)
         merge_result = pipeline.merge_contract_updates(
-            imported, base_contract, fail_on_conflict=False
+            imported,
+            base_contract,
+            context=change_context,
+            fail_on_conflict=False,
         )
         merged = merge_result.contract
 
         # Evaluate decision & ANALYZE operation gate (always allowed for analysis)
         decision = evaluate_governance_decision(
-            base_contract, merged, merge_conflicts=merge_result.conflicts
+            base_contract,
+            merged,
+            context=change_context,
+            merge_conflicts=merge_result.conflicts,
         )
         gate_res = evaluate_governance_gate(decision, GovernanceOperation.ANALYZE)
 

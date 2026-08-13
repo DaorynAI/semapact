@@ -1,5 +1,6 @@
 """SemaPact Governance Kernel package."""
 
+from semapact.change_context import ChangeContext
 from semapact.governance_codes import (
     GOVERNANCE_REASON_REGISTRY,
     GovernanceReasonCode,
@@ -24,6 +25,7 @@ from semapact.governance.gate import (
 )
 
 __all__ = [
+    "ChangeContext",
     "DecisionResult",
     "GovernanceReasonCode",
     "GovernanceSeverity",

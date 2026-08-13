@@ -17,6 +17,7 @@ from semapact.devops.pr_creator import (
 )
 from semapact.exceptions import GovernanceBlockedError
 from semapact.governance import (
+    ChangeContext,
     DecisionResult,
     GovernanceDecision,
     GovernanceOperation,
@@ -71,6 +72,7 @@ class BatchReleaseTask:
     release_tag: str
     source_branch: str
     target_branch: str
+    effective_date: str
     title: str | None = None
     description: str | None = None
     commit_message: str | None = None
@@ -133,6 +135,7 @@ def create_release_pull_request(
     release_tag: str,
     source_branch: str,
     target_branch: str,
+    context: ChangeContext,
     title: str | None = None,
     description: str | None = None,
     commit_message: str | None = None,
@@ -140,7 +143,11 @@ def create_release_pull_request(
 ) -> dict[str, Any]:
     """Prepare one promoted contract and open a release PR for it."""
     # 1. Authoritative decision evaluation and PROPOSE gate enforcement before file write or Git/PR actions
-    decision = evaluate_governance_decision(base_contract, candidate_contract)
+    decision = evaluate_governance_decision(
+        base_contract,
+        candidate_contract,
+        context=context,
+    )
     enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
     promotion = apply_release_candidate(
@@ -200,6 +207,7 @@ def classify_contracts_in_repo(
     *,
     base_root: str | Path,
     candidate_root: str | Path,
+    context: ChangeContext,
 ) -> list[RepositoryContractChange]:
     """Compare two contract roots and classify changes per contract file based on GovernanceDecision."""
     base_root_path = Path(base_root).expanduser().resolve()
@@ -255,7 +263,11 @@ def classify_contracts_in_repo(
         base_model = contract_to_model(load_yaml(base_path))
         candidate_model = contract_to_model(load_yaml(candidate_path))
 
-        decision = evaluate_governance_decision(base_model, candidate_model)
+        decision = evaluate_governance_decision(
+            base_model,
+            candidate_model,
+            context=context,
+        )
         reasons_list = [r.message for r in decision.reasons] or ["No contract changes detected"]
 
         status = (
@@ -300,6 +312,7 @@ def create_release_pull_requests_from_manifest(
     for task in tasks:
         base_contract = contract_to_model(load_yaml(task.base))
         candidate_contract = contract_to_model(load_yaml(task.candidate))
+        task_context = ChangeContext(effective_date=task.effective_date)
 
         results.append(
             create_release_pull_request(
@@ -311,6 +324,7 @@ def create_release_pull_requests_from_manifest(
                 release_tag=task.release_tag,
                 source_branch=task.source_branch,
                 target_branch=task.target_branch,
+                context=task_context,
                 title=task.title,
                 description=task.description,
                 commit_message=task.commit_message,
@@ -324,6 +338,7 @@ def build_batch_release_manifest(
     *,
     base_root: str | Path,
     candidate_root: str | Path,
+    context: ChangeContext,
     target_branch: str = "release",
     source_branch_prefix: str = "release/",
 ) -> BatchReleaseManifestBuild:
@@ -331,6 +346,7 @@ def build_batch_release_manifest(
     changes = classify_contracts_in_repo(
         base_root=base_root,
         candidate_root=candidate_root,
+        context=context,
     )
     base_root_path = Path(base_root).expanduser().resolve()
     candidate_root_path = Path(candidate_root).expanduser().resolve()
@@ -371,6 +387,7 @@ def build_batch_release_manifest(
                 release_tag=release_tag,
                 source_branch=source_branch,
                 target_branch=target_branch,
+                effective_date=context.effective_date.isoformat(),
             )
         )
 

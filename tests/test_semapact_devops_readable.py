@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +10,9 @@ import pytest
 from semapact.devops.audit import build_audit_metadata
 from semapact.devops.ci_cd import evaluate_ci_gate, write_ci_summary
 from semapact.devops.pr_creator import AzureDevOpsConfig, PullRequestCreator
+from semapact.governance import ChangeContext
+
+TEST_CONTEXT = ChangeContext(effective_date=date(2026, 8, 13))
 
 
 def _creator() -> PullRequestCreator:
@@ -52,6 +56,7 @@ def test_ci_gate_allows_only_when_validation_and_policy_are_valid():
         validation=val,
         policy=pol,
         evidence=evi,
+        context=TEST_CONTEXT,
     )
     dec_review = GovernanceDecision(
         decision_id="id2",
@@ -62,6 +67,7 @@ def test_ci_gate_allows_only_when_validation_and_policy_are_valid():
         validation=val,
         policy=pol,
         evidence=evi,
+        context=TEST_CONTEXT,
     )
     dec_block = GovernanceDecision(
         decision_id="id3",
@@ -72,6 +78,7 @@ def test_ci_gate_allows_only_when_validation_and_policy_are_valid():
         validation=ValidationOutcome(valid=False),
         policy=PolicyOutcome(valid=False),
         evidence=evi,
+        context=TEST_CONTEXT,
     )
 
     res_allow = evaluate_ci_gate(dec_allow)

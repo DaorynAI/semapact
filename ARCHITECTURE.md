@@ -11,7 +11,7 @@ The current implementation focuses on:
 - lifecycle governance analysis
 - contract quality export
 - deployment artifact export
-- a Streamlit UI as one presentation layer
+- CLI and automation interfaces
 
 SemaPact is not a CRUD system. It is a change-driven system:
 
@@ -78,20 +78,24 @@ Key modules:
 
 Location:
 
-- `semapact/interfaces/streamlit/services/`
+- `semapact/services/`
 
 Responsibilities:
 
-- serve as the only UI boundary into system logic
-- read canonical contracts
-- read and persist user drafts
-- enforce edit permissions
-- delegate governance analysis
+- serve as the interface-independent application boundary into system logic
+- normalize interface request values into explicit domain inputs
+- own workflow-scoped governance context construction
+- delegate merge, lifecycle, validation, and governance rules to their owning layers
 
-Key modules:
+Key module:
 
-- `semapact/interfaces/streamlit/services/contract_service.py`
-- `semapact/interfaces/streamlit/services/governance_service.py`
+- `semapact/services/governance_service.py`
+
+Important boundary:
+
+- CLI/UI/API may collect an `effective_date` request value
+- `GovernanceService` creates `ChangeContext`
+- lifecycle/governance lower layers consume that context and must not regenerate it
 
 ### 5. Exporters
 
@@ -134,14 +138,15 @@ Location:
 
 Responsibilities:
 
-- presentation only
-- collect user input
+- presentation/input adaptation only
+- collect user or automation inputs
 - display governance results
-- call service layer
+- call service/application boundaries
 
 Current interface:
 
-- Streamlit single-page app in `semapact/interfaces/streamlit/app.py`
+- CLI in `semapact/interfaces/cli.py`
+- command adapters in `semapact/interfaces/commands/`
 
 ## Current Contract Model
 
@@ -362,8 +367,8 @@ Precedence:
 
 ## Current Design Principles
 
-- main contract is canonical and immutable from the UI path
-- service layer is the only boundary between UI and system logic
+- main contract is canonical and immutable from presentation paths
+- service layer is the application boundary between interfaces and system logic
 - lifecycle logic belongs in the lifecycle layer
 - ODCS is the canonical contract model
 - datacontract-cli is reused where possible instead of reimplemented
@@ -371,5 +376,5 @@ Precedence:
 ## Known Next Steps
 
 - formalize draft promotion flow
-- continue reducing UI-specific logic that still lives near editor helpers
+- continue reducing interface-specific logic that still lives near command/editor helpers
 - keep converging helper logic toward ODCS model-driven behavior

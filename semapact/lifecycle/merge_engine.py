@@ -1,7 +1,6 @@
 import re
 import logging
 from copy import deepcopy
-from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
@@ -12,6 +11,7 @@ from open_data_contract_standard.model import (
     SchemaObject,
     SchemaProperty,
 )
+from semapact.change_context import ChangeContext
 from semapact.lifecycle.identity import (
     SchemaIdentity,
     PropertyIdentity,
@@ -135,6 +135,7 @@ class ContractMergeEngine:
         base_contract: OpenDataContractStandard,
         business_contract: OpenDataContractStandard,
         *,
+        context: ChangeContext,
         fail_on_conflict: bool = False,
     ) -> MergeResult:
         # source_model = newly generated technical contract
@@ -150,6 +151,7 @@ class ContractMergeEngine:
             target_model=target_model,
             source_model=source_model,
             analysis=analysis,
+            context=context,
         )
         LOGGER.info(
             "Successfully merged contract %s. Deprecated %d schemas, %d properties.",
@@ -292,6 +294,7 @@ class ContractMergeEngine:
         target_model: OpenDataContractStandard,
         source_model: OpenDataContractStandard,
         analysis: MergeAnalysis,
+        context: ChangeContext,
     ) -> OpenDataContractStandard:
         merged = target_model.model_copy(deep=True)
 
@@ -338,6 +341,7 @@ class ContractMergeEngine:
             existing_schema=target_model.schema_ or [],
             imported_schema=source_model.schema_ or [],
             analysis=analysis,
+            context=context,
         )
         return merged
 
@@ -346,6 +350,7 @@ def _merge_schema_objects_models(
     existing_schema: list[SchemaObject],
     imported_schema: list[SchemaObject],
     analysis: MergeAnalysis,
+    context: ChangeContext,
 ) -> list[SchemaObject]:
     existing_index = build_schema_index(existing_schema)
     imported_index = build_schema_index(imported_schema)
@@ -357,7 +362,9 @@ def _merge_schema_objects_models(
         imported_obj = imported_index.get(existing_id)
         if imported_obj is None:
             if existing_id in analysis.deprecated_schemas:
-                merged_schema.append(_deprecate_schema_model(existing_obj))
+                merged_schema.append(
+                    _deprecate_schema_model(existing_obj, context=context)
+                )
             else:
                 merged_schema.append(existing_obj.model_copy(deep=True))
             continue
@@ -368,6 +375,7 @@ def _merge_schema_objects_models(
                 deprecated_property_ids=analysis.deprecated_properties.get(
                     existing_id, set()
                 ),
+                context=context,
             )
         )
 
@@ -385,6 +393,7 @@ def _merge_schema_object_models(
     existing_obj: SchemaObject,
     imported_obj: SchemaObject,
     deprecated_property_ids: set[PropertyIdentity],
+    context: ChangeContext,
 ) -> SchemaObject:
     merged_obj = existing_obj.model_copy(deep=True)
 
@@ -408,6 +417,7 @@ def _merge_schema_object_models(
         existing_props=existing_obj.properties or [],
         imported_props=imported_obj.properties or [],
         deprecated_property_ids=deprecated_property_ids,
+        context=context,
     )
     return merged_obj
 
@@ -417,6 +427,7 @@ def _merge_properties_models(
     existing_props: list[SchemaProperty],
     imported_props: list[SchemaProperty],
     deprecated_property_ids: set[PropertyIdentity],
+    context: ChangeContext,
 ) -> list[SchemaProperty]:
     """Merge a property list using canonical PropertyIdentity keys.
 
@@ -434,7 +445,9 @@ def _merge_properties_models(
         imported_prop = imported_index.get(prop_key)
         if imported_prop is None:
             if prop_key in deprecated_property_ids:
-                merged_props.append(_deprecate_property_model(existing_prop))
+                merged_props.append(
+                    _deprecate_property_model(existing_prop, context=context)
+                )
             else:
                 merged_props.append(existing_prop.model_copy(deep=True))
             continue
@@ -443,6 +456,7 @@ def _merge_properties_models(
             _merge_matching_property_models(
                 existing_prop=existing_prop,
                 imported_prop=imported_prop,
+                context=context,
             )
         )
 
@@ -457,7 +471,9 @@ def _merge_properties_models(
 
 
 def _merge_matching_property_models(
-    existing_prop: SchemaProperty, imported_prop: SchemaProperty
+    existing_prop: SchemaProperty,
+    imported_prop: SchemaProperty,
+    context: ChangeContext,
 ) -> SchemaProperty:
     merged_prop = existing_prop.model_copy(deep=True)
     existing_status = _resolve_lifecycle_status(existing_prop)
@@ -512,6 +528,7 @@ def _merge_matching_property_models(
             existing_props=existing_prop.properties or [],
             imported_props=imported_prop.properties or [],
             deprecated_property_ids=set(),
+            context=context,
         )
 
     if existing_prop.items or imported_prop.items:
@@ -519,6 +536,7 @@ def _merge_matching_property_models(
             merged_prop.items = _merge_matching_property_models(
                 existing_prop=existing_prop.items,
                 imported_prop=imported_prop.items,
+                context=context,
             )
         elif imported_prop.items:
             merged_prop.items = imported_prop.items.model_copy(deep=True)
@@ -553,23 +571,42 @@ def _merge_relationships_models(existing: Any, imported: Any) -> list[Any] | Non
     return merged
 
 
-def _deprecate_schema_model(entity: SchemaObject) -> SchemaObject:
+def _deprecate_schema_model(
+    entity: SchemaObject,
+    *,
+    context: ChangeContext,
+) -> SchemaObject:
     removed = entity.model_copy(deep=True)
+    deprecation_date = _custom_property_value(
+        removed.customProperties, "deprecationDate"
+    )
+    deprecation_items: list[dict[str, str]] = [
+        REMOVED_FLAG,
+        {
+            "property": LIFECYCLE_STATUS_PROPERTY,
+            "value": DEPRECATED_LIFECYCLE_VALUE,
+        },
+    ]
+    if deprecation_date is None:
+        deprecation_items.append(
+            {
+                "property": "deprecationDate",
+                "value": context.effective_date.isoformat(),
+            }
+        )
     removed.customProperties = _merge_custom_properties_models(
         removed.customProperties,
-        [
-            REMOVED_FLAG,
-            {
-                "property": LIFECYCLE_STATUS_PROPERTY,
-                "value": DEPRECATED_LIFECYCLE_VALUE,
-            },
-        ],
+        deprecation_items,
     )
     removed.tags = _add_deprecated_tag(removed.tags)
     return removed
 
 
-def _deprecate_property_model(entity: SchemaProperty) -> SchemaProperty:
+def _deprecate_property_model(
+    entity: SchemaProperty,
+    *,
+    context: ChangeContext,
+) -> SchemaProperty:
     removed = entity.model_copy(deep=True)
     deprecation_date = _custom_property_value(
         removed.customProperties, "deprecationDate"
@@ -582,7 +619,7 @@ def _deprecate_property_model(entity: SchemaProperty) -> SchemaProperty:
         deprecation_items.append(
             {
                 "property": "deprecationDate",
-                "value": datetime.now(timezone.utc).date().isoformat(),
+                "value": context.effective_date.isoformat(),
             }
         )
     removed.customProperties = _merge_custom_properties_models(

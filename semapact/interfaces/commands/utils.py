@@ -1,6 +1,7 @@
 import argparse
 import os
 
+
 def _resolve_adls_oauth_token_from_config() -> str | None:
     from semapact.core.config import config_manager
     auth_method = config_manager.get("azure.auth_method", "SEMAPACT_AZURE_AUTH_METHOD", "default").lower().strip()

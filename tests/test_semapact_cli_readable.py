@@ -8,6 +8,8 @@ from open_data_contract_standard.model import SchemaProperty
 from semapact.interfaces import cli
 from semapact.utils.yaml_utils import dump_yaml, load_yaml
 
+TEST_EFFECTIVE_DATE = "2026-08-13"
+
 
 def test_cli_azure_auth_method_mapping(monkeypatch):
     """Verify that different azure.auth_method values map to the correct Identity Credential classes."""
@@ -294,7 +296,6 @@ def test_cli_import_uc_uses_config_fallback(
     assert captured["enrich_kwargs"]["token"] == "fallback-token"
 
 
-
 def test_cli_release_classify_outputs_per_contract_required_bump(
     sample_odcs_model, tmp_path, capsys, monkeypatch
 ):
@@ -316,6 +317,8 @@ def test_cli_release_classify_outputs_per_contract_required_bump(
             str(base_path),
             "--candidate",
             str(candidate_path),
+            "--effective-date",
+            TEST_EFFECTIVE_DATE,
         ],
     )
 
@@ -365,6 +368,8 @@ def test_cli_release_prepare_outputs_promoted_contract(
             "orders/v1.2.0",
             "--output",
             str(output_path),
+            "--effective-date",
+            TEST_EFFECTIVE_DATE,
         ],
     )
 
@@ -405,6 +410,8 @@ def test_cli_release_classify_repo_outputs_per_contract_results(
             str(base_root),
             "--candidate-root",
             str(candidate_root),
+            "--effective-date",
+            TEST_EFFECTIVE_DATE,
         ],
     )
 
@@ -441,6 +448,7 @@ def test_cli_release_create_prs_outputs_batch_payload(
                     "release_tag": "orders/v1.1.1",
                     "source_branch": "release/orders-v1.1.1",
                     "target_branch": "release",
+                    "effective_date": TEST_EFFECTIVE_DATE,
                 }
             ]
         ),
@@ -508,6 +516,7 @@ def test_cli_release_create_prs_outputs_batch_payload(
     assert exit_code == 0
     assert payload["results"][0]["pullRequest"]["pullRequestId"] == 88
     assert payload["tasks"][0]["release_tag"] == "orders/v1.1.1"
+    assert payload["tasks"][0]["effective_date"] == TEST_EFFECTIVE_DATE
 
     # Verify that CLI arguments overrode the config fallbacks
     assert type(captured_kwargs["config"]).__name__ == "AzureDevOpsConfig"
@@ -540,6 +549,7 @@ def test_cli_release_create_prs_uses_config_fallback(
                     "release_tag": "orders/v1.1.1",
                     "source_branch": "release/orders-v1.1.1",
                     "target_branch": "release",
+                    "effective_date": TEST_EFFECTIVE_DATE,
                 }
             ]
         ),
@@ -601,7 +611,6 @@ def test_cli_release_create_prs_uses_config_fallback(
     assert captured_kwargs["config"].token == "fallback-token"
 
 
-
 def test_cli_release_build_manifest_writes_json_array_and_summary(
     sample_odcs_model, tmp_path, capsys, monkeypatch
 ):
@@ -642,6 +651,8 @@ def test_cli_release_build_manifest_writes_json_array_and_summary(
             str(candidate_root),
             "--output",
             str(output_path),
+            "--effective-date",
+            TEST_EFFECTIVE_DATE,
         ],
     )
 
@@ -652,5 +663,7 @@ def test_cli_release_build_manifest_writes_json_array_and_summary(
     assert exit_code == 0
     assert payload["output"] == str(output_path.resolve())
     assert payload["tasks"][0]["contract_path"] == "payments.yaml"
+    assert payload["tasks"][0]["effective_date"] == TEST_EFFECTIVE_DATE
     assert payload["skipped"][0]["contract_repo_path"] == "orders.yaml"
     assert manifest[0]["release_tag"].endswith("/v1.2.0")
+    assert manifest[0]["effective_date"] == TEST_EFFECTIVE_DATE

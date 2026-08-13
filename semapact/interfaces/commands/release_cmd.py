@@ -2,14 +2,17 @@ import argparse
 import json
 from pathlib import Path
 from typing import Any
-from semapact.interfaces.commands.utils import _build_git_config, _get_repo_path
+from semapact.interfaces.commands.utils import (
+    _build_git_config,
+    _get_repo_path,
+)
+from semapact.services import GovernanceService
 
 def run_release_classify(args: argparse.Namespace) -> dict[str, Any]:
     from semapact.core.loader import ContractLoader
     from semapact.core.release import suggest_release_version
     from semapact.governance import (
         GovernanceOperation,
-        evaluate_governance_decision,
         evaluate_governance_gate,
     )
 
@@ -17,7 +20,11 @@ def run_release_classify(args: argparse.Namespace) -> dict[str, Any]:
     base_contract = loader.load(args.base)
     candidate_contract = loader.load(args.candidate)
 
-    decision = evaluate_governance_decision(base_contract, candidate_contract)
+    decision = GovernanceService().evaluate(
+        base_contract,
+        candidate_contract,
+        effective_date=args.effective_date,
+    )
     evaluate_governance_gate(decision, GovernanceOperation.ANALYZE)
 
     from dataclasses import asdict
@@ -49,7 +56,6 @@ def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
     from semapact.governance import (
         GovernanceOperation,
         enforce_governance_gate,
-        evaluate_governance_decision,
     )
     from semapact.utils.schema_utils import contract_to_dict
     from semapact.utils.yaml_utils import dump_yaml
@@ -58,7 +64,11 @@ def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
     base_contract = loader.load(args.base)
     candidate_contract = loader.load(args.candidate)
 
-    decision = evaluate_governance_decision(base_contract, candidate_contract)
+    decision = GovernanceService().evaluate(
+        base_contract,
+        candidate_contract,
+        effective_date=args.effective_date,
+    )
     enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
     result = apply_release_candidate(
@@ -87,9 +97,11 @@ def run_release_classify_repo(args: argparse.Namespace) -> dict[str, Any]:
         repository_change_to_dict,
     )
 
+    change_context = GovernanceService.create_context(args.effective_date)
     results = classify_contracts_in_repo(
         base_root=args.base_root,
         candidate_root=args.candidate_root,
+        context=change_context,
     )
     return {
         "contracts": [repository_change_to_dict(item) for item in results],
@@ -102,9 +114,11 @@ def run_release_build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         batch_manifest_build_to_dict,
     )
 
+    change_context = GovernanceService.create_context(args.effective_date)
     build = build_batch_release_manifest(
         base_root=args.base_root,
         candidate_root=args.candidate_root,
+        context=change_context,
         target_branch=args.target_branch,
         source_branch_prefix=args.source_branch_prefix,
     )
@@ -127,6 +141,7 @@ def run_release_create_pr(args: argparse.Namespace) -> dict[str, Any]:
     loader = ContractLoader(runtime_context=args.runtime_context)
     base_contract = loader.load(args.base)
     candidate_contract = loader.load(args.candidate)
+    change_context = GovernanceService.create_context(args.effective_date)
 
     config = _build_git_config(args)
     payload = create_release_pull_request(
@@ -138,6 +153,7 @@ def run_release_create_pr(args: argparse.Namespace) -> dict[str, Any]:
         release_tag=args.release_tag,
         source_branch=args.source_branch,
         target_branch=args.target_branch,
+        context=change_context,
         title=args.title,
         description=args.description,
         commit_message=args.commit_message,
