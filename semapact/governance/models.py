@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from semapact.core.release import RequiredBump
+from semapact.governance_codes import GovernanceReasonCode, GovernanceSeverity
 from semapact.lifecycle.policy import BreakingChange
 
 
@@ -35,9 +37,11 @@ class GovernanceModel(BaseModel):
 class GovernanceReason(GovernanceModel):
     """Structured, machine-readable reason for a governance decision."""
 
-    code: str
+    code: GovernanceReasonCode
     message: str
     path: str | None = None
+    severity: GovernanceSeverity
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class ValidationOutcome(GovernanceModel):

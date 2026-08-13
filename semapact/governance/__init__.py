@@ -1,5 +1,11 @@
 """SemaPact Governance Kernel package."""
 
+from semapact.governance_codes import (
+    GOVERNANCE_REASON_REGISTRY,
+    GovernanceReasonCode,
+    GovernanceReasonDefinition,
+    GovernanceSeverity,
+)
 from semapact.governance.models import (
     ChangeEvidence,
     DecisionResult,
@@ -19,6 +25,10 @@ from semapact.governance.gate import (
 
 __all__ = [
     "DecisionResult",
+    "GovernanceReasonCode",
+    "GovernanceSeverity",
+    "GovernanceReasonDefinition",
+    "GOVERNANCE_REASON_REGISTRY",
     "GovernanceReason",
     "ValidationOutcome",
     "PolicyOutcome",

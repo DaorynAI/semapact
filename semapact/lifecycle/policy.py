@@ -10,6 +10,7 @@ from open_data_contract_standard.model import (
     SchemaObject,
     SchemaProperty,
 )
+from semapact.governance_codes import GovernanceReasonCode
 from semapact.lifecycle.helpers import (
     decimal_precision_reduction,
     decimal_scale_reduction,
@@ -32,6 +33,7 @@ LOGGER = logging.getLogger(__name__)
 class BreakingChange:
     """Detected breaking change in lifecycle evaluation."""
 
+    code: GovernanceReasonCode
     path: str
     message: str
 
@@ -65,6 +67,7 @@ def evaluate_merge_policy(
         )
         breaks.append(
             BreakingChange(
+                code=GovernanceReasonCode.CONTRACT_ID_CHANGED,
                 path="id",
                 message="Contract ID mismatch. You changed the root ID of the contract, which is immutable. If you want to create a new contract, use 'semapact import --new' or change the ID back.",
             )
@@ -77,6 +80,7 @@ def evaluate_merge_policy(
         )
         breaks.append(
             BreakingChange(
+                code=GovernanceReasonCode.CONTRACT_VERSION_MANUALLY_CHANGED,
                 path="version",
                 message="Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change and use 'semapact release prepare'.",
             )
@@ -101,6 +105,7 @@ def evaluate_merge_policy(
         if target_schema is None:
             breaks.append(
                 BreakingChange(
+                    code=GovernanceReasonCode.SCHEMA_REMOVED,
                     path=f"schema[{schema_key}]",
                     message="Schema removed from active contract",
                 )
@@ -116,6 +121,7 @@ def evaluate_merge_policy(
             if rel_hash not in target_rels:
                 breaks.append(
                     BreakingChange(
+                        code=GovernanceReasonCode.RELATIONSHIP_REMOVED,
                         path=f"schema[{schema_key}].relationships",
                         message=f"Relationship '{rel_hash}' removed from active lifecycle scope. Downstream joins may fail.",
                     )
@@ -127,6 +133,7 @@ def evaluate_merge_policy(
                 prop_name = prop_key[1]  # (schema_id, prop_id) -> prop_id
                 breaks.append(
                     BreakingChange(
+                        code=GovernanceReasonCode.PROPERTY_REMOVED,
                         path=f"schema[{schema_key}].properties[{prop_name}]",
                         message="Property removed from active lifecycle scope",
                     )
@@ -210,6 +217,7 @@ def _property_breaking_changes(
     ):
         breaks.append(
             BreakingChange(
+                code=GovernanceReasonCode.LOGICAL_TYPE_CHANGED,
                 path=f"{path}.logicalType",
                 message=f"Logical type changed from {base_logical!r} to {target_logical!r}",
             )
@@ -221,18 +229,27 @@ def _property_breaking_changes(
     if _is_physical_type_narrowing(base_physical, target_physical):
         breaks.append(
             BreakingChange(
+                code=GovernanceReasonCode.PHYSICAL_TYPE_NARROWED,
                 path=f"{path}.physicalType",
                 message=f"Physical type narrowed from {base_physical!r} to {target_physical!r}",
             )
         )
 
-    if decimal_precision_reduction(
-        target_physical, base_physical
-    ) or decimal_scale_reduction(target_physical, base_physical):
+    if decimal_precision_reduction(target_physical, base_physical):
         breaks.append(
             BreakingChange(
+                code=GovernanceReasonCode.DECIMAL_PRECISION_REDUCED,
                 path=f"{path}.physicalType",
-                message=f"Decimal precision/scale reduced from {base_physical!r} to {target_physical!r}",
+                message=f"Decimal precision reduced from {base_physical!r} to {target_physical!r}",
+            )
+        )
+
+    if decimal_scale_reduction(target_physical, base_physical):
+        breaks.append(
+            BreakingChange(
+                code=GovernanceReasonCode.DECIMAL_SCALE_REDUCED,
+                path=f"{path}.physicalType",
+                message=f"Decimal scale reduced from {base_physical!r} to {target_physical!r}",
             )
         )
 
@@ -241,6 +258,7 @@ def _property_breaking_changes(
     if base_required is False and target_required is True:
         breaks.append(
             BreakingChange(
+                code=GovernanceReasonCode.REQUIRED_TIGHTENED,
                 path=f"{path}.required",
                 message="Required flag tightened from False to True",
             )
@@ -249,6 +267,7 @@ def _property_breaking_changes(
     if _is_enum_value_reduction(base_prop, target_prop):
         breaks.append(
             BreakingChange(
+                code=GovernanceReasonCode.ENUM_VALUES_REMOVED,
                 path=f"{path}.enum",
                 message="Enum values reduced",
             )

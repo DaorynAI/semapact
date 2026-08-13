@@ -16,6 +16,8 @@ from semapact.governance import (
     DecisionResult,
     GovernanceDecision,
     GovernanceReason,
+    GovernanceReasonCode,
+    GovernanceSeverity,
     evaluate_governance_decision,
 )
 from semapact.governance.models import ChangeEvidence, PolicyOutcome, ValidationOutcome
@@ -118,7 +120,7 @@ def test_governance_decision_review_for_major_breaking_change():
     assert decision.required_version_bump == "major"
     assert decision.breaking is True
     assert decision.policy.valid is False  # breaking changes present
-    assert any(r.code == "POLICY_BREAKING_CHANGE" for r in decision.reasons)
+    assert any(r.code == GovernanceReasonCode.PROPERTY_REMOVED for r in decision.reasons)
 
 
 def test_governance_decision_block_for_root_id_mismatch():
@@ -130,7 +132,7 @@ def test_governance_decision_block_for_root_id_mismatch():
 
     assert decision.decision == DecisionResult.BLOCK
     assert decision.policy.id_violation is True
-    assert any(r.code == "CONTRACT_ID_MISMATCH" for r in decision.reasons)
+    assert any(r.code == GovernanceReasonCode.CONTRACT_ID_CHANGED for r in decision.reasons)
 
 
 def test_governance_decision_block_for_root_version_mismatch():
@@ -142,7 +144,10 @@ def test_governance_decision_block_for_root_version_mismatch():
 
     assert decision.decision == DecisionResult.BLOCK
     assert decision.policy.version_violation is True
-    assert any(r.code == "CONTRACT_VERSION_MISMATCH" for r in decision.reasons)
+    assert any(
+        r.code == GovernanceReasonCode.CONTRACT_VERSION_MANUALLY_CHANGED
+        for r in decision.reasons
+    )
 
 
 def test_governance_decision_retired_mutation_blocks():
@@ -157,7 +162,10 @@ def test_governance_decision_retired_mutation_blocks():
 
     assert decision.decision == DecisionResult.BLOCK
     assert decision.policy.retired_violation is True
-    assert any(r.code == "CONTRACT_RETIRED_MUTATION" for r in decision.reasons)
+    assert any(
+        r.code == GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED
+        for r in decision.reasons
+    )
 
 
 def test_governance_decision_retired_unchanged_allows():
@@ -179,7 +187,10 @@ def test_governance_decision_retired_transition_reviews():
     decision = evaluate_governance_decision(base, candidate)
 
     assert decision.decision == DecisionResult.REVIEW
-    assert any(r.code == "CONTRACT_RETIRED_TRANSITION" for r in decision.reasons)
+    assert any(
+        r.code == GovernanceReasonCode.CONTRACT_RETIRED_TRANSITION
+        for r in decision.reasons
+    )
 
 
 def test_governance_decision_block_for_invalid_validation():
@@ -194,7 +205,7 @@ def test_governance_decision_block_for_invalid_validation():
 
     assert decision.decision == DecisionResult.BLOCK
     assert decision.validation.valid is False
-    assert any(r.code == "VALIDATION_ERROR" for r in decision.reasons)
+    assert any(r.code == GovernanceReasonCode.VALIDATION_FAILED for r in decision.reasons)
 
 
 def test_governance_decision_review_for_merge_conflicts():
@@ -202,14 +213,25 @@ def test_governance_decision_review_for_merge_conflicts():
     base = _make_contract()
     candidate = _make_contract()
     conflicts = [
-        MergeConflict(schema_id="orders", property_name="amount", message="Data type conflict")
+        MergeConflict(
+            schema_id="orders",
+            property_name="amount",
+            rule="physicalType",
+            message="Data type conflict",
+        )
     ]
 
     decision = evaluate_governance_decision(base, candidate, merge_conflicts=conflicts)
 
     assert decision.decision == DecisionResult.REVIEW
     assert decision.evidence.merge_conflicts_count == 1
-    assert any(r.code == "MERGE_CONFLICT" for r in decision.reasons)
+    reason = next(r for r in decision.reasons if r.code == GovernanceReasonCode.MERGE_CONFLICT)
+    assert reason.severity == GovernanceSeverity.WARNING
+    assert reason.details == {
+        "rule": "physicalType",
+        "schema_id": "orders",
+        "property_name": "amount",
+    }
 
 
 def test_governance_decision_allow_invariants_validator():
@@ -258,10 +280,19 @@ def test_governance_decision_allow_invariants_validator():
 
 
 def test_pydantic_model_strictness_and_extra_forbidden():
-    """Pydantic model enforces strict types, forbidden extra fields, and immutability."""
+    """Pydantic model enforces registered codes, strict types, extras, and immutability."""
     # Extra field forbidden
     with pytest.raises(PydanticValidationError):
-        GovernanceReason(code="CODE", message="msg", extra_field="bad")
+        GovernanceReason(
+            code=GovernanceReasonCode.MERGE_CONFLICT,
+            message="msg",
+            severity=GovernanceSeverity.WARNING,
+            extra_field="bad",
+        )
+
+    # Unknown reason codes are not silently mapped to existing semantics.
+    with pytest.raises(PydanticValidationError):
+        GovernanceReason(code="UNKNOWN_CODE", message="msg", severity="ERROR")
 
     # Strict bool type (string 'true' rejected)
     with pytest.raises(PydanticValidationError):
@@ -272,9 +303,13 @@ def test_pydantic_model_strictness_and_extra_forbidden():
         ChangeEvidence(has_changes=True, merge_conflicts_count=-1)
 
     # Immutability (frozen)
-    reason = GovernanceReason(code="CODE", message="msg")
+    reason = GovernanceReason(
+        code=GovernanceReasonCode.MERGE_CONFLICT,
+        message="msg",
+        severity=GovernanceSeverity.WARNING,
+    )
     with pytest.raises(PydanticValidationError):
-        reason.code = "NEW_CODE"  # type: ignore
+        reason.code = GovernanceReasonCode.VALIDATION_FAILED  # type: ignore
 
 
 def test_governance_decision_serialization_and_deserialization():
@@ -292,6 +327,7 @@ def test_governance_decision_serialization_and_deserialization():
     assert decision == reconstructed
     assert reconstructed.decision == DecisionResult.REVIEW
     assert reconstructed.required_version_bump == "minor"
+    assert all(isinstance(reason["code"], str) for reason in dumped_json["reasons"])
 
 
 def test_governance_decision_input_immutability():

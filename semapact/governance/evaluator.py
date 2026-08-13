@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from typing import Sequence
+from typing import Any, Sequence
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
@@ -20,6 +20,7 @@ from semapact.governance.models import (
     PolicyOutcome,
     ValidationOutcome,
 )
+from semapact.governance_codes import GovernanceReasonCode, reason_severity
 from semapact.lifecycle.helpers import normalize_status
 from semapact.lifecycle.merge_engine import MergeConflict
 from semapact.lifecycle.identity import validate_contract_identities
@@ -55,7 +56,6 @@ def evaluate_governance_decision(
         policy_outcome=policy_outcome,
         change_assessment=change_assessment,
         merge_conflicts=merge_conflicts,
-        retired_transition=retired_transition,
     )
 
     # 4. Decision mapping
@@ -94,6 +94,23 @@ def evaluate_governance_decision(
     )
 
 
+def _reason(
+    code: GovernanceReasonCode,
+    message: str,
+    *,
+    path: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> GovernanceReason:
+    """Build a reason using canonical registry severity and explicit evidence."""
+    return GovernanceReason(
+        code=code,
+        message=message,
+        path=path,
+        severity=reason_severity(code),
+        details=details or {},
+    )
+
+
 def _build_validation_outcome(candidate_contract: OpenDataContractStandard) -> ValidationOutcome:
     """Evaluate schema and field validation using ContractValidator and identity validation."""
     val_issues: list[GovernanceReason] = []
@@ -103,11 +120,21 @@ def _build_validation_outcome(candidate_contract: OpenDataContractStandard) -> V
         val_report = ContractValidator().validate(candidate_contract)
         for issue in val_report.issues:
             val_issues.append(
-                GovernanceReason(code="VALIDATION_ERROR", message=issue.message, path=issue.path)
+                _reason(
+                    GovernanceReasonCode.VALIDATION_FAILED,
+                    issue.message,
+                    path=issue.path,
+                )
             )
         valid = val_report.valid and not bool(val_issues)
     except ValidationError as exc:
-        val_issues.append(GovernanceReason(code="VALIDATION_ERROR", message=str(exc), path="schema"))
+        val_issues.append(
+            _reason(
+                GovernanceReasonCode.VALIDATION_FAILED,
+                str(exc),
+                path="schema",
+            )
+        )
         valid = False
 
     return ValidationOutcome(valid=valid, issues=tuple(val_issues))
@@ -138,45 +165,25 @@ def _build_policy_outcome(
     retired_mutation = base_status == "retired" and change_assessment.has_changes
     retired_transition = base_status != "retired" and candidate_status == "retired"
 
-    policy_violations: list[GovernanceReason] = []
-    if policy_eval.id_violation:
-        policy_violations.append(
-            GovernanceReason(
-                code="CONTRACT_ID_MISMATCH",
-                message="Contract ID mismatch: root ID is immutable.",
-                path="id",
-            )
-        )
-    if policy_eval.version_violation:
-        policy_violations.append(
-            GovernanceReason(
-                code="CONTRACT_VERSION_MISMATCH",
-                message="Contract version mismatch: contract versions are release-managed.",
-                path="version",
-            )
-        )
+    policy_violations: list[GovernanceReason] = [
+        _reason(b.code, b.message, path=b.path)
+        for b in policy_eval.breaking_changes
+    ]
+
     if retired_mutation:
         policy_violations.append(
-            GovernanceReason(
-                code="CONTRACT_RETIRED_MUTATION",
-                message="Cannot modify a retired contract.",
+            _reason(
+                GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED,
+                "Cannot modify a retired contract.",
                 path="status",
             )
         )
     if retired_transition:
         policy_violations.append(
-            GovernanceReason(
-                code="CONTRACT_RETIRED_TRANSITION",
-                message="Contract transition to retired status requires governance review.",
+            _reason(
+                GovernanceReasonCode.CONTRACT_RETIRED_TRANSITION,
+                "Contract transition to retired status requires governance review.",
                 path="status",
-            )
-        )
-    for b in policy_eval.breaking_changes:
-        policy_violations.append(
-            GovernanceReason(
-                code="POLICY_BREAKING_CHANGE",
-                message=b.message,
-                path=b.path,
             )
         )
 
@@ -197,7 +204,6 @@ def _aggregate_reasons(
     policy_outcome: PolicyOutcome,
     change_assessment: ContractChangeAssessment,
     merge_conflicts: Sequence[MergeConflict],
-    retired_transition: bool,
 ) -> tuple[GovernanceReason, ...]:
     """Aggregate, deduplicate, and deterministically sort all governance reasons."""
     raw_reasons: list[GovernanceReason] = []
@@ -208,20 +214,32 @@ def _aggregate_reasons(
         path = c.path
         if not path and (c.schema_id or c.property_name):
             path = f"{c.schema_id or ''}.{c.property_name or ''}".strip(".")
+        details = {
+            key: value
+            for key, value in (
+                ("rule", c.rule),
+                ("schema_id", c.schema_id),
+                ("property_name", c.property_name),
+            )
+            if value is not None
+        }
         raw_reasons.append(
-            GovernanceReason(
-                code="MERGE_CONFLICT",
-                message=c.message or "Metadata merge conflict",
+            _reason(
+                GovernanceReasonCode.MERGE_CONFLICT,
+                c.message or "Metadata merge conflict",
                 path=path,
+                details=details,
             )
         )
 
     for r_str in change_assessment.reasons:
-        raw_reasons.append(GovernanceReason(code="CHANGE_ASSESSMENT", message=r_str))
+        raw_reasons.append(
+            _reason(GovernanceReasonCode.CHANGE_ASSESSMENT, r_str)
+        )
 
     dedup_map: dict[tuple[str, str, str], GovernanceReason] = {}
     for r in raw_reasons:
-        key = (r.code, r.path or "", r.message)
+        key = (r.code.value, r.path or "", r.message)
         if key not in dedup_map:
             dedup_map[key] = r
 
@@ -285,7 +303,7 @@ def _generate_decision_id(
     conflict_paths = sorted(
         [c.path or f"{c.schema_id or ''}.{c.property_name or ''}" for c in merge_conflicts if c.path or c.schema_id or c.property_name]
     )
-    reason_codes = sorted([(r.code, r.path or "") for r in reasons])
+    reason_codes = sorted([(r.code.value, r.path or "") for r in reasons])
 
     payload = {
         "alg": "v1",
