@@ -13,6 +13,8 @@ from semapact.governance import (
     GovernanceGateResult,
     GovernanceOperation,
     GovernanceReason,
+    GovernanceReasonCode,
+    GovernanceSeverity,
     PolicyOutcome,
     ValidationOutcome,
     enforce_governance_gate,
@@ -30,9 +32,21 @@ def _make_decision(result: DecisionResult) -> GovernanceDecision:
 
     reasons: list[GovernanceReason] = []
     if result == DecisionResult.BLOCK:
-        reasons.append(GovernanceReason(code="VALIDATION_ERROR", message="Invalid schema"))
+        reasons.append(
+            GovernanceReason(
+                code=GovernanceReasonCode.VALIDATION_FAILED,
+                message="Invalid schema",
+                severity=GovernanceSeverity.ERROR,
+            )
+        )
     elif result == DecisionResult.REVIEW:
-        reasons.append(GovernanceReason(code="POLICY_BREAKING_CHANGE", message="Additive change"))
+        reasons.append(
+            GovernanceReason(
+                code=GovernanceReasonCode.CHANGE_ASSESSMENT,
+                message="Additive change",
+                severity=GovernanceSeverity.INFO,
+            )
+        )
 
     return GovernanceDecision(
         decision_id="dec-123",
