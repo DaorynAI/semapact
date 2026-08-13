@@ -330,10 +330,18 @@ def test_merge_engine_rejects_retired_contract_modification():
     )
 
     result = ContractMergeEngine().merge(base_contract=source, business_contract=existing)
-    from semapact.governance import evaluate_governance_decision, DecisionResult
+    from semapact.governance import (
+        DecisionResult,
+        GovernanceReasonCode,
+        evaluate_governance_decision,
+    )
+
     decision = evaluate_governance_decision(existing, result.contract, merge_conflicts=result.conflicts)
     assert decision.decision == DecisionResult.BLOCK
-    assert any(r.code == "CONTRACT_RETIRED_MUTATION" for r in decision.reasons)
+    assert any(
+        r.code == GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED
+        for r in decision.reasons
+    )
 
 
 def test_merge_engine_hard_overwrites_relationships(
