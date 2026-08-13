@@ -7,6 +7,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from semapact.core.release import RequiredBump
+from semapact.lifecycle.policy import BreakingChange
 
 
 class DecisionResult(str, Enum):
@@ -17,7 +18,7 @@ class DecisionResult(str, Enum):
     REVIEW = "REVIEW"
 
 
-class _FrozenGovernanceModel(BaseModel):
+class GovernanceModel(BaseModel):
     """Shared base for all immutable governance models.
 
     Enforces frozen=True (immutability) and extra="forbid" (no undeclared fields).
@@ -31,7 +32,7 @@ class _FrozenGovernanceModel(BaseModel):
     )
 
 
-class GovernanceReason(_FrozenGovernanceModel):
+class GovernanceReason(GovernanceModel):
     """Structured, machine-readable reason for a governance decision."""
 
     code: str
@@ -39,14 +40,14 @@ class GovernanceReason(_FrozenGovernanceModel):
     path: str | None = None
 
 
-class ValidationOutcome(_FrozenGovernanceModel):
+class ValidationOutcome(GovernanceModel):
     """Outcome of contract schema and quality validation."""
 
     valid: bool = Field(strict=True)
     issues: tuple[GovernanceReason, ...] = ()
 
 
-class PolicyOutcome(_FrozenGovernanceModel):
+class PolicyOutcome(GovernanceModel):
     """Outcome of lifecycle policy evaluation."""
 
     valid: bool = Field(strict=True)
@@ -54,16 +55,17 @@ class PolicyOutcome(_FrozenGovernanceModel):
     version_violation: bool = Field(default=False, strict=True)
     retired_violation: bool = Field(default=False, strict=True)
     violations: tuple[GovernanceReason, ...] = ()
+    breaking_changes: tuple[BreakingChange, ...] = ()
 
 
-class ChangeEvidence(_FrozenGovernanceModel):
+class ChangeEvidence(GovernanceModel):
     """Evidence summarizing contract changes and merge conflicts."""
 
     has_changes: bool = Field(default=False, strict=True)
     merge_conflicts_count: int = Field(default=0, ge=0, strict=True)
 
 
-class GovernanceDecision(_FrozenGovernanceModel):
+class GovernanceDecision(GovernanceModel):
     """Authoritative, deterministic governance decision for a contract change."""
 
     decision_id: str

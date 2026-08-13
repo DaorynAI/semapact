@@ -21,6 +21,8 @@ from semapact.lifecycle.identity import (
     build_property_index,
 )
 
+from semapact.exceptions import MergeConflictError
+
 LOGGER = logging.getLogger(__name__)
 
 BUSINESS_METADATA_KEYS = {
@@ -66,12 +68,6 @@ SCHEMA_OBJECT_OVERWRITE_FIELDS: tuple[str, ...] = (
     "description",
 )
 OdcModel = OpenDataContractStandard
-
-
-class MergeConflictError(Exception):
-    """Raised when a fatal conflict prevents any merge attempt (e.g., retired contract)."""
-
-    pass
 
 
 @dataclass(slots=True)
@@ -123,9 +119,14 @@ class ContractMergeEngine:
             target_model.version,
         )
 
+        # Note: retired-contract mutation is detected by evaluate_governance_decision()
+        # which produces a BLOCK decision via CONTRACT_RETIRED_MUTATION policy violation.
+        # Do NOT raise here — that would bypass the centralized governance gate.
         if _is_retired_contract(target_model):
-            LOGGER.error("Merge failed: contract %s is retired", target_model.id)
-            raise MergeConflictError("Retired contract cannot be modified")
+            LOGGER.warning(
+                "Merging into retired contract %s; governance evaluator will BLOCK.",
+                target_model.id,
+            )
 
         return self._analyze_merge(target_model=target_model, source_model=source_model)
 
@@ -142,7 +143,6 @@ class ContractMergeEngine:
         analysis = self.analyze(source_model, target_model)
         if fail_on_conflict and analysis.conflicts:
             rules = ", ".join({c.rule for c in analysis.conflicts if c.rule})
-            from semapact.exceptions import MergeConflictError
 
             raise MergeConflictError(f"Merge conflicts detected: {rules}")
 

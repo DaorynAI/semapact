@@ -4,6 +4,11 @@ from pathlib import Path
 from typing import Any
 
 from semapact.core.plugin_registry import PluginRegistry
+from semapact.governance import (
+    GovernanceOperation,
+    enforce_governance_gate,
+    evaluate_governance_decision,
+)
 from semapact.interfaces.commands.utils import _resolve_adls_oauth_token_from_config, _parse_table_uris
 
 def run_import(args: argparse.Namespace) -> Path:
@@ -69,22 +74,28 @@ def run_import(args: argparse.Namespace) -> Path:
         )
 
     if existing_contract is not None:
-        contract = (
-            ContractMergeEngine()
-            .merge(
-                base_contract=contract,
-                business_contract=existing_contract,
-            )
-            .contract
+        merge_result = ContractMergeEngine().merge(
+            base_contract=contract,
+            business_contract=existing_contract,
         )
+        contract = merge_result.contract
+        decision = evaluate_governance_decision(
+            existing_contract,
+            contract,
+            merge_conflicts=merge_result.conflicts,
+        )
+        enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
 
-    # Allow plugins to redirect output routing before write
+    # Allow plugins to redirect output routing before write (only executed after gate passes).
+    # Pass deepcopy of contract so post-gate hooks cannot mutate the validated contract.
+    from copy import deepcopy
+
     hook_result = PluginRegistry.execute_hook(
         "on_import_complete",
-        contract=contract,
+        contract=deepcopy(contract),
         format=args.format,
         source=args.source,
-        args=args
+        args=args,
     )
 
     output_path = hook_result if hook_result else args.output

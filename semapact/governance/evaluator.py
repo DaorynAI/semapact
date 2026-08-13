@@ -186,6 +186,7 @@ def _build_policy_outcome(
         version_violation=policy_eval.version_violation,
         retired_violation=retired_mutation,
         violations=tuple(policy_violations),
+        breaking_changes=tuple(policy_eval.breaking_changes),
     )
 
     return policy_outcome, change_assessment, retired_transition

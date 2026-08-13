@@ -6,7 +6,12 @@ in automated GitOps pipelines and programmatic API usage.
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from semapact.governance.gate import GovernanceOperation
+    from semapact.governance.models import GovernanceDecision
 
 
 class SemaPactError(Exception):
@@ -45,10 +50,27 @@ class GovernanceBlockedError(SemaPactError):
     def __init__(
         self,
         message: str,
-        decision: Any = None,
-        manifest_path: Any | None = None,
+        decision: GovernanceDecision | None = None,
+        operation: GovernanceOperation | None = None,
+        manifest_path: Path | str | None = None,
     ) -> None:
         super().__init__(message)
         self.decision = decision
+        self.operation = operation
         self.manifest_path = manifest_path
 
+
+class GovernanceReviewRequiredError(SemaPactError):
+    """Raised when a pipeline run or contract change requires human review before proceeding."""
+
+    def __init__(
+        self,
+        message: str,
+        decision: GovernanceDecision | None = None,
+        operation: GovernanceOperation | None = None,
+        manifest_path: Path | str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.decision = decision
+        self.operation = operation
+        self.manifest_path = manifest_path

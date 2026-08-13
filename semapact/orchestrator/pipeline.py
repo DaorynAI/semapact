@@ -25,17 +25,17 @@ from open_data_contract_standard.model import OpenDataContractStandard
 
 from datacontract.data_contract import DataContract
 
-from semapact.exceptions import GovernanceBlockedError
 from semapact.governance import (
-    DecisionResult,
     GovernanceDecision,
+    GovernanceOperation,
+    enforce_governance_gate,
     evaluate_governance_decision,
 )
 from semapact.importers.unity_importer import import_unity_contract
 from semapact.core.loader import ContractLoader, RuntimeContext
 from semapact.core.validator import ContractValidator, ValidationReport
 from semapact.devops.audit import AuditMetadata
-from semapact.lifecycle.merge_engine import ContractMergeEngine, MergeConflict, MergeConflictError, MergeResult
+from semapact.lifecycle.merge_engine import ContractMergeEngine, MergeConflict, MergeResult
 from semapact.lifecycle.policy import PolicyEvaluation, evaluate_merge_policy
 from semapact.quality.ge_exporter import GreatExpectationsExporter
 from semapact.utils.schema_utils import contract_to_dict
@@ -218,6 +218,13 @@ class ContractPipeline:
         if not isinstance(decision, GovernanceDecision):
             raise TypeError(f"prepare_ci_cd_artifacts requires GovernanceDecision, got {type(decision).__name__}")
 
+        # Enforce CI gate before writing any side-effect artifacts
+        enforce_governance_gate(
+            decision,
+            GovernanceOperation.CI,
+            manifest_path=ci_manifest_output_path,
+        )
+
         merged_contract_path = dump_yaml(
             contract_to_dict(merged_contract), merged_contract_output_path
         )
@@ -258,7 +265,6 @@ class ContractPipeline:
         merged_contract_output_path: str,
         ge_suite_output_path: str,
         ci_manifest_output_path: str,
-        fail_on_conflict: bool = False,
         uc_workspace_url: str | None = None,
         uc_token: str | None = None,
         ge_schema_name: str = "all",
@@ -275,19 +281,13 @@ class ContractPipeline:
         business_contract = self.loader.load(business_contract_path)
 
         # Merge updates with fail_on_conflict=False so governance decision evaluates all conflicts and changes
-        conflicts: Sequence[MergeConflict]
-        try:
-            merge_result = self.merge_contract_updates(
-                imported_contract,
-                business_contract,
-                fail_on_conflict=False,
-            )
-            merged_contract = merge_result.contract
-            conflicts = merge_result.conflicts
-        except MergeConflictError:
-            merged_contract = imported_contract
-            conflicts = []
-            merge_result = MergeResult(contract=imported_contract, conflicts=[])
+        merge_result = self.merge_contract_updates(
+            imported_contract,
+            business_contract,
+            fail_on_conflict=False,
+        )
+        merged_contract = merge_result.contract
+        conflicts = merge_result.conflicts
 
         if merged_contract is None:
             raise ValueError("Merge did not produce a contract")
@@ -299,34 +299,16 @@ class ContractPipeline:
             merge_conflicts=conflicts,
         )
 
-        # BLOCK Decision: Write decision-only manifest FIRST, skipping GE/YAML export, then raise GovernanceBlockedError
-        if decision.decision == DecisionResult.BLOCK:
-            manifest_path = write_decision_manifest(
-                decision,
-                ci_manifest_output_path,
-                audit_metadata=audit_metadata,
-                merge_conflicts=merge_result.conflicts,
-            )
-            reasons_text = "; ".join(f"{r.path or 'root'}: {r.message}" for r in decision.reasons) or "Governance decision BLOCKED"
-            raise GovernanceBlockedError(
-                f"Governance decision BLOCKED: {reasons_text}",
-                decision=decision,
-                manifest_path=manifest_path,
-            )
+        # Write decision-only manifest FIRST as audit output before gate enforcement
+        manifest_path = write_decision_manifest(
+            decision,
+            ci_manifest_output_path,
+            audit_metadata=audit_metadata,
+            merge_conflicts=merge_result.conflicts,
+        )
 
-        # Handle fail_on_conflict: Write decision manifest FIRST, then raise ValueError
-        if merge_result.conflicts and fail_on_conflict:
-            write_decision_manifest(
-                decision,
-                ci_manifest_output_path,
-                audit_metadata=audit_metadata,
-                merge_conflicts=merge_result.conflicts,
-            )
-            message = "; ".join(
-                f"{c.schema_id}.{c.property_name}: {c.message}"
-                for c in merge_result.conflicts
-            )
-            raise ValueError(f"Merge conflicts detected: {message}")
+        # Centralized gate enforcement for CI operation (raises GovernanceBlockedError or GovernanceReviewRequiredError)
+        enforce_governance_gate(decision, GovernanceOperation.CI, manifest_path=manifest_path)
 
         # ALLOW or REVIEW: Write artifacts and manifest
         artifacts = self.prepare_ci_cd_artifacts(

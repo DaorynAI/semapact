@@ -1,10 +1,14 @@
 import argparse
 from typing import Any
+from semapact.governance import (
+    GovernanceOperation,
+    evaluate_governance_decision,
+    evaluate_governance_gate,
+)
 from semapact.interfaces.commands.utils import _resolve_adls_oauth_token_from_config, _parse_table_uris
 
 def run_plan(args: argparse.Namespace) -> None:
     from semapact.orchestrator.pipeline import ContractPipeline
-    from semapact.core.release import classify_contract_change
 
     pipeline = ContractPipeline()
 
@@ -44,7 +48,7 @@ def run_plan(args: argparse.Namespace) -> None:
             import_args=import_args if import_args else None,
         )
 
-        # Load base contract
+        # Load base contract (governed target)
         base_contract = pipeline.loader.load(args.base)
 
         # Merge them (to normalize and evaluate breaks)
@@ -53,31 +57,26 @@ def run_plan(args: argparse.Namespace) -> None:
         )
         merged = merge_result.contract
 
-        # Classify the change
-        assessment = classify_contract_change(base_contract, merged)
+        # Evaluate decision & ANALYZE operation gate (always allowed for analysis)
+        decision = evaluate_governance_decision(
+            base_contract, merged, merge_conflicts=merge_result.conflicts
+        )
+        gate_res = evaluate_governance_gate(decision, GovernanceOperation.ANALYZE)
 
-        if not assessment.has_changes:
+        if not decision.evidence.has_changes:
             print("🟢 No changes detected.")
         else:
-            for reason in assessment.reasons:
-                if "Breaking:" in reason or "removed" in reason.lower():
-                    print(f"🔴 REMOVED: {reason}")
-                elif "added" in reason.lower():
-                    print(f"🟢 ADDED: {reason}")
-                else:
-                    print(f"🟡 CHANGED: {reason}")
+            print(f"📊 Governance Decision: {decision.decision.value} (Gate: {gate_res.reason})")
+            for reason in decision.reasons:
+                print(f"  • [{reason.code}] {reason.path or 'root'}: {reason.message}")
 
-            bump = assessment.required_bump.upper()
+            bump = decision.required_version_bump.upper()
             if bump == "NONE":
                 print("\n✅ Action Required: No version bump needed.")
             elif bump == "MINOR":
-                print(
-                    f"\n⚠️ Action Required: This is an ADDITIVE change. The required bump is {bump}."
-                )
+                print(f"\n⚠️ Action Required: Additive changes require version bump {bump}.")
             elif bump == "MAJOR":
-                print(
-                    f"\n⚠️ Action Required: This is a BREAKING change. The required bump is {bump}."
-                )
+                print(f"\n⚠️ Action Required: Breaking changes require version bump {bump}.")
 
     except Exception as e:
         from semapact.exceptions import SemaPactError

@@ -1,8 +1,10 @@
 import pytest
 from pathlib import Path
-from semapact.core.lifecycle_cli import apply_lifecycle
-from semapact.utils.yaml_utils import load_yaml
 from collections import namedtuple
+
+from semapact.core.lifecycle_cli import apply_lifecycle
+from semapact.exceptions import GovernanceReviewRequiredError
+from semapact.utils.yaml_utils import load_yaml
 
 Args = namedtuple(
     "Args", ["contract", "schema", "property", "output", "runtime_context"]
@@ -17,6 +19,7 @@ apiVersion: v3.0.0
 id: my-contract
 name: my-contract
 version: 1.0.0
+status: active
 schema:
   - name: my_schema
     properties:
@@ -64,14 +67,8 @@ def test_promote_schema(sample_contract_path):
         output=None,
         runtime_context=None,
     )
-    apply_lifecycle(args, is_promote=True)
-
-    data = load_yaml(sample_contract_path)
-    schema = data["schema"][0]
-    cp = schema.get("customProperties", [])
-    assert any(
-        c["property"] == "lifecycleStatus" and c["value"] == "active" for c in cp
-    )
+    with pytest.raises(GovernanceReviewRequiredError):
+        apply_lifecycle(args, is_promote=True)
 
 
 def test_deprecate_schema(sample_contract_path):
@@ -82,16 +79,8 @@ def test_deprecate_schema(sample_contract_path):
         output=None,
         runtime_context=None,
     )
-    apply_lifecycle(args, is_promote=False)
-
-    data = load_yaml(sample_contract_path)
-    schema = data["schema"][0]
-    cp = schema.get("customProperties", [])
-    assert any(
-        c["property"] == "lifecycleStatus" and c["value"] == "deprecated" for c in cp
-    )
-    assert any(c["property"] == "deprecationDate" for c in cp)
-    assert "deprecated" in schema.get("tags", [])
+    with pytest.raises(GovernanceReviewRequiredError):
+        apply_lifecycle(args, is_promote=False)
 
 
 def test_promote_property(sample_contract_path):
@@ -102,14 +91,8 @@ def test_promote_property(sample_contract_path):
         output=None,
         runtime_context=None,
     )
-    apply_lifecycle(args, is_promote=True)
-
-    data = load_yaml(sample_contract_path)
-    prop = data["schema"][0]["properties"][0]
-    cp = prop.get("customProperties", [])
-    assert any(
-        c["property"] == "lifecycleStatus" and c["value"] == "active" for c in cp
-    )
+    with pytest.raises(GovernanceReviewRequiredError):
+        apply_lifecycle(args, is_promote=True)
 
 
 def test_deprecate_property(sample_contract_path):
@@ -120,13 +103,5 @@ def test_deprecate_property(sample_contract_path):
         output=None,
         runtime_context=None,
     )
-    apply_lifecycle(args, is_promote=False)
-
-    data = load_yaml(sample_contract_path)
-    prop = data["schema"][0]["properties"][0]
-    cp = prop.get("customProperties", [])
-    assert any(
-        c["property"] == "lifecycleStatus" and c["value"] == "deprecated" for c in cp
-    )
-    assert any(c["property"] == "deprecationDate" for c in cp)
-    assert "deprecated" in prop.get("tags", [])
+    with pytest.raises(GovernanceReviewRequiredError):
+        apply_lifecycle(args, is_promote=False)

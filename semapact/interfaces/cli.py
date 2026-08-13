@@ -136,7 +136,6 @@ def _build_parser() -> argparse.ArgumentParser:
     merge_parser.add_argument("--business", required=True)
     merge_parser.add_argument("--output", required=True)
     merge_parser.add_argument("--runtime-context", default="auto")
-    merge_parser.add_argument("--fail-on-conflict", action="store_true")
 
     export_parser = subparsers.add_parser(
         "export", help="Convert data contract to a specific format"

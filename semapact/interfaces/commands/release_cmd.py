@@ -6,46 +6,66 @@ from semapact.interfaces.commands.utils import _build_git_config, _get_repo_path
 
 def run_release_classify(args: argparse.Namespace) -> dict[str, Any]:
     from semapact.core.loader import ContractLoader
-    from semapact.core.release import (
-        classify_contract_change,
-        suggest_release_version,
+    from semapact.core.release import suggest_release_version
+    from semapact.governance import (
+        GovernanceOperation,
+        evaluate_governance_decision,
+        evaluate_governance_gate,
     )
-    from dataclasses import asdict
 
     loader = ContractLoader(runtime_context=args.runtime_context)
     base_contract = loader.load(args.base)
     candidate_contract = loader.load(args.candidate)
 
-    assessment = classify_contract_change(base_contract, candidate_contract)
+    decision = evaluate_governance_decision(base_contract, candidate_contract)
+    evaluate_governance_gate(decision, GovernanceOperation.ANALYZE)
+
+    from dataclasses import asdict
+
     current_version = str(base_contract.version or "")
+    breaking_list = [asdict(bc) for bc in decision.policy.breaking_changes]
+    reasons_list = [r.message for r in decision.reasons] or ["No contract changes detected"]
+
     return {
         "contractId": str(base_contract.id or ""),
         "currentVersion": current_version,
         "candidateVersion": str(candidate_contract.version or ""),
-        "hasChanges": assessment.has_changes,
-        "requiredBump": assessment.required_bump,
+        "hasChanges": decision.evidence.has_changes,
+        "requiredBump": decision.required_version_bump,
         "suggestedNextVersion": (
-            suggest_release_version(current_version, assessment.required_bump)
-            if assessment.has_changes and assessment.required_bump != "none"
+            suggest_release_version(current_version, decision.required_version_bump)
+            if decision.evidence.has_changes and decision.required_version_bump != "none"
             else current_version
         ),
-        "reasons": assessment.reasons,
-        "breakingChanges": [asdict(change) for change in assessment.breaking_changes],
+        "reasons": reasons_list,
+        "breakingChanges": breaking_list,
+        "governanceDecision": decision.model_dump(mode="json"),
     }
 
 def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
+    from dataclasses import asdict
     from semapact.core.loader import ContractLoader
-    from semapact.core.release import prepare_release_candidate
+    from semapact.core.release import apply_release_candidate
+    from semapact.governance import (
+        GovernanceOperation,
+        enforce_governance_gate,
+        evaluate_governance_decision,
+    )
     from semapact.utils.schema_utils import contract_to_dict
     from semapact.utils.yaml_utils import dump_yaml
-    from dataclasses import asdict
 
     loader = ContractLoader(runtime_context=args.runtime_context)
     base_contract = loader.load(args.base)
     candidate_contract = loader.load(args.candidate)
 
-    result = prepare_release_candidate(
-        base_contract, candidate_contract, args.release_tag
+    decision = evaluate_governance_decision(base_contract, candidate_contract)
+    enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
+
+    result = apply_release_candidate(
+        base_contract,
+        candidate_contract,
+        args.release_tag,
+        required_bump=decision.required_version_bump,
     )
     output_path = dump_yaml(contract_to_dict(result.contract), args.output)
     return {
@@ -55,9 +75,10 @@ def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
         "requiredBump": result.required_bump,
         "actualBump": result.actual_bump,
         "releaseTag": result.release_tag,
-        "reasons": result.reasons,
-        "breakingChanges": [asdict(change) for change in result.breaking_changes],
+        "reasons": [r.message for r in decision.reasons],
+        "breakingChanges": [asdict(change) for change in decision.policy.breaking_changes],
         "output": str(output_path),
+        "governanceDecision": decision.model_dump(mode="json"),
     }
 
 def run_release_classify_repo(args: argparse.Namespace) -> dict[str, Any]:

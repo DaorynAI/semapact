@@ -9,6 +9,7 @@ from semapact.core.loader import ContractLoader, load_contract
 from semapact.core.release import (
     ContractChangeAssessment,
     PromotionResult,
+    apply_release_candidate,
     classify_contract_change,
     classify_version_bump,
     parse_release_tag_version,
@@ -26,6 +27,7 @@ __all__ = [
     "ContractLoader",
     "ContractValidator",
     "PromotionResult",
+    "apply_release_candidate",
     "classify_contract_change",
     "classify_version_bump",
     "ValidationIssue",

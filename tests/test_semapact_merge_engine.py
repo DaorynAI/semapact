@@ -329,10 +329,11 @@ def test_merge_engine_rejects_retired_contract_modification():
         ],
     )
 
-    with pytest.raises(
-        merge_engine.MergeConflictError, match="Retired contract cannot be modified"
-    ):
-        ContractMergeEngine().merge(base_contract=source, business_contract=existing)
+    result = ContractMergeEngine().merge(base_contract=source, business_contract=existing)
+    from semapact.governance import evaluate_governance_decision, DecisionResult
+    decision = evaluate_governance_decision(existing, result.contract, merge_conflicts=result.conflicts)
+    assert decision.decision == DecisionResult.BLOCK
+    assert any(r.code == "CONTRACT_RETIRED_MUTATION" for r in decision.reasons)
 
 
 def test_merge_engine_hard_overwrites_relationships(

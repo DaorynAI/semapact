@@ -12,6 +12,8 @@ from semapact.core.validator import ValidationIssue, ValidationReport
 from semapact.devops.audit import AuditMetadata
 from semapact.lifecycle.merge_engine import MergeConflict, MergeResult
 from semapact.lifecycle.policy import BreakingChange, PolicyEvaluation
+from semapact.exceptions import GovernanceBlockedError
+from semapact.governance import GovernanceGateResult
 from semapact.orchestrator.pipeline import ContractPipeline
 from deltalake import write_deltalake
 
@@ -116,8 +118,6 @@ def test_pipeline_prepare_ci_cd_artifacts_writes_manifest_and_outputs(
     merge_result = MergeResult(
         contract=merged_contract, conflicts=[MergeConflict("p", "r", 1, 2)]
     )
-    validation = ValidationReport(valid=True, issues=[])
-    policy = PolicyEvaluation(valid=True, breaking_changes=[])
     audit = AuditMetadata(
         last_merge_ts="2026-02-24T00:00:00+00:00",
         last_merge_actor="tester",
@@ -294,7 +294,7 @@ def test_pipeline_run_blocks_retired_contract(monkeypatch, sample_odcs_model):
     )
     monkeypatch.setattr(type(pipeline.loader), "load", lambda self, _: retired_contract)
 
-    with pytest.raises(Exception, match="Governance decision BLOCKED"):
+    with pytest.raises(GovernanceBlockedError, match="retired contract"):
         pipeline.run(
             source_type="sql",
             source="sql_folder",
@@ -335,14 +335,13 @@ def test_pipeline_run_blocks_when_merge_returns_none_contract(
         )
 
 
-def test_pipeline_run_blocks_on_conflicts_when_fail_on_conflict(
+def test_pipeline_run_blocks_on_conflicts(
     monkeypatch, sample_odcs_model
 ):
     pipeline = ContractPipeline()
     conflict = MergeConflict(
         schema_id="orders", property_name="id", message="type mismatch"
     )
-
     monkeypatch.setattr(
         ContractPipeline,
         "import_schema",
@@ -359,9 +358,8 @@ def test_pipeline_run_blocks_on_conflicts_when_fail_on_conflict(
         ),
     )
 
-    with pytest.raises(
-        Exception, match="Merge conflicts detected: orders.id: type mismatch"
-    ):
+    from semapact.exceptions import GovernanceReviewRequiredError
+    with pytest.raises(GovernanceReviewRequiredError):
         pipeline.run(
             source_type="sql",
             source="sql_folder",
@@ -369,7 +367,6 @@ def test_pipeline_run_blocks_on_conflicts_when_fail_on_conflict(
             merged_contract_output_path="/tmp/merged.yaml",
             ge_suite_output_path="/tmp/suite.json",
             ci_manifest_output_path="/tmp/manifest.json",
-            fail_on_conflict=True,
         )
 
 
@@ -462,6 +459,10 @@ def test_pipeline_run_executes_real_merge_validation_and_policy_with_minimal_moc
         fake_export_to_path,
     )
 
+    monkeypatch.setattr(
+        "semapact.governance.gate.evaluate_governance_gate",
+        lambda d, op: GovernanceGateResult(allowed=True, reason="allowed", decision_id="test-allow"),
+    )
     artifacts = ContractPipeline().run(
         source_type="sql",
         source="sql_folder",
@@ -509,6 +510,10 @@ def test_pipeline_run_executes_real_sql_folder_workflow(
         fake_export_to_path,
     )
 
+    monkeypatch.setattr(
+        "semapact.governance.gate.evaluate_governance_gate",
+        lambda d, op: GovernanceGateResult(allowed=True, reason="allowed", decision_id="test-allow"),
+    )
     artifacts = ContractPipeline().run(
         source_type="sql-folder",
         source=str(spark_ddl_orders_product_dir),
@@ -563,6 +568,10 @@ def test_pipeline_run_executes_real_delta_workflow(
         fake_export_to_path,
     )
 
+    monkeypatch.setattr(
+        "semapact.governance.gate.evaluate_governance_gate",
+        lambda d, op: GovernanceGateResult(allowed=True, reason="allowed", decision_id="test-allow"),
+    )
     artifacts = ContractPipeline().run(
         source_type="delta",
         source=str(table_path),
@@ -644,7 +653,10 @@ def test_pipeline_run_executes_real_unity_workflow(
         "semapact.importers.unity_importer.enrich_unity_contract_relationships",
         fake_enrich,
     )
-
+    monkeypatch.setattr(
+        "semapact.governance.gate.evaluate_governance_gate",
+        lambda d, op: GovernanceGateResult(allowed=True, reason="allowed", decision_id="test-allow"),
+    )
     artifacts = ContractPipeline().run(
         source_type="uc",
         source="main.silver.orders",

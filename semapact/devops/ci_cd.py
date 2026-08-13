@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from semapact.governance.models import DecisionResult, GovernanceDecision
+from semapact.governance.gate import GovernanceOperation, evaluate_governance_gate
+from semapact.governance.models import GovernanceDecision
 
 
 @dataclass(slots=True)
@@ -19,17 +20,11 @@ class CIDecision:
 def evaluate_ci_gate(decision: GovernanceDecision) -> CIDecision:
     """Evaluate if a contract change can pass CI/CD gates based strictly on GovernanceDecision.
 
-    Signature enforces typed GovernanceDecision input without payload union.
+    Delegates to evaluate_governance_gate(decision, GovernanceOperation.CI).
     Interface adapters must call GovernanceDecision.model_validate(payload) before calling evaluate_ci_gate.
     """
-    if not isinstance(decision, GovernanceDecision):
-        raise TypeError(f"evaluate_ci_gate requires GovernanceDecision, got {type(decision).__name__}")
-
-    if decision.decision == DecisionResult.ALLOW:
-        return CIDecision(allowed=True, reason="ok")
-    if decision.decision == DecisionResult.REVIEW:
-        return CIDecision(allowed=False, reason="review_required")
-    return CIDecision(allowed=False, reason="blocked")
+    res = evaluate_governance_gate(decision, GovernanceOperation.CI)
+    return CIDecision(allowed=res.allowed, reason=res.reason)
 
 
 def write_ci_summary(path: str | Path, payload: dict[str, Any]) -> Path:

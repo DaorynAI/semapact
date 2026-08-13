@@ -12,7 +12,6 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
-from semapact.devops.ci_cd import evaluate_ci_gate
 from semapact.governance import (
     DecisionResult,
     GovernanceDecision,
