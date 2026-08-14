@@ -373,6 +373,27 @@ Precedence:
 - ODCS is the canonical contract model
 - datacontract-cli is reused where possible instead of reimplemented
 
+## Authoritative Governance Invariants
+
+1. **Centralized Gate Enforcement**: All mutation-capable application paths must obtain an authoritative `GovernanceDecision` and enforce the appropriate `GovernanceOperation` gate before persistence, Git mutation, publication, deployment, or draft submission.
+2. **Universal Retired Immutability**: A contract whose effective lifecycle is `retired` is permanently frozen. Any semantic mutation against a retired base contract produces `DecisionResult.BLOCK` with `GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED`. No interface, service, exporter, merge adapter, or future draft implementation may independently reinterpret retired immutability or perform side effects before gate evaluation.
+3. **Future Draft Contract**:
+   ```text
+   Load canonical contract
+           ↓
+   Create/edit candidate draft
+           ↓
+   GovernanceService.evaluate(...)
+           ↓
+   GovernanceOperation.PROPOSE
+           ↓
+   persist / submit draft
+   ```
+   If base is `retired` and candidate differs:
+   - Evaluator emits `DecisionResult.BLOCK` (`RETIRED_CONTRACT_MODIFIED`)
+   - `PROPOSE` gate rejects draft submission
+   - UI read-only styling is UX only; backend governance gate is the single authority.
+
 ## Known Next Steps
 
 - formalize draft promotion flow

@@ -145,6 +145,35 @@ def _build_validation_outcome(candidate_contract: OpenDataContractStandard) -> V
     return ValidationOutcome(valid=valid, issues=tuple(val_issues))
 
 
+def _is_retired_mutation(
+    base_contract: OpenDataContractStandard,
+    candidate_contract: OpenDataContractStandard,
+) -> bool:
+    """Deterministically detect if a candidate mutates an already retired base contract."""
+    try:
+        base_status = resolve_contract_lifecycle(base_contract)
+    except (ValueError, TypeError):
+        base_status = LifecycleStatus.DRAFT
+
+    if base_status is not LifecycleStatus.RETIRED:
+        return False
+
+    return _contract_has_any_change(base_contract, candidate_contract)
+
+
+def _contract_has_any_change(
+    base_contract: OpenDataContractStandard,
+    candidate_contract: OpenDataContractStandard,
+) -> bool:
+    """Deterministically check if candidate differs from base in any way."""
+    try:
+        base_dict = contract_to_dict(base_contract)
+        candidate_dict = contract_to_dict(candidate_contract)
+        return base_dict != candidate_dict
+    except Exception:
+        return base_contract != candidate_contract
+
+
 def _build_policy_outcome(
     base_contract: OpenDataContractStandard,
     candidate_contract: OpenDataContractStandard,
@@ -166,7 +195,6 @@ def _build_policy_outcome(
 
     try:
         base_status = resolve_contract_lifecycle(base_contract)
-
     except ValueError:
         base_status = LifecycleStatus.DRAFT
 
@@ -175,14 +203,11 @@ def _build_policy_outcome(
     except ValueError:
         candidate_status = LifecycleStatus.DRAFT
 
-    retired_mutation = (
-        base_status is LifecycleStatus.RETIRED and change_assessment.has_changes
-    )
+    retired_mutation = _is_retired_mutation(base_contract, candidate_contract)
     retired_transition = (
         base_status is not LifecycleStatus.RETIRED
         and candidate_status is LifecycleStatus.RETIRED
     )
-
 
     policy_violations: list[GovernanceReason] = [
         _reason(b.code, b.message, path=b.path)
