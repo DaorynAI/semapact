@@ -108,3 +108,52 @@ When an unknown or malformed lifecycle status is provided (e.g. `status: "unknow
 2. `evaluate_governance_decision()` receives `ValidationOutcome(valid=False)` and emits a deterministic `GovernanceDecision(decision=DecisionResult.BLOCK)`.
 3. Evaluation and merge pipelines execute deterministically without leaking unhandled exceptions.
 
+---
+
+## 6. Retired Contract Immutability
+
+`RETIRED` represents a terminal, end-of-life governed state. A governed contract whose effective lifecycle is `retired` is permanently frozen and immutable.
+
+### Invariant:
+```text
+base effective lifecycle == RETIRED
+AND
+base contract != candidate contract
+    ↓
+RETIRED_CONTRACT_MODIFIED
+    ↓
+DecisionResult.BLOCK
+```
+
+Any semantic mutation against a retired base contract must be authoritatively blocked by `evaluate_governance_decision()` with `GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED`. This applies to all differences, including:
+- Technical schema changes (adding, removing, or modifying schemas/properties)
+- Business metadata changes (descriptions, tags, business names)
+- Schema and property lifecycle modifications
+- Quality rules and relationship changes
+- Root status changes (reactivation)
+- Version changes
+- Purely descriptive changes
+
+### Operation Gating Matrix:
+
+| Operation Category | Operation / Entrypoint | Gate Evaluated | Decision / Result on Retired Contract |
+|---|---|---|---|
+| Read-only / Inspect | `ContractLoader.load()` | *(none)* | ✅ Allowed (loading/inspecting preserved) |
+| Analysis / Planning | `semapact plan`, `GovernanceService.evaluate()` | `ANALYZE` | ✅ Allowed (returns/displays `BLOCK` decision) |
+| Release Classification | `semapact release classify` | `ANALYZE` | ✅ Allowed (returns classification with `BLOCK`) |
+| Export Artifacts | `semapact export`, `export_ge` | *(none)* | ✅ Allowed (derives downstream views) |
+| Technical Merge Output | `semapact merge` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
+| Ingestion into Governed Contract | `semapact import --existing` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
+| Semantic Lifecycle Edit | `semapact lifecycle promote / deprecate` | `APPLY` | ❌ Blocked (`GovernanceBlockedError`) |
+| Release Preparation | `semapact release prepare` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
+| Release PR Creation | `semapact release create-pr` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
+| Batch Release Manifest | `semapact release build-manifest` | `PROPOSE` | ❌ Skipped from manifest tasks |
+| Automation Pipeline | `ContractPipeline.run()` | `CI` | ❌ Blocked (`GovernanceBlockedError`) |
+| Future Draft Submission | `DraftService.submit()` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
+
+### Lifecycle Transitions & Reactivations:
+- **Transition into Retired**: `ACTIVE / DEPRECATED / DRAFT -> RETIRED` produces `DecisionResult.REVIEW` with `GovernanceReasonCode.CONTRACT_RETIRED_TRANSITION`. This is a valid lifecycle transition requiring review, not a mutation of an already-retired contract.
+- **Reactivation**: `RETIRED -> ACTIVE / DRAFT / DEPRECATED` produces `DecisionResult.BLOCK` with `GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED`. No unretire/reactivation semantics exist.
+- **Unchanged Retired Contracts**: `retired base == retired candidate` produces `DecisionResult.ALLOW` (when no other violation exists), preserving history, export, and verification workflows.
+
+

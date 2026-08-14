@@ -138,8 +138,6 @@ class ContractPipeline:
         source_type: ImportSourceType,
         source: str,
         *,
-        existing_contract: OpenDataContractStandard | None = None,
-        context: ChangeContext | None = None,
         uc_workspace_url: str | None = None,
         uc_token: str | None = None,
         import_args: dict[str, Any] | None = None,
@@ -166,15 +164,6 @@ class ContractPipeline:
             from semapact.exceptions import ValidationError
 
             raise ValidationError(f"Unsupported source_type: {source_type}") from exc
-
-        if existing_contract is not None:
-            if context is None:
-                raise TypeError("context is required when merging into an existing contract")
-            return self.merge_engine.merge(
-                imported,
-                existing_contract,
-                context=context,
-            ).contract
 
         return imported
 
