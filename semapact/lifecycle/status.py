@@ -75,14 +75,20 @@ def lifecycle_from_custom_properties(custom_properties: Any) -> LifecycleStatus 
             if key == normalized_key:
                 if item.value is None or str(item.value).strip() == "":
                     return None
-                return normalize_status(item.value)
+                try:
+                    return normalize_status(item.value)
+                except ValueError:
+                    return None
         elif isinstance(item, dict):
             key = str(item.get("property") or "").strip().lower()
             if key == normalized_key:
                 val = item.get("value")
                 if val is None or str(val).strip() == "":
                     return None
-                return normalize_status(val)
+                try:
+                    return normalize_status(val)
+                except ValueError:
+                    return None
     return None
 
 
@@ -102,7 +108,10 @@ def resolve_contract_lifecycle(
     # 1. Native root status
     raw_status = contract.status
     if raw_status is not None and str(raw_status).strip() != "":
-        return normalize_status(raw_status)
+        try:
+            return normalize_status(raw_status)
+        except ValueError:
+            return LifecycleStatus.DRAFT
 
     # 2. Legacy customProperties fallback
     declared = lifecycle_from_custom_properties(contract.customProperties)
@@ -111,6 +120,7 @@ def resolve_contract_lifecycle(
 
     # 3. Canonical default
     return LifecycleStatus.DRAFT
+
 
 
 def resolve_declared_entity_lifecycle(

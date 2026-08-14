@@ -23,6 +23,7 @@ from semapact.lifecycle.status import (
 __all__ = [
     "LIFECYCLE_STATUS_PROPERTY",
     "LifecycleStatus",
+    "allows_breaking_changes",
     "decimal_precision_reduction",
     "decimal_scale_reduction",
     "is_active_contract",
@@ -40,13 +41,37 @@ __all__ = [
 
 
 def schema_items(contract: OpenDataContractStandard) -> list[Any]:
-
     """Return schema entries for the ODCS contract."""
     return list(contract.schema_ or [])
 
 
+def allows_breaking_changes(entity: Any) -> bool:
+    """Deprecated compatibility wrapper: returns True if entity participates in breaking checks."""
+    import warnings
+
+    warnings.warn(
+        "allows_breaking_changes is deprecated; use participates_in_breaking_checks(resolve_*_lifecycle(...)) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    if isinstance(entity, OpenDataContractStandard):
+        return participates_in_breaking_checks(resolve_contract_lifecycle(entity))
+    declared = resolve_declared_entity_lifecycle(entity)
+    if declared is not None:
+        return participates_in_breaking_checks(declared)
+    declared_val = getattr(entity, "lifecycleStatus", None)
+    if declared_val is not None:
+        try:
+            return participates_in_breaking_checks(normalize_status(declared_val))
+        except ValueError:
+            return False
+    return True
+
+
+
 # Keep private alias for backwards compatibility
 _lifecycle_from_custom_properties = lifecycle_from_custom_properties
+
 
 
 

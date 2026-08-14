@@ -1,4 +1,5 @@
 from semapact.lifecycle.helpers import (
+    allows_breaking_changes,
     schema_items,
 )
 from semapact.lifecycle.status import (
@@ -49,7 +50,9 @@ __all__ = [
     "is_retired_contract",
     "participates_in_breaking_checks",
     "is_explicitly_deprecated",
+    "allows_breaking_changes",
     "schema_items",
+
     "SchemaIdentity",
     "PropertyIdentity",
     "build_schema_index",

@@ -206,12 +206,6 @@ class ContractMergeEngine:
                 analysis.deprecated_schemas.add(schema_id)
                 continue
 
-            imported_schema_status = resolve_schema_lifecycle(
-                imported_schema_obj, contract=source_model
-            )
-            if not participates_in_breaking_checks(imported_schema_status):
-                continue
-
             existing_props = build_property_index(
                 schema_id, existing_schema_obj.properties or []
             )
@@ -233,12 +227,6 @@ class ContractMergeEngine:
                     )
                     continue
 
-                imported_prop_status = resolve_property_lifecycle(
-                    imported_prop, parent_lifecycle=imported_schema_status
-                )
-                if not participates_in_breaking_checks(imported_prop_status):
-                    continue
-
                 prop_name = prop_key[1]  # (schema_id, prop_id) -> prop_id
                 path = f"schema[{schema_id}].properties[{prop_name}]"
                 analysis.conflicts.extend(
@@ -246,6 +234,7 @@ class ContractMergeEngine:
                 )
 
         return analysis
+
 
     def _property_conflicts(
         self, path: str, imported_prop: SchemaProperty, existing_prop: SchemaProperty
