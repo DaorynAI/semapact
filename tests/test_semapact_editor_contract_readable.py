@@ -92,12 +92,12 @@ def test_field_helpers_support_odcs_model_and_ui_working_copy():
     )
     field_dict = {
         "name": "payment_id",
-        "status": "deprecated",
         "examples": ["c", "d"],
-        "customProperties": [{"property": "lifecycleStatus", "value": "active"}],
+        "customProperties": [{"property": "lifecycleStatus", "value": "deprecated"}],
     }
 
     assert field_lifecycle_status(field_model) == "active"
     assert field_lifecycle_status(field_dict) == "deprecated"
     assert field_examples_text(field_model) == "a\nb"
     assert field_examples_text(field_dict) == "c\nd"
+

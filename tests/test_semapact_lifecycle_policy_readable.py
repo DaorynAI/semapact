@@ -1,12 +1,14 @@
 from open_data_contract_standard.model import CustomProperty
 
 from semapact.lifecycle.helpers import (
-    allows_breaking_changes,
     is_active_contract,
     normalize_status,
+    participates_in_breaking_checks,
     schema_items,
 )
 from semapact.lifecycle.policy import evaluate_merge_policy
+from semapact.lifecycle.status import LifecycleStatus
+
 
 
 def test_policy_skips_breaking_checks_for_non_active_contract(sample_odcs_model):
@@ -66,21 +68,18 @@ def test_policy_ignores_removed_property_when_lifecycle_is_draft(sample_odcs_mod
 def test_lifecycle_helpers_cover_status_and_schema_alias_paths(
     sample_odcs_model, sample_odcs_dict
 ):
-    assert normalize_status(" ACTIVE ") == "active"
-    assert normalize_status(None, default="x") == "x"
+    assert normalize_status(" ACTIVE ") is LifecycleStatus.ACTIVE
     active_contract = sample_odcs_model.model_copy(deep=True)
     active_contract.status = "active"
     assert is_active_contract(active_contract) is True
     inactive_contract = sample_odcs_model.model_copy(deep=True)
     inactive_contract.status = "deprecated"
     assert is_active_contract(inactive_contract) is False
-    from types import SimpleNamespace
 
-    assert allows_breaking_changes(SimpleNamespace(lifecycleStatus="active")) is True
-    assert (
-        allows_breaking_changes(SimpleNamespace(lifecycleStatus="deprecated")) is False
-    )
+    assert participates_in_breaking_checks(LifecycleStatus.ACTIVE) is True
+    assert participates_in_breaking_checks(LifecycleStatus.DEPRECATED) is False
     assert schema_items(sample_odcs_model)
+
 
 
 def test_policy_flags_type_narrowing_and_enum_reduction_from_fixture(

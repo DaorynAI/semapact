@@ -3,69 +3,51 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from open_data_contract_standard.model import (
-    CustomProperty,
-    OpenDataContractStandard,
+from open_data_contract_standard.model import OpenDataContractStandard
+
+from semapact.lifecycle.status import (
+    LIFECYCLE_STATUS_PROPERTY,
+    LifecycleStatus,
+    is_active_contract,
+    is_explicitly_deprecated,
+    is_retired_contract,
+    lifecycle_from_custom_properties,
+    normalize_status,
+    participates_in_breaking_checks,
+    resolve_contract_lifecycle,
+    resolve_declared_entity_lifecycle,
+    resolve_property_lifecycle,
+    resolve_schema_lifecycle,
 )
 
-ACTIVE_STATUSES = {"active"}
-NON_BREAKING_LIFECYCLE_STATUSES = {"draft", "deprecated"}
-
-
-def normalize_status(value: Any, default: str = "draft") -> str:
-    """Normalize status-like values to lowercase strings."""
-    if value is None:
-        return default
-    text = str(value).strip().lower()
-    return text or default
-
-
-def is_active_contract(contract: OpenDataContractStandard) -> bool:
-    """Return True when contract-level status is active."""
-    value = contract.status
-    if not value:
-        value = lifecycle_from_custom_properties(contract.customProperties)
-    return normalize_status(value, default="draft") in ACTIVE_STATUSES
-
-
-def allows_breaking_changes(entity: Any) -> bool:
-    """Return True when entity lifecycle status permits non-breaking updates only."""
-    value = getattr(entity, "lifecycleStatus", None)
-    if value is None:
-        value = lifecycle_from_custom_properties(
-            getattr(entity, "customProperties", None)
-        )
-    lifecycle_status = normalize_status(value, default="active")
-    return lifecycle_status not in NON_BREAKING_LIFECYCLE_STATUSES
+__all__ = [
+    "LIFECYCLE_STATUS_PROPERTY",
+    "LifecycleStatus",
+    "decimal_precision_reduction",
+    "decimal_scale_reduction",
+    "is_active_contract",
+    "is_explicitly_deprecated",
+    "is_retired_contract",
+    "lifecycle_from_custom_properties",
+    "normalize_status",
+    "participates_in_breaking_checks",
+    "resolve_contract_lifecycle",
+    "resolve_declared_entity_lifecycle",
+    "resolve_property_lifecycle",
+    "resolve_schema_lifecycle",
+    "schema_items",
+]
 
 
 def schema_items(contract: OpenDataContractStandard) -> list[Any]:
+
     """Return schema entries for the ODCS contract."""
     return list(contract.schema_ or [])
 
 
-def lifecycle_from_custom_properties(custom_properties: Any) -> Any:
-    """Extract lifecycleStatus from custom properties list.
-
-    Supports both ``CustomProperty`` model instances and raw ``dict`` items.
-    """
-    if not isinstance(custom_properties, list):
-        return None
-    for item in custom_properties:
-        if isinstance(item, CustomProperty):
-            key = (item.property or "").strip().lower()
-            if key == "lifecyclestatus":
-                return item.value
-        elif isinstance(item, dict):
-            key = str(item.get("property") or "").strip().lower()
-            if key == "lifecyclestatus":
-                return item.get("value")
-    return None
-
-
-# Keep the old private name as an alias for backwards compatibility within
-# the package.  New code should use ``lifecycle_from_custom_properties``.
+# Keep private alias for backwards compatibility
 _lifecycle_from_custom_properties = lifecycle_from_custom_properties
+
 
 
 # ---------------------------------------------------------------------------

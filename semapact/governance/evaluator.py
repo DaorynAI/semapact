@@ -22,11 +22,12 @@ from semapact.governance.models import (
     ValidationOutcome,
 )
 from semapact.governance_codes import GovernanceReasonCode, reason_severity
-from semapact.lifecycle.helpers import normalize_status
-from semapact.lifecycle.merge_engine import MergeConflict
 from semapact.lifecycle.identity import validate_contract_identities
+from semapact.lifecycle.merge_engine import MergeConflict
 from semapact.lifecycle.policy import PolicyEvaluation, evaluate_merge_policy
+from semapact.lifecycle.status import LifecycleStatus, resolve_contract_lifecycle
 from semapact.utils.schema_utils import contract_to_dict
+
 
 SEMAPACT_GOVERNANCE_NAMESPACE = uuid.UUID("a9b8c7d6-e5f4-4321-8765-43210fedcba9")
 
@@ -163,11 +164,25 @@ def _build_policy_outcome(
             has_changes=False, required_bump="none", breaking_changes=[], reasons=["Validation error"]
         )
 
-    base_status = _resolve_status(base_contract)
-    candidate_status = _resolve_status(candidate_contract)
+    try:
+        base_status = resolve_contract_lifecycle(base_contract)
 
-    retired_mutation = base_status == "retired" and change_assessment.has_changes
-    retired_transition = base_status != "retired" and candidate_status == "retired"
+    except ValueError:
+        base_status = LifecycleStatus.DRAFT
+
+    try:
+        candidate_status = resolve_contract_lifecycle(candidate_contract)
+    except ValueError:
+        candidate_status = LifecycleStatus.DRAFT
+
+    retired_mutation = (
+        base_status is LifecycleStatus.RETIRED and change_assessment.has_changes
+    )
+    retired_transition = (
+        base_status is not LifecycleStatus.RETIRED
+        and candidate_status is LifecycleStatus.RETIRED
+    )
+
 
     policy_violations: list[GovernanceReason] = [
         _reason(b.code, b.message, path=b.path)
@@ -284,15 +299,6 @@ def _determine_decision(
     return DecisionResult.ALLOW
 
 
-def _resolve_status(contract: OpenDataContractStandard) -> str:
-    """Extract and normalize status from contract model or customProperties."""
-    val = getattr(contract, "status", None)
-    if not val:
-        for prop in getattr(contract, "customProperties", None) or []:
-            if str(getattr(prop, "property", "")).lower() == "lifecyclestatus":
-                val = str(getattr(prop, "value", ""))
-                break
-    return normalize_status(val, default="draft")
 
 
 def _generate_decision_id(

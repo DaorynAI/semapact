@@ -11,12 +11,10 @@ from semapact.lifecycle.identity import (
     build_schema_index,
     build_property_index,
 )
-from semapact.lifecycle.helpers import (
-    lifecycle_from_custom_properties,
-    normalize_status,
-)
 from semapact.lifecycle.policy import BreakingChange, PolicyEvaluation, evaluate_merge_policy
+from semapact.lifecycle.status import is_explicitly_deprecated
 from semapact.utils.schema_utils import contract_to_dict, contract_to_model
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -331,7 +329,7 @@ def _has_new_deprecations(
         candidate_obj = candidate_schema.get(schema_key)
         if candidate_obj is None:
             continue
-        if not _is_deprecated(base_obj) and _is_deprecated(candidate_obj):
+        if not is_explicitly_deprecated(base_obj) and is_explicitly_deprecated(candidate_obj):
             return True
 
         base_props = build_property_index(schema_key, base_obj.properties or [])
@@ -340,9 +338,10 @@ def _has_new_deprecations(
             candidate_prop = candidate_props.get(prop_key)
             if candidate_prop is None:
                 continue
-            if not _is_deprecated(base_prop) and _is_deprecated(candidate_prop):
+            if not is_explicitly_deprecated(base_prop) and is_explicitly_deprecated(candidate_prop):
                 return True
     return False
+
 
 
 def _has_non_breaking_structural_changes(
@@ -399,13 +398,6 @@ def _canonicalize(value: Any) -> Any:
     return value
 
 
-def _is_deprecated(entity: Any) -> bool:
-    value = getattr(entity, "lifecycleStatus", None)
-    if value is None:
-        value = lifecycle_from_custom_properties(
-            getattr(entity, "customProperties", None)
-        )
-    return normalize_status(value, default="active") == "deprecated"
 
 
 def _dedupe(values: list[str]) -> list[str]:

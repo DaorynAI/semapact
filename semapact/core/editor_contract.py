@@ -30,6 +30,7 @@ from semapact.core.editor_semantics import (
     contract_description_part,
     contract_tags,
     description_mapping,
+    field_declared_lifecycle_status,
     field_examples_text,
     field_lifecycle_status,
     normalize_tags,
@@ -51,8 +52,10 @@ __all__ = [
     "contract_tags",
     "description_mapping",
     "field_by_name",
+    "field_declared_lifecycle_status",
     "field_examples_text",
     "field_lifecycle_status",
+
     "is_blank_quality_row",
     "is_blank_quick_field_row",
     "normalize_tags",

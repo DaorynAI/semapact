@@ -14,9 +14,6 @@ from semapact.governance_codes import GovernanceReasonCode
 from semapact.lifecycle.helpers import (
     decimal_precision_reduction,
     decimal_scale_reduction,
-    is_active_contract,
-    lifecycle_from_custom_properties,
-    normalize_status,
 )
 from semapact.lifecycle.identity import (
     PropertyIdentity,
@@ -25,6 +22,12 @@ from semapact.lifecycle.identity import (
     validate_contract_identities,
 )
 from semapact.lifecycle.relationships import normalize_endpoint_value
+from semapact.lifecycle.status import (
+    is_active_contract,
+    participates_in_breaking_checks,
+    resolve_property_lifecycle,
+    resolve_schema_lifecycle,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -98,7 +101,8 @@ def evaluate_merge_policy(
     merged_schema_index = build_schema_index(merged_contract)
 
     for schema_key, schema in base_schema_index.items():
-        if _is_draft_or_deprecated(schema):
+        schema_status = resolve_schema_lifecycle(schema, contract=base_contract)
+        if not participates_in_breaking_checks(schema_status):
             continue
 
         target_schema = merged_schema_index.get(schema_key)
@@ -127,7 +131,11 @@ def evaluate_merge_policy(
                     )
                 )
         for prop_key, base_prop in base_props.items():
-            if _is_draft_or_deprecated(base_prop):
+            prop_status = resolve_property_lifecycle(
+                base_prop,
+                parent_lifecycle=schema_status,
+            )
+            if not participates_in_breaking_checks(prop_status):
                 continue
             if prop_key not in target_props:
                 prop_name = prop_key[1]  # (schema_id, prop_id) -> prop_id
@@ -190,15 +198,6 @@ def _root_version_changed(
         return False
     return base_version != merged_version
 
-
-def _is_draft_or_deprecated(entity: SchemaObject | SchemaProperty) -> bool:
-    value = getattr(entity, "lifecycleStatus", None)
-    if value is None:
-        value = lifecycle_from_custom_properties(
-            getattr(entity, "customProperties", None)
-        )
-    lifecycle_status = normalize_status(value, default="active")
-    return lifecycle_status in {"draft", "deprecated"}
 
 
 def _property_breaking_changes(
