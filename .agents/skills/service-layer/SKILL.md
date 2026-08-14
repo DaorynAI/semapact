@@ -1,52 +1,53 @@
 ---
 name: service-layer
-description: Defines the SemaPact backend service layer between the UI and system logic. Use when implementing or reviewing `semapact/interfaces/streamlit/services/` for contract loading, draft management, validation, permissions, and governance integration. Apply this skill when services must remain UI-independent, reuse `semapact.core`, `semapact.lifecycle`, and `semapact.utils`, and expose thin APIs such as `list_contracts`, `get_contract`, `get_draft`, `save_draft`, and `analyze`.
+description: Defines the UI-independent SemaPact application service layer in `semapact/services/`. Use when interfaces such as CLI, UI, or API need to translate request inputs into domain context and delegate contract loading, draft management, validation, permissions, or governance orchestration without owning business rules.
 ---
 
 # Service Layer
 
-This is the ONLY boundary between UI and system logic.
+This is the application boundary between interfaces and system logic.
 
 ------------------------------------------------
 RESPONSIBILITIES
 
-- load main contracts
-- manage drafts
-- enforce permissions
-- validate contracts
-- run governance analysis
+- normalize interface request values into formal domain inputs
+- own workflow-scoped context construction such as `ChangeContext`
+- load main contracts and manage drafts where applicable
+- enforce permissions where applicable
+- validate contracts through shared core components
+- delegate governance analysis to lifecycle/governance components
 
 ------------------------------------------------
 STRICT RULES
 
-- UI must NOT access YAML directly
-- UI must NOT implement business logic
-- service must NOT depend on UI modules
-- Service methods MUST strictly accept and return the `OpenDataContractStandard` Pydantic model or formal Data Classes
-- Do NOT fallback to returning or manipulating raw `dict[str, Any]` to accommodate the UI (the ODCS model is the single source of truth)
+- CLI, UI, and API layers must NOT implement business logic
+- interfaces must NOT construct or regenerate governance-semantic context directly
+- service must NOT depend on presentation modules
+- service methods should accept and return `OpenDataContractStandard`, formal Pydantic models, or formal dataclasses
+- do NOT fall back to raw `dict[str, Any]` merely to accommodate an interface
+- governance-semantic dates must not silently default from wall-clock time
 
 ------------------------------------------------
 ALLOWED DEPENDENCIES
 
 - `semapact.core`
+- `semapact.governance`
 - `semapact.lifecycle`
 - `semapact.utils`
 
 ------------------------------------------------
-APIS
-
-Main:
-- `list_contracts(user)`
-- `get_contract(contract_id)`
-
-Draft:
-- `get_draft(contract_id, user)`
-- `save_draft(contract, user)`
+CURRENT API
 
 Governance:
-- `analyze(main, draft)`
+- `GovernanceService.create_context(effective_date)`
+- `GovernanceService.evaluate(base, candidate, effective_date=...)`
+- `GovernanceService.merge_and_evaluate(source, governed, effective_date=...)`
 
-Future:
+Future draft/application services may expose:
+- `list_contracts(user)`
+- `get_contract(contract_id)`
+- `get_draft(contract_id, user)`
+- `save_draft(contract, user)`
 - `promote_draft(contract_id, user)`
 
 ------------------------------------------------
@@ -56,37 +57,42 @@ Keep services thin.
 
 Preferred flow:
 
-1. resolve paths and storage configuration
-2. read or write YAML via `semapact.utils.yaml_utils`
-3. validate via shared core validation
-4. enforce permissions before mutation
-5. delegate governance analysis to lifecycle wrappers
-6. return plain service results
+1. receive already-collected interface request values
+2. normalize those values into explicit domain inputs
+3. delegate validation, merge, lifecycle, and governance rules to their owning layers
+4. return typed service results
+
+For deterministic governance context:
+
+```text
+interface request
+    ↓
+GovernanceService creates ChangeContext once
+    ↓
+merge / evaluator consume the same context
+```
 
 ------------------------------------------------
 FORBIDDEN
 
-- overwriting main contract directly from the UI path
-- duplicating validation logic
-- bypassing permission checks
-- putting merge or lifecycle policy logic into non-governance services
-- importing Streamlit or using `st.session_state`
+- duplicating lifecycle or breaking-change policy in services
+- bypassing governance gates
+- resolving governance-semantic dates from `date.today()` / `datetime.now()` inside lower layers
+- importing presentation frameworks from services
+- overwriting canonical main contracts directly from an interface path
 
 ------------------------------------------------
 REVIEW CHECKLIST
 
-When reviewing a SemaPact service module, check:
-
-1. Does it keep UI and YAML access separated?
-2. Does it reuse `yaml_utils` instead of reimplementing file IO?
-3. Does it call shared validation instead of inline schema checks?
-4. Does it enforce permissions consistently?
-5. Does it keep governance logic delegated to the lifecycle layer?
-6. Does it avoid overwriting the main contract in draft flows?
+1. Is the service independent of CLI/UI/API implementation details?
+2. Does the interface pass request values rather than constructing domain context itself?
+3. Does the service delegate lifecycle and governance rules instead of duplicating them?
+4. Is one resolved context reused throughout a single workflow?
+5. Are existing semantic dates preserved instead of overwritten?
+6. Are operational timestamps kept separate from governance context?
 
 ------------------------------------------------
 Read these first-class Agent Skills when needed:
 
 - [semapact-system](../../semapact-system/SKILL.md) for system architecture rules
 - [lifecycle-policy](../../lifecycle-policy/SKILL.md) for contract lifecycle and deprecation logic
-- [streamlit-ui](../../streamlit-ui/SKILL.md) for UI UX guidelines

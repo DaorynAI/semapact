@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import date
 from unittest import mock
 import pytest
 from pydantic import ValidationError as PydanticValidationError
@@ -13,6 +14,7 @@ from open_data_contract_standard.model import (
 )
 
 from semapact.governance import (
+    ChangeContext,
     DecisionResult,
     GovernanceDecision,
     GovernanceReason,
@@ -23,6 +25,22 @@ from semapact.governance import (
 from semapact.governance.models import ChangeEvidence, PolicyOutcome, ValidationOutcome
 from semapact.lifecycle.merge_engine import MergeConflict
 from semapact.orchestrator.pipeline import ContractPipeline, MergeResult, PipelineArtifacts
+
+
+TEST_CONTEXT = ChangeContext(effective_date=date(2026, 1, 1))
+
+
+def _evaluate(
+    base: OpenDataContractStandard,
+    candidate: OpenDataContractStandard,
+    **kwargs: object,
+) -> GovernanceDecision:
+    return evaluate_governance_decision(
+        base,
+        candidate,
+        context=TEST_CONTEXT,
+        **kwargs,
+    )
 
 
 def _get_schemas(contract: OpenDataContractStandard) -> list[SchemaObject]:
@@ -72,7 +90,7 @@ def test_governance_decision_allow_same_contract():
     base = _make_contract()
     candidate = _make_contract()
 
-    decision = evaluate_governance_decision(base, candidate)
+    decision = _evaluate(base, candidate)
 
     assert decision.decision == DecisionResult.ALLOW
     assert decision.breaking is False
@@ -97,7 +115,7 @@ def test_governance_decision_review_for_minor_bump():
         )
     )
 
-    decision = evaluate_governance_decision(base, candidate)
+    decision = _evaluate(base, candidate)
 
     assert decision.decision == DecisionResult.REVIEW
     assert decision.required_version_bump == "minor"
@@ -114,7 +132,7 @@ def test_governance_decision_review_for_major_breaking_change():
     schemas = _get_schemas(candidate)
     schemas[0].properties = [schemas[0].properties[0]]  # removed 'amount'
 
-    decision = evaluate_governance_decision(base, candidate)
+    decision = _evaluate(base, candidate)
 
     assert decision.decision == DecisionResult.REVIEW
     assert decision.required_version_bump == "major"
@@ -128,7 +146,7 @@ def test_governance_decision_block_for_root_id_mismatch():
     base = _make_contract(contract_id="contract-a", status="draft")
     candidate = _make_contract(contract_id="contract-b", status="draft")
 
-    decision = evaluate_governance_decision(base, candidate)
+    decision = _evaluate(base, candidate)
 
     assert decision.decision == DecisionResult.BLOCK
     assert decision.policy.id_violation is True
@@ -140,7 +158,7 @@ def test_governance_decision_block_for_root_version_mismatch():
     base = _make_contract(version="1.0.0", status="draft")
     candidate = _make_contract(version="2.0.0", status="draft")
 
-    decision = evaluate_governance_decision(base, candidate)
+    decision = _evaluate(base, candidate)
 
     assert decision.decision == DecisionResult.BLOCK
     assert decision.policy.version_violation is True
@@ -158,7 +176,7 @@ def test_governance_decision_retired_mutation_blocks():
         SchemaProperty(name="extra", logicalType="string", physicalType="varchar(50)", required=False)
     )
 
-    decision = evaluate_governance_decision(base, candidate)
+    decision = _evaluate(base, candidate)
 
     assert decision.decision == DecisionResult.BLOCK
     assert decision.policy.retired_violation is True
@@ -173,7 +191,7 @@ def test_governance_decision_retired_unchanged_allows():
     base = _make_contract(status="retired")
     candidate = _make_contract(status="retired")
 
-    decision = evaluate_governance_decision(base, candidate)
+    decision = _evaluate(base, candidate)
 
     assert decision.decision == DecisionResult.ALLOW
     assert decision.policy.retired_violation is False
@@ -184,7 +202,7 @@ def test_governance_decision_retired_transition_reviews():
     base = _make_contract(status="active")
     candidate = _make_contract(status="retired")
 
-    decision = evaluate_governance_decision(base, candidate)
+    decision = _evaluate(base, candidate)
 
     assert decision.decision == DecisionResult.REVIEW
     assert any(
@@ -201,7 +219,7 @@ def test_governance_decision_block_for_invalid_validation():
         SchemaProperty(name="", logicalType="string", physicalType="", required=True)
     )
 
-    decision = evaluate_governance_decision(base, candidate)
+    decision = _evaluate(base, candidate)
 
     assert decision.decision == DecisionResult.BLOCK
     assert decision.validation.valid is False
@@ -221,7 +239,7 @@ def test_governance_decision_review_for_merge_conflicts():
         )
     ]
 
-    decision = evaluate_governance_decision(base, candidate, merge_conflicts=conflicts)
+    decision = _evaluate(base, candidate, merge_conflicts=conflicts)
 
     assert decision.decision == DecisionResult.REVIEW
     assert decision.evidence.merge_conflicts_count == 1
@@ -245,6 +263,7 @@ def test_governance_decision_allow_invariants_validator():
         decision_id="id1",
         decision=DecisionResult.ALLOW,
         contract_id="c1",
+        context=TEST_CONTEXT,
         breaking=False,
         required_version_bump="none",
         validation=val,
@@ -258,6 +277,7 @@ def test_governance_decision_allow_invariants_validator():
             decision_id="id2",
             decision=DecisionResult.ALLOW,
             contract_id="c1",
+            context=TEST_CONTEXT,
             breaking=True,
             required_version_bump="none",
             validation=val,
@@ -271,6 +291,7 @@ def test_governance_decision_allow_invariants_validator():
             decision_id="id3",
             decision=DecisionResult.ALLOW,
             contract_id="c1",
+            context=TEST_CONTEXT,
             breaking=False,
             required_version_bump="minor",
             validation=val,
@@ -320,13 +341,14 @@ def test_governance_decision_serialization_and_deserialization():
         SchemaProperty(name="note", logicalType="string", physicalType="varchar(100)", required=False)
     )
 
-    decision = evaluate_governance_decision(base, candidate)
+    decision = _evaluate(base, candidate)
     dumped_json = decision.model_dump(mode="json")
     reconstructed = GovernanceDecision.model_validate(dumped_json)
 
     assert decision == reconstructed
     assert reconstructed.decision == DecisionResult.REVIEW
     assert reconstructed.required_version_bump == "minor"
+    assert reconstructed.context == TEST_CONTEXT
     assert all(isinstance(reason["code"], str) for reason in dumped_json["reasons"])
 
 
@@ -338,7 +360,7 @@ def test_governance_decision_input_immutability():
     base_copy = copy.deepcopy(base)
     candidate_copy = copy.deepcopy(candidate)
 
-    evaluate_governance_decision(base, candidate)
+    _evaluate(base, candidate)
 
     assert base == base_copy
     assert candidate == candidate_copy
@@ -379,5 +401,6 @@ def test_single_pass_governance_execution_spy(monkeypatch, tmp_path):
             merged_contract_output_path=str(tmp_path / "merged.yaml"),
             ge_suite_output_path=str(tmp_path / "suite.json"),
             ci_manifest_output_path=str(tmp_path / "manifest.json"),
+            change_context=TEST_CONTEXT,
         )
         assert spy_eval.call_count == 1

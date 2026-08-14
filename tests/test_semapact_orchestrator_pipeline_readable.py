@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -13,9 +14,11 @@ from semapact.devops.audit import AuditMetadata
 from semapact.lifecycle.merge_engine import MergeConflict, MergeResult
 from semapact.lifecycle.policy import BreakingChange, PolicyEvaluation
 from semapact.exceptions import GovernanceBlockedError
-from semapact.governance import GovernanceGateResult
+from semapact.governance import ChangeContext, GovernanceGateResult
 from semapact.orchestrator.pipeline import ContractPipeline
 from deltalake import write_deltalake
+
+TEST_CONTEXT = ChangeContext(effective_date=date(2026, 8, 13))
 
 
 def test_pipeline_import_schema_supports_delta_and_sql(monkeypatch):
@@ -131,7 +134,11 @@ def test_pipeline_prepare_ci_cd_artifacts_writes_manifest_and_outputs(
     )
 
     from semapact.governance import evaluate_governance_decision
-    decision = evaluate_governance_decision(merged_contract, merged_contract)
+    decision = evaluate_governance_decision(
+        merged_contract,
+        merged_contract,
+        context=TEST_CONTEXT,
+    )
 
     artifacts = pipeline.prepare_ci_cd_artifacts(
         merged_contract,
@@ -189,6 +196,7 @@ def test_pipeline_run_raises_on_failed_contract_validation(
             merged_contract_output_path="/tmp/merged.yaml",
             ge_suite_output_path="/tmp/suite.json",
             ci_manifest_output_path="/tmp/manifest.json",
+            change_context=TEST_CONTEXT,
         )
 
 
@@ -221,6 +229,7 @@ def test_pipeline_run_raises_on_failed_lifecycle_policy(monkeypatch, sample_odcs
             merged_contract_output_path="/tmp/merged.yaml",
             ge_suite_output_path="/tmp/suite.json",
             ci_manifest_output_path="/tmp/manifest.json",
+            change_context=TEST_CONTEXT,
         )
 
 
@@ -277,6 +286,7 @@ def test_pipeline_run_does_not_block_non_version_policy_findings(
         merged_contract_output_path=str(tmp_path / "merged2.yaml"),
         ge_suite_output_path=str(tmp_path / "suite2.json"),
         ci_manifest_output_path=str(tmp_path / "manifest2.json"),
+        change_context=TEST_CONTEXT,
     )
 
     assert artifacts == expected_artifacts
@@ -302,6 +312,7 @@ def test_pipeline_run_blocks_retired_contract(monkeypatch, sample_odcs_model):
             merged_contract_output_path="/tmp/merged.yaml",
             ge_suite_output_path="/tmp/suite.json",
             ci_manifest_output_path="/tmp/manifest.json",
+            change_context=TEST_CONTEXT,
         )
 
 
@@ -332,6 +343,7 @@ def test_pipeline_run_blocks_when_merge_returns_none_contract(
             merged_contract_output_path="/tmp/merged.yaml",
             ge_suite_output_path="/tmp/suite.json",
             ci_manifest_output_path="/tmp/manifest.json",
+            change_context=TEST_CONTEXT,
         )
 
 
@@ -367,6 +379,7 @@ def test_pipeline_run_blocks_on_conflicts(
             merged_contract_output_path="/tmp/merged.yaml",
             ge_suite_output_path="/tmp/suite.json",
             ci_manifest_output_path="/tmp/manifest.json",
+            change_context=TEST_CONTEXT,
         )
 
 
@@ -420,6 +433,7 @@ def test_pipeline_run_returns_artifacts_on_success(
         merged_contract_output_path=str(tmp_path / "merged2.yaml"),
         ge_suite_output_path=str(tmp_path / "suite2.json"),
         ci_manifest_output_path=str(tmp_path / "manifest2.json"),
+        change_context=TEST_CONTEXT,
     )
 
     assert artifacts == expected_artifacts
@@ -470,6 +484,7 @@ def test_pipeline_run_executes_real_merge_validation_and_policy_with_minimal_moc
         merged_contract_output_path=str(tmp_path / "merged.yaml"),
         ge_suite_output_path=str(tmp_path / "suite.json"),
         ci_manifest_output_path=str(tmp_path / "manifest.json"),
+        change_context=TEST_CONTEXT,
     )
 
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
@@ -521,6 +536,7 @@ def test_pipeline_run_executes_real_sql_folder_workflow(
         merged_contract_output_path=str(tmp_path / "merged.yaml"),
         ge_suite_output_path=str(tmp_path / "suite.json"),
         ci_manifest_output_path=str(tmp_path / "manifest.json"),
+        change_context=TEST_CONTEXT,
     )
 
     merged_contract = OpenDataContractStandard.from_file(
@@ -579,6 +595,7 @@ def test_pipeline_run_executes_real_delta_workflow(
         merged_contract_output_path=str(tmp_path / "merged.yaml"),
         ge_suite_output_path=str(tmp_path / "suite.json"),
         ci_manifest_output_path=str(tmp_path / "manifest.json"),
+        change_context=TEST_CONTEXT,
     )
 
     merged_contract = OpenDataContractStandard.from_file(
@@ -664,6 +681,7 @@ def test_pipeline_run_executes_real_unity_workflow(
         merged_contract_output_path=str(tmp_path / "merged.yaml"),
         ge_suite_output_path=str(tmp_path / "suite.json"),
         ci_manifest_output_path=str(tmp_path / "manifest.json"),
+        change_context=TEST_CONTEXT,
         uc_workspace_url="https://adb.example",
         uc_token="token",
     )
@@ -721,6 +739,7 @@ def test_pipeline_run_blocks_root_version_change_outside_release_flow(
             merged_contract_output_path="/tmp/merged.yaml",
             ge_suite_output_path="/tmp/suite.json",
             ci_manifest_output_path="/tmp/manifest.json",
+            change_context=TEST_CONTEXT,
         )
 
 
@@ -760,6 +779,7 @@ def test_pipeline_run_blocks_root_id_change_after_contract_creation(
             merged_contract_output_path="/tmp/merged.yaml",
             ge_suite_output_path="/tmp/suite.json",
             ci_manifest_output_path="/tmp/manifest.json",
+            change_context=TEST_CONTEXT,
         )
 
 
@@ -789,6 +809,7 @@ def test_pipeline_run_writes_manifest_on_blocked_decision(tmp_path, monkeypatch,
             merged_contract_output_path=str(tmp_path / "merged.yaml"),
             ge_suite_output_path=str(tmp_path / "suite.json"),
             ci_manifest_output_path=str(manifest_path),
+            change_context=TEST_CONTEXT,
         )
 
     assert exc_info.value.decision.decision.value == "BLOCK"
@@ -796,4 +817,3 @@ def test_pipeline_run_writes_manifest_on_blocked_decision(tmp_path, monkeypatch,
     content = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert "governanceDecision" in content
     assert content["governanceDecision"]["decision"] == "BLOCK"
-

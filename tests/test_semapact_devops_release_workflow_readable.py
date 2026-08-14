@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import json
 
 from semapact.core.release import prepare_release_candidate
@@ -12,8 +13,12 @@ from semapact.devops.release_workflow import (
     create_release_pull_request,
     create_release_pull_requests_from_manifest,
 )
+from semapact.governance import ChangeContext
 from semapact.interfaces import cli
 from semapact.utils.yaml_utils import dump_yaml, load_yaml
+
+
+TEST_CONTEXT = ChangeContext(effective_date=date(2026, 1, 1))
 
 
 def test_build_release_pr_plan_uses_per_contract_defaults(sample_odcs_model):
@@ -81,6 +86,7 @@ def test_create_release_pull_request_writes_contract_and_calls_pr_creator(
         release_tag="orders/v1.2.0",
         source_branch="release/orders-v1.2.0",
         target_branch="release",
+        context=TEST_CONTEXT,
         push=True,
     )
 
@@ -139,6 +145,8 @@ def test_cli_release_create_pr_outputs_plan_and_pr_payload(
             "release/orders-v1.2.0",
             "--target-branch",
             "release",
+            "--effective-date",
+            "2026-01-01",
             "--organization",
             "org",
             "--project",
@@ -180,7 +188,9 @@ def test_classify_contracts_in_repo_reports_changed_added_removed_and_unchanged(
     dump_yaml(added, candidate_root / "added.yaml")
 
     results = classify_contracts_in_repo(
-        base_root=base_root, candidate_root=candidate_root
+        base_root=base_root,
+        candidate_root=candidate_root,
+        context=TEST_CONTEXT,
     )
     by_path = {item.contract_repo_path: item for item in results}
 
@@ -250,6 +260,7 @@ def test_create_release_pull_requests_from_manifest_runs_each_contract(
                 release_tag="orders/v1.2.0",
                 source_branch="release/orders-v1.2.0",
                 target_branch="release",
+                effective_date="2026-01-01",
             ),
             BatchReleaseTask(
                 base=str(base_b_path),
@@ -258,6 +269,7 @@ def test_create_release_pull_requests_from_manifest_runs_each_contract(
                 release_tag="payments/v1.2.0",
                 source_branch="release/payments-v1.2.0",
                 target_branch="release",
+                effective_date="2026-01-01",
             ),
         ],
         push=False,
@@ -301,13 +313,16 @@ def test_build_batch_release_manifest_generates_editable_tasks_and_skips_manual_
     dump_yaml(added, candidate_root / "added.yaml")
 
     build = build_batch_release_manifest(
-        base_root=base_root, candidate_root=candidate_root
+        base_root=base_root,
+        candidate_root=candidate_root,
+        context=TEST_CONTEXT,
     )
     tasks_by_path = {task.contract_path: task for task in build.tasks}
     skipped_by_path = {item.contract_repo_path: item for item in build.skipped}
 
     assert tasks_by_path["additive.yaml"].release_tag.endswith("/v1.2.0")
     assert tasks_by_path["additive.yaml"].target_branch == "release"
+    assert tasks_by_path["additive.yaml"].effective_date == "2026-01-01"
     assert "docs.yaml" in skipped_by_path
     assert skipped_by_path["docs.yaml"].status == "changed"
     assert "unchanged.yaml" in skipped_by_path

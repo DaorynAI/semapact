@@ -1,21 +1,28 @@
-from datetime import datetime, timezone
 from typing import Any
-from semapact.core.loader import ContractLoader
-from semapact.governance import (
-    GovernanceOperation,
-    enforce_governance_gate,
-    evaluate_governance_decision,
-)
-from semapact.utils.schema_utils import contract_to_dict
-from semapact.utils.yaml_utils import dump_yaml
+
 from open_data_contract_standard.model import (
     CustomProperty,
     SchemaObject,
     SchemaProperty,
 )
 
+from semapact.core.loader import ContractLoader
+from semapact.governance import (
+    ChangeContext,
+    GovernanceOperation,
+    enforce_governance_gate,
+    evaluate_governance_decision,
+)
+from semapact.utils.schema_utils import contract_to_dict
+from semapact.utils.yaml_utils import dump_yaml
 
-def apply_lifecycle(args: Any, is_promote: bool) -> dict[str, Any]:
+
+def apply_lifecycle(
+    args: Any,
+    is_promote: bool,
+    *,
+    context: ChangeContext,
+) -> dict[str, Any]:
     loader = ContractLoader(runtime_context=args.runtime_context)
     base_contract = loader.load(args.contract)
 
@@ -28,14 +35,29 @@ def apply_lifecycle(args: Any, is_promote: bool) -> dict[str, Any]:
     candidate_contract = base_contract.model_copy(deep=True)
 
     if getattr(args, "schema", None) and getattr(args, "property", None):
-        _apply_property(candidate_contract, args.schema, args.property, target_status)
+        _apply_property(
+            candidate_contract,
+            args.schema,
+            args.property,
+            target_status,
+            context=context,
+        )
     elif getattr(args, "schema", None):
-        _apply_schema(candidate_contract, args.schema, target_status)
+        _apply_schema(
+            candidate_contract,
+            args.schema,
+            target_status,
+            context=context,
+        )
     else:
         _apply_contract(candidate_contract, target_status)
 
-    # Evaluate decision and enforce APPLY operation BEFORE file overwrite
-    decision = evaluate_governance_decision(base_contract, candidate_contract)
+    # Evaluate decision and enforce APPLY operation BEFORE file overwrite.
+    decision = evaluate_governance_decision(
+        base_contract,
+        candidate_contract,
+        context=context,
+    )
     enforce_governance_gate(decision, GovernanceOperation.APPLY)
 
     output_path = args.output or args.contract
@@ -55,19 +77,33 @@ def _apply_contract(contract: Any, target_status: str) -> None:
     contract.status = target_status
 
 
-def _apply_schema(contract: Any, schema_name: str, target_status: str) -> None:
+def _apply_schema(
+    contract: Any,
+    schema_name: str,
+    target_status: str,
+    *,
+    context: ChangeContext,
+) -> None:
     for i, schema_obj in enumerate(contract.schema_ or []):
         if str(schema_obj.name or "") == schema_name:
             if target_status == "active":
                 contract.schema_[i] = _promote_entity_model(schema_obj)
             else:
-                contract.schema_[i] = _deprecate_entity_model(schema_obj)
+                contract.schema_[i] = _deprecate_entity_model(
+                    schema_obj,
+                    context=context,
+                )
             return
     raise ValueError(f"Schema '{schema_name}' not found in contract")
 
 
 def _apply_property(
-    contract: Any, schema_name: str, property_name: str, target_status: str
+    contract: Any,
+    schema_name: str,
+    property_name: str,
+    target_status: str,
+    *,
+    context: ChangeContext,
 ) -> None:
     for i, schema_obj in enumerate(contract.schema_ or []):
         if str(schema_obj.name or "") == schema_name:
@@ -77,7 +113,8 @@ def _apply_property(
                         contract.schema_[i].properties[j] = _promote_entity_model(prop)
                     else:
                         contract.schema_[i].properties[j] = _deprecate_entity_model(
-                            prop
+                            prop,
+                            context=context,
                         )
                     return
             raise ValueError(
@@ -101,6 +138,8 @@ def _promote_entity_model(
 
 def _deprecate_entity_model(
     entity: SchemaObject | SchemaProperty,
+    *,
+    context: ChangeContext,
 ) -> SchemaObject | SchemaProperty:
     from semapact.lifecycle.merge_engine import _merge_custom_properties_models
 
@@ -108,7 +147,9 @@ def _deprecate_entity_model(
 
     updates = [CustomProperty(property="lifecycleStatus", value="deprecated")]
 
-    # Check if deprecationDate already exists
+    # Preserve an existing semantic deprecation date. If this is the first
+    # deprecation, consume the upstream-owned effective date; never resolve
+    # wall-clock time in this layer.
     has_date = False
     if updated.customProperties:
         for cp in updated.customProperties:
@@ -119,7 +160,7 @@ def _deprecate_entity_model(
         updates.append(
             CustomProperty(
                 property="deprecationDate",
-                value=datetime.now(timezone.utc).date().isoformat(),
+                value=context.effective_date.isoformat(),
             )
         )
 

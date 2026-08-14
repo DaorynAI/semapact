@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from open_data_contract_standard.model import (
     CustomProperty,
@@ -9,7 +11,11 @@ from open_data_contract_standard.model import (
 )
 
 import semapact.lifecycle.merge_engine as merge_engine
+from semapact.governance import ChangeContext
 from semapact.lifecycle.merge_engine import ContractMergeEngine
+
+
+TEST_CONTEXT = ChangeContext(effective_date=date(2026, 1, 1))
 
 
 def _cp(key: str, value: str) -> CustomProperty:
@@ -93,7 +99,7 @@ def test_merge_engine_preserves_business_metadata_and_flags_removed_columns():
 
     merged = (
         ContractMergeEngine()
-        .merge(base_contract=source, business_contract=existing)
+        .merge(base_contract=source, business_contract=existing, context=TEST_CONTEXT)
         .contract
     )
     merged_schema = next(
@@ -163,7 +169,7 @@ def test_merge_engine_preserves_top_level_description_and_handles_added_removed_
     )
     merged = (
         ContractMergeEngine()
-        .merge(base_contract=source, business_contract=existing)
+        .merge(base_contract=source, business_contract=existing, context=TEST_CONTEXT)
         .contract
     )
     assert (
@@ -208,7 +214,7 @@ def test_merge_engine_preserves_governed_contract_id_and_version():
 
     merged = (
         ContractMergeEngine()
-        .merge(base_contract=source, business_contract=existing)
+        .merge(base_contract=source, business_contract=existing, context=TEST_CONTEXT)
         .contract
     )
 
@@ -239,7 +245,7 @@ def test_merge_engine_skips_auto_deprecation_for_non_active_contract():
 
     merged = (
         ContractMergeEngine()
-        .merge(base_contract=source, business_contract=existing)
+        .merge(base_contract=source, business_contract=existing, context=TEST_CONTEXT)
         .contract
     )
     legacy_col = merged.schema_[0].properties[0]  # type: ignore[index]
@@ -278,7 +284,7 @@ def test_merge_engine_skips_auto_deprecation_for_draft_property():
 
     merged = (
         ContractMergeEngine()
-        .merge(base_contract=source, business_contract=existing)
+        .merge(base_contract=source, business_contract=existing, context=TEST_CONTEXT)
         .contract
     )
     legacy_col = merged.schema_[0].properties[0]  # type: ignore[index]
@@ -305,7 +311,11 @@ def test_merge_engine_rejects_api_version_below_3():
     )
 
     with pytest.raises(Exception, match="Only v3.0.0 and above are supported"):
-        ContractMergeEngine().merge(base_contract=source, business_contract=existing)
+        ContractMergeEngine().merge(
+            base_contract=source,
+            business_contract=existing,
+            context=TEST_CONTEXT,
+        )
 
 
 def test_merge_engine_rejects_retired_contract_modification():
@@ -329,14 +339,23 @@ def test_merge_engine_rejects_retired_contract_modification():
         ],
     )
 
-    result = ContractMergeEngine().merge(base_contract=source, business_contract=existing)
+    result = ContractMergeEngine().merge(
+        base_contract=source,
+        business_contract=existing,
+        context=TEST_CONTEXT,
+    )
     from semapact.governance import (
         DecisionResult,
         GovernanceReasonCode,
         evaluate_governance_decision,
     )
 
-    decision = evaluate_governance_decision(existing, result.contract, merge_conflicts=result.conflicts)
+    decision = evaluate_governance_decision(
+        existing,
+        result.contract,
+        context=TEST_CONTEXT,
+        merge_conflicts=result.conflicts,
+    )
     assert decision.decision == DecisionResult.BLOCK
     assert any(
         r.code == GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED
@@ -354,6 +373,7 @@ def test_merge_engine_hard_overwrites_relationships(
         .merge(
             base_contract=relationship_merge_missing_contract_model,
             business_contract=relationship_merge_existing_contract_model,
+            context=TEST_CONTEXT,
         )
         .contract
     )
@@ -366,6 +386,7 @@ def test_merge_engine_hard_overwrites_relationships(
         .merge(
             base_contract=relationship_merge_new_contract_model,
             business_contract=relationship_merge_existing_contract_model,
+            context=TEST_CONTEXT,
         )
         .contract
     )

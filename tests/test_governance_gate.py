@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 import pytest
 
 from semapact.exceptions import GovernanceBlockedError, GovernanceReviewRequiredError
 from semapact.governance import (
+    ChangeContext,
     ChangeEvidence,
     DecisionResult,
     GovernanceDecision,
@@ -20,6 +22,9 @@ from semapact.governance import (
     enforce_governance_gate,
     evaluate_governance_gate,
 )
+
+
+TEST_CONTEXT = ChangeContext(effective_date=date(2026, 1, 1))
 
 
 def _make_decision(result: DecisionResult) -> GovernanceDecision:
@@ -52,6 +57,7 @@ def _make_decision(result: DecisionResult) -> GovernanceDecision:
         decision_id="dec-123",
         decision=result,
         contract_id="contract-test",
+        context=TEST_CONTEXT,
         breaking=breaking,
         required_version_bump=bump,
         validation=ValidationOutcome(valid=val_valid),

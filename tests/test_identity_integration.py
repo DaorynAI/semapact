@@ -1,9 +1,15 @@
+from datetime import date
+
 import pytest
 from open_data_contract_standard.model import SchemaObject, SchemaProperty
+
 from semapact.core.release import classify_contract_change
 from semapact.exceptions import ValidationError
+from semapact.governance import ChangeContext
 from semapact.lifecycle.merge_engine import ContractMergeEngine
 from semapact.lifecycle.policy import evaluate_merge_policy
+
+TEST_CONTEXT = ChangeContext(effective_date=date(2026, 8, 13))
 
 
 def test_cross_layer_entity_consistency(sample_odcs_model):
@@ -30,7 +36,7 @@ def test_cross_layer_entity_consistency(sample_odcs_model):
 
     # 2. Merge Engine: schemas must be merged (not duplicated) by canonical key
     engine = ContractMergeEngine()
-    merged = engine.merge(base, candidate)
+    merged = engine.merge(base, candidate, context=TEST_CONTEXT)
     assert merged.contract.schema_ is not None
     assert len(merged.contract.schema_) == len(base.schema_)
     assert len(merged.contract.schema_[0].properties) == len(base.schema_[0].properties)
@@ -126,7 +132,7 @@ def test_duplicate_canonical_identity_validation(sample_odcs_model):
 
     engine = ContractMergeEngine()
     with pytest.raises(ValidationError) as exc_info:
-        engine.merge(sample_odcs_model, invalid_contract)
+        engine.merge(sample_odcs_model, invalid_contract, context=TEST_CONTEXT)
     assert "Duplicate canonical schema identity found: 'tbl'" in str(exc_info.value)
 
     with pytest.raises(ValidationError) as exc_info:
@@ -146,7 +152,7 @@ def test_duplicate_canonical_identity_validation(sample_odcs_model):
     assert "Duplicate canonical property identity found: 'rcvr_id'" in str(exc_info.value)
 
     with pytest.raises(ValidationError) as exc_info:
-        engine.merge(sample_odcs_model, invalid_contract2)
+        engine.merge(sample_odcs_model, invalid_contract2, context=TEST_CONTEXT)
     assert "Duplicate canonical property identity found: 'rcvr_id'" in str(exc_info.value)
 
     with pytest.raises(ValidationError) as exc_info:

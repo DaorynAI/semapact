@@ -26,6 +26,7 @@ from open_data_contract_standard.model import OpenDataContractStandard
 from datacontract.data_contract import DataContract
 
 from semapact.governance import (
+    ChangeContext,
     GovernanceDecision,
     GovernanceOperation,
     enforce_governance_gate,
@@ -138,6 +139,7 @@ class ContractPipeline:
         source: str,
         *,
         existing_contract: OpenDataContractStandard | None = None,
+        context: ChangeContext | None = None,
         uc_workspace_url: str | None = None,
         uc_token: str | None = None,
         import_args: dict[str, Any] | None = None,
@@ -166,9 +168,12 @@ class ContractPipeline:
             raise ValidationError(f"Unsupported source_type: {source_type}") from exc
 
         if existing_contract is not None:
+            if context is None:
+                raise TypeError("context is required when merging into an existing contract")
             return self.merge_engine.merge(
                 imported,
                 existing_contract,
+                context=context,
             ).contract
 
         return imported
@@ -178,12 +183,14 @@ class ContractPipeline:
         source_contract: OpenDataContractStandard,
         business_contract: OpenDataContractStandard,
         *,
+        context: ChangeContext,
         fail_on_conflict: bool = False,
     ) -> MergeResult:
         """Merge a technical source contract into a business contract."""
         return self.merge_engine.merge(
             source_contract,
             business_contract,
+            context=context,
             fail_on_conflict=fail_on_conflict,
         )
 
@@ -265,6 +272,7 @@ class ContractPipeline:
         merged_contract_output_path: str,
         ge_suite_output_path: str,
         ci_manifest_output_path: str,
+        change_context: ChangeContext,
         uc_workspace_url: str | None = None,
         uc_token: str | None = None,
         ge_schema_name: str = "all",
@@ -284,6 +292,7 @@ class ContractPipeline:
         merge_result = self.merge_contract_updates(
             imported_contract,
             business_contract,
+            context=change_context,
             fail_on_conflict=False,
         )
         merged_contract = merge_result.contract
@@ -292,10 +301,11 @@ class ContractPipeline:
         if merged_contract is None:
             raise ValueError("Merge did not produce a contract")
 
-        # Single-pass governance decision evaluation
+        # Single-pass governance decision evaluation using the same explicit context as merge.
         decision = evaluate_governance_decision(
             business_contract,
             merged_contract,
+            context=change_context,
             merge_conflicts=conflicts,
         )
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
     SchemaObject,
@@ -9,6 +11,7 @@ from open_data_contract_standard.model import (
 )
 
 from semapact.governance import (
+    ChangeContext,
     GOVERNANCE_REASON_REGISTRY,
     GovernanceReasonCode,
     GovernanceSeverity,
@@ -16,6 +19,8 @@ from semapact.governance import (
 )
 from semapact.lifecycle.policy import evaluate_merge_policy
 
+
+TEST_CONTEXT = ChangeContext(effective_date=date(2026, 1, 1))
 
 ISSUE_78_PUBLIC_CODES = {
     GovernanceReasonCode.CONTRACT_ID_CHANGED,
@@ -189,8 +194,8 @@ def test_reason_code_serialization_is_stable_and_message_is_descriptive_only():
     candidate = _contract()
     candidate.schema_[0].properties = []
 
-    first = evaluate_governance_decision(base, candidate)
-    second = evaluate_governance_decision(base, candidate)
+    first = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    second = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
 
     first_json = first.model_dump(mode="json")
     second_json = second.model_dump(mode="json")

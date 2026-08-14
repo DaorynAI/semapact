@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from open_data_contract_standard.model import (
     CustomProperty,
@@ -10,7 +12,11 @@ from open_data_contract_standard.model import (
 )
 
 import semapact.lifecycle.merge_engine as merge_engine
+from semapact.governance import ChangeContext
 from semapact.lifecycle.merge_engine import ContractMergeEngine
+
+
+TEST_CONTEXT = ChangeContext(effective_date=date(2026, 1, 1))
 
 
 def _cp(key: str, value: str) -> CustomProperty:
@@ -131,14 +137,19 @@ def test_merge_engine_can_fail_fast_when_conflicts_exist():
 
     with pytest.raises(Exception, match="Merge conflicts detected"):
         engine.merge(
-            _build_base_contract(), _build_business_contract(), fail_on_conflict=True
+            _build_base_contract(),
+            _build_business_contract(),
+            context=TEST_CONTEXT,
+            fail_on_conflict=True,
         )
 
 
 def test_merge_engine_combines_quality_rules_without_duplicates():
     engine = ContractMergeEngine()
 
-    result = engine.merge(_build_base_contract(), _build_business_contract())
+    result = engine.merge(
+        _build_base_contract(), _build_business_contract(), context=TEST_CONTEXT
+    )
 
     merged_schema = result.contract.schema_[0]  # type: ignore[index]
     schema_quality = merged_schema.quality

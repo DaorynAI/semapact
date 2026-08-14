@@ -9,6 +9,18 @@ if TYPE_CHECKING:
     pass
 
 
+def _add_effective_date_argument(
+    parser: argparse.ArgumentParser,
+    *,
+    required: bool = True,
+) -> None:
+    parser.add_argument(
+        "--effective-date",
+        required=required,
+        help="Governance effective date in YYYY-MM-DD format",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="semapact")
     subparsers = parser.add_subparsers(dest="command", required=False)
@@ -43,6 +55,7 @@ def _build_parser() -> argparse.ArgumentParser:
     promote_parser.add_argument(
         "--output", help="Output path (defaults to overwriting contract)"
     )
+    _add_effective_date_argument(promote_parser)
 
     deprecate_parser = lifecycle_subparsers.add_parser(
         "deprecate", help="Deprecate entity status"
@@ -56,6 +69,7 @@ def _build_parser() -> argparse.ArgumentParser:
     deprecate_parser.add_argument(
         "--output", help="Output path (defaults to overwriting contract)"
     )
+    _add_effective_date_argument(deprecate_parser)
 
     enrich_parser = subparsers.add_parser(
         "enrich", 
@@ -94,6 +108,7 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument(
         "--type", required=True, help="The source type (e.g. delta, sql, uc, controldb)"
     )
+    _add_effective_date_argument(plan_parser)
     
     plan_delta_group = plan_parser.add_argument_group("Delta Import Options")
     plan_delta_group.add_argument("--tables")
@@ -112,6 +127,7 @@ def _build_parser() -> argparse.ArgumentParser:
     import_parser.add_argument("--output", required=True)
     import_parser.add_argument("--existing")
     import_parser.add_argument("--runtime-context", default="auto")
+    _add_effective_date_argument(import_parser, required=False)
 
     import_delta_group = import_parser.add_argument_group("Delta Import Options")
     import_delta_group.add_argument(
@@ -136,6 +152,7 @@ def _build_parser() -> argparse.ArgumentParser:
     merge_parser.add_argument("--business", required=True)
     merge_parser.add_argument("--output", required=True)
     merge_parser.add_argument("--runtime-context", default="auto")
+    _add_effective_date_argument(merge_parser)
 
     export_parser = subparsers.add_parser(
         "export", help="Convert data contract to a specific format"
@@ -217,6 +234,7 @@ def _build_parser() -> argparse.ArgumentParser:
     release_classify_parser.add_argument("--base", required=True)
     release_classify_parser.add_argument("--candidate", required=True)
     release_classify_parser.add_argument("--runtime-context", default="auto")
+    _add_effective_date_argument(release_classify_parser)
 
     release_classify_repo_parser = release_subparsers.add_parser(
         "classify-repo",
@@ -224,6 +242,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     release_classify_repo_parser.add_argument("--base-root", required=True)
     release_classify_repo_parser.add_argument("--candidate-root", required=True)
+    _add_effective_date_argument(release_classify_repo_parser)
 
     release_build_manifest_parser = release_subparsers.add_parser(
         "build-manifest",
@@ -236,6 +255,7 @@ def _build_parser() -> argparse.ArgumentParser:
     release_build_manifest_parser.add_argument(
         "--source-branch-prefix", default="release/"
     )
+    _add_effective_date_argument(release_build_manifest_parser)
 
     release_prepare_parser = release_subparsers.add_parser(
         "prepare",
@@ -246,6 +266,7 @@ def _build_parser() -> argparse.ArgumentParser:
     release_prepare_parser.add_argument("--release-tag", required=True)
     release_prepare_parser.add_argument("--output", required=True)
     release_prepare_parser.add_argument("--runtime-context", default="auto")
+    _add_effective_date_argument(release_prepare_parser)
 
     release_pr_parser = release_subparsers.add_parser(
         "create-pr",
@@ -274,6 +295,7 @@ def _build_parser() -> argparse.ArgumentParser:
     release_pr_parser.add_argument("--commit-message")
     release_pr_parser.add_argument("--push", action="store_true")
     release_pr_parser.add_argument("--runtime-context", default="auto")
+    _add_effective_date_argument(release_pr_parser)
 
     release_prs_parser = release_subparsers.add_parser(
         "create-prs",
