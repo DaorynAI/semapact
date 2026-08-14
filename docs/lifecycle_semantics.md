@@ -94,7 +94,17 @@ SemaPact strictly differentiates between **declared lifecycle** and **effective 
 
 ## 5. Fail-Closed Validation Integration
 
+> [!NOTE]
+> **Total Resolvers vs. Validation Authority**:
+> Lifecycle resolvers are intentionally total for deterministic analysis; lifecycle validity is enforced by `ContractValidator`.
+>
+> - `normalize_status()`: Strict parser (`ValueError` on unsupported values).
+> - Resolvers (`resolve_contract_lifecycle`, `resolve_schema_lifecycle`, `resolve_property_lifecycle`): Total / tolerant functions with safe fallbacks (`DRAFT` / `None`), preventing crashes in downstream analysis pipelines.
+> - `ContractValidator`: Authoritative validity check emitting `ValidationIssue(severity="error")` on invalid lifecycle values.
+> - `evaluate_governance_decision()`: Blocks changes with `VALIDATION_FAILED` whenever `ContractValidator` reports issues.
+
 When an unknown or malformed lifecycle status is provided (e.g. `status: "unknown"`):
 1. `ContractValidator` detects invalid status and records a `VALIDATION_FAILED` issue.
 2. `evaluate_governance_decision()` receives `ValidationOutcome(valid=False)` and emits a deterministic `GovernanceDecision(decision=DecisionResult.BLOCK)`.
-3. Evaluation never crashes with an unhandled exception.
+3. Evaluation and merge pipelines execute deterministically without leaking unhandled exceptions.
+

@@ -1,4 +1,14 @@
-"""Authoritative lifecycle status model and resolution for Open Data Contracts."""
+"""Authoritative lifecycle status model and resolution for Open Data Contracts.
+
+Design Note:
+    - `normalize_status()` is a strict parser that raises `ValueError` on invalid values.
+    - Lifecycle resolvers (`resolve_contract_lifecycle`, `resolve_schema_lifecycle`,
+      `resolve_property_lifecycle`, `lifecycle_from_custom_properties`) are intentionally
+      total for deterministic analysis, falling back safely (e.g. to DRAFT or None) rather
+      than crashing downstream execution paths.
+    - Lifecycle validity is strictly enforced upstream by `ContractValidator`, which flags
+      invalid lifecycle statuses as `ValidationIssue` to ensure governance fail-closed BLOCK.
+"""
 
 from __future__ import annotations
 
@@ -64,6 +74,8 @@ def lifecycle_from_custom_properties(custom_properties: Any) -> LifecycleStatus 
     """Extract and parse lifecycleStatus from customProperties list.
 
     Supports both CustomProperty model instances and dict objects.
+    Note: Lifecycle resolvers are intentionally total; invalid statuses return None
+    while lifecycle validity is enforced by ContractValidator.
     """
     if not isinstance(custom_properties, list):
         return None
@@ -101,9 +113,13 @@ def resolve_contract_lifecycle(
     1. contract.status (ODCS native canonical root status)
     2. contract.customProperties.lifecycleStatus (legacy fallback)
     3. LifecycleStatus.DRAFT (canonical default)
+
+    Note: Lifecycle resolvers are intentionally total for deterministic analysis;
+    invalid statuses fall back to DRAFT while lifecycle validity is enforced by ContractValidator.
     """
     if contract is None:
         return LifecycleStatus.DRAFT
+
 
     # 1. Native root status
     raw_status = contract.status
