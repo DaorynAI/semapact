@@ -166,12 +166,7 @@ def _contract_has_any_change(
     candidate_contract: OpenDataContractStandard,
 ) -> bool:
     """Deterministically check if candidate differs from base in any way."""
-    try:
-        base_dict = contract_to_dict(base_contract)
-        candidate_dict = contract_to_dict(candidate_contract)
-        return base_dict != candidate_dict
-    except Exception:
-        return base_contract != candidate_contract
+    return contract_to_dict(base_contract) != contract_to_dict(candidate_contract)
 
 
 def _build_policy_outcome(

@@ -131,6 +131,26 @@ class TestRetiredKernelMatrix:
             for r in decision.reasons
         )
 
+    def test_retired_via_custom_properties_effective_lifecycle_blocks(self) -> None:
+        """Effective lifecycle from customProperties.lifecycleStatus=retired blocks candidate mutation."""
+        base = _make_retired_contract()
+        base.status = None
+        base.customProperties = [
+            CustomProperty(property="lifecycleStatus", value="retired")
+        ]
+
+        candidate = base.model_copy(deep=True)
+        candidate.description = Description(usage="Mutated candidate description")
+
+        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+
+        assert decision.decision == DecisionResult.BLOCK
+        assert decision.policy.retired_violation is True
+        assert any(
+            r.code == GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED
+            for r in decision.reasons
+        )
+
     def test_retired_schema_change_blocks(self) -> None:
         """Adding a new schema object to a retired contract produces BLOCK."""
         base = _make_retired_contract()
