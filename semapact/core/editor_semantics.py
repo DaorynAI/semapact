@@ -159,17 +159,17 @@ def schema_label(contract: ContractInput, index: int) -> str:
     return f"schema_{index + 1}"
 
 
-def field_lifecycle_status(field_obj: PropertyInput) -> str:
-    """Resolve field lifecycle status."""
-    if isinstance(field_obj, dict):
-        status = field_obj.get("status")
-        if status is not None:
-            return str(status)
+def field_declared_lifecycle_status(field_obj: PropertyInput) -> str:
+    """Resolve declared field lifecycle status from customProperties."""
     model = _property_model(field_obj)
     for item in model.customProperties or []:
         if str(item.property or "").strip().lower() == "lifecyclestatus":
             return str(item.value or "")
     return ""
+
+
+# Compatibility alias
+field_lifecycle_status = field_declared_lifecycle_status
 
 
 def field_option_label(field_obj: PropertyInput, index: int) -> str:
@@ -179,9 +179,9 @@ def field_option_label(field_obj: PropertyInput, index: int) -> str:
 
 
 def set_field_lifecycle_status(field_obj: dict[str, Any], value: Any) -> None:
-    """Persist field lifecycle status."""
+    """Persist declared field lifecycle status to customProperties."""
     status_value = str(value or "").strip() or "draft"
-    field_obj["status"] = status_value
+    field_obj.pop("status", None)
     custom_properties = [
         item.model_dump(by_alias=True, exclude_none=True)
         for item in _custom_property_models(field_obj.get("customProperties", []) or [])
@@ -193,6 +193,7 @@ def set_field_lifecycle_status(field_obj: dict[str, Any], value: Any) -> None:
         )
     )
     field_obj["customProperties"] = custom_properties
+
 
 
 def field_examples_text(field_obj: PropertyInput) -> str:

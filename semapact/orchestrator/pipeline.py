@@ -336,16 +336,7 @@ class ContractPipeline:
         return artifacts
 
     def _resolve_lifecycle(self, contract: OpenDataContractStandard) -> str:
-        """Resolve lifecycle status from status or customProperties fallback."""
-        value = (contract.status or "").strip().lower()
-        if value:
-            return value
-        for item in contract.customProperties or []:
-            key = (item.property or "").strip().lower()
-            if key != "lifecyclestatus":
-                continue
-            resolved = (
-                (str(item.value) if item.value is not None else "").strip().lower()
-            )
-            return resolved or "draft"
-        return "draft"
+        """Resolve lifecycle status using centralized lifecycle resolution."""
+        from semapact.lifecycle.status import resolve_contract_lifecycle
+
+        return str(resolve_contract_lifecycle(contract))

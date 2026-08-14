@@ -12,16 +12,26 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 from semapact.change_context import ChangeContext
+from semapact.exceptions import MergeConflictError
 from semapact.lifecycle.identity import (
-    SchemaIdentity,
     PropertyIdentity,
-    schema_identity,
-    normalize_identity_name,
-    build_schema_index,
+    SchemaIdentity,
     build_property_index,
+    build_schema_index,
+    normalize_identity_name,
+    schema_identity,
+)
+from semapact.lifecycle.status import (
+    LIFECYCLE_STATUS_PROPERTY,
+    LifecycleStatus,
+    is_active_contract,
+    is_retired_contract,
+    participates_in_breaking_checks,
+    resolve_declared_entity_lifecycle,
+    resolve_property_lifecycle,
+    resolve_schema_lifecycle,
 )
 
-from semapact.exceptions import MergeConflictError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,8 +47,8 @@ BUSINESS_METADATA_KEYS = {
 # Quality rules are lifecycle metadata and must be merged using name-based lifecycle semantics.
 
 REMOVED_FLAG = {"property": "semapact.removed", "value": "true"}
-LIFECYCLE_STATUS_PROPERTY = "lifecycleStatus"
 DEPRECATED_LIFECYCLE_VALUE = "deprecated"
+
 
 # Technical fields that must be overwritten from imported source for matching properties.
 PROPERTY_OVERWRITE_FIELDS: tuple[str, ...] = (
@@ -177,28 +187,37 @@ class ContractMergeEngine:
         analysis = MergeAnalysis()
 
         # Lifecycle gating: breaking checks and auto-deprecation apply only to active contracts.
-        if not _is_active_contract(target_model):
+        if not is_active_contract(target_model):
             return analysis
+
 
         existing_schema = build_schema_index(target_model)
         imported_schema = build_schema_index(source_model)
 
         for schema_id, existing_schema_obj in existing_schema.items():
-            if _is_draft_or_deprecated(existing_schema_obj):
+            existing_schema_status = resolve_schema_lifecycle(
+                existing_schema_obj, contract=target_model
+            )
+            if not participates_in_breaking_checks(existing_schema_status):
                 continue
 
             imported_schema_obj = imported_schema.get(schema_id)
             if imported_schema_obj is None:
                 analysis.deprecated_schemas.add(schema_id)
                 continue
-            if _is_draft_or_deprecated(imported_schema_obj):
-                continue
 
-            existing_props = build_property_index(schema_id, existing_schema_obj.properties or [])
-            imported_props = build_property_index(schema_id, imported_schema_obj.properties or [])
+            existing_props = build_property_index(
+                schema_id, existing_schema_obj.properties or []
+            )
+            imported_props = build_property_index(
+                schema_id, imported_schema_obj.properties or []
+            )
 
             for prop_key, existing_prop in existing_props.items():
-                if _is_draft_or_deprecated(existing_prop):
+                existing_prop_status = resolve_property_lifecycle(
+                    existing_prop, parent_lifecycle=existing_schema_status
+                )
+                if not participates_in_breaking_checks(existing_prop_status):
                     continue
 
                 imported_prop = imported_props.get(prop_key)
@@ -206,8 +225,6 @@ class ContractMergeEngine:
                     analysis.deprecated_properties.setdefault(schema_id, set()).add(
                         prop_key
                     )
-                    continue
-                if _is_draft_or_deprecated(imported_prop):
                     continue
 
                 prop_name = prop_key[1]  # (schema_id, prop_id) -> prop_id
@@ -217,6 +234,7 @@ class ContractMergeEngine:
                 )
 
         return analysis
+
 
     def _property_conflicts(
         self, path: str, imported_prop: SchemaProperty, existing_prop: SchemaProperty
@@ -476,9 +494,9 @@ def _merge_matching_property_models(
     context: ChangeContext,
 ) -> SchemaProperty:
     merged_prop = existing_prop.model_copy(deep=True)
-    existing_status = _resolve_lifecycle_status(existing_prop)
+    existing_status = resolve_declared_entity_lifecycle(existing_prop)
 
-    if existing_status == DEPRECATED_LIFECYCLE_VALUE:
+    if existing_status is LifecycleStatus.DEPRECATED:
         # Prevent implicit reactivation of deprecated fields.
         _copy_if_provided(merged_prop, imported_prop, "description")
         _copy_if_provided(merged_prop, imported_prop, "tags")
@@ -495,6 +513,7 @@ def _merge_matching_property_models(
                 }
             ],
         )
+
         merged_prop.tags = _add_deprecated_tag(merged_prop.tags)
         merged_prop.quality = _combine_quality_rules_models(
             existing_prop.quality, imported_prop.quality
@@ -667,36 +686,11 @@ def _property_sort_key(prop: SchemaProperty) -> str:
 
 
 def _is_active_contract(contract: OpenDataContractStandard) -> bool:
-    return _resolve_lifecycle_status(contract) == "active"
+    return is_active_contract(contract)
 
 
-def _is_retired_contract(contract: OdcModel) -> bool:
-    status_value = getattr(contract, "status", None)
-    if status_value is not None:
-        return _normalize_status(status_value, default="draft") == "retired"
-    custom_status = _custom_property_value(
-        getattr(contract, "customProperties", None), LIFECYCLE_STATUS_PROPERTY
-    )
-    if custom_status is None:
-        return False
-    return _normalize_status(custom_status, default="draft") == "retired"
-
-
-def _is_draft_or_deprecated(entity: Any) -> bool:
-    lifecycle_status = _resolve_lifecycle_status(entity)
-    return lifecycle_status in {"draft", "deprecated"}
-
-
-def _resolve_lifecycle_status(obj: Any) -> str:
-    status_value = getattr(obj, "status", None)
-    if status_value is not None:
-        return _normalize_status(status_value, default="draft")
-    custom_status = _custom_property_value(
-        getattr(obj, "customProperties", None), LIFECYCLE_STATUS_PROPERTY
-    )
-    if custom_status is not None:
-        return _normalize_status(custom_status, default="draft")
-    return "draft"
+def _is_retired_contract(contract: OpenDataContractStandard) -> bool:
+    return is_retired_contract(contract)
 
 
 def _custom_property_value(custom_properties: Any, key: str) -> str | None:
@@ -709,11 +703,6 @@ def _custom_property_value(custom_properties: Any, key: str) -> str | None:
     return None
 
 
-def _normalize_status(value: Any, *, default: str) -> str:
-    if value is None:
-        return default
-    text = str(value).strip().lower()
-    return text or default
 
 
 def _has_removed_flag(custom_properties: Iterable[dict[str, Any]]) -> bool:

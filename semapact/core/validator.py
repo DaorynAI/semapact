@@ -74,23 +74,80 @@ class ContractValidator:
                     issues.append(
                         ValidationIssue(
                             path="datacontract-cli",
-                            message=check.reason or getattr(check, "name", "Validation failed"),
+                            message=str(check.reason or getattr(check, "name", "Validation failed") or "Validation failed"),
                             severity="error",
                         )
+
                     )
 
-        # 3. Advanced semantic checks
-        if contract and contract.schema_:
-            for schema_idx, schema_obj in enumerate(contract.schema_):
-                issues.extend(self._validate_schema_object(schema_idx, schema_obj))
+        # 3. Advanced semantic checks and lifecycle validation
+        if contract:
+            issues.extend(self._validate_contract_lifecycle(contract))
+            if contract.schema_:
+                for schema_idx, schema_obj in enumerate(contract.schema_):
+                    issues.extend(self._validate_schema_object(schema_idx, schema_obj))
+
 
         return ValidationReport(valid=not issues, issues=issues)
+
+    def _validate_contract_lifecycle(
+        self, contract: OpenDataContractStandard
+    ) -> list[ValidationIssue]:
+        from semapact.lifecycle.status import normalize_status
+
+        issues: list[ValidationIssue] = []
+        if contract.status is not None and str(contract.status).strip() != "":
+            try:
+                normalize_status(contract.status)
+            except ValueError as exc:
+                issues.append(
+                    ValidationIssue(
+                        path="status",
+                        message=f"Invalid contract lifecycle status: {exc}",
+                        severity="error",
+                    )
+                )
+
+        if contract.customProperties:
+            for item in contract.customProperties:
+                if str(getattr(item, "property", "") or "").strip().lower() == "lifecyclestatus":
+                    val = getattr(item, "value", None)
+                    if val is not None and str(val).strip() != "":
+                        try:
+                            normalize_status(val)
+                        except ValueError as exc:
+                            issues.append(
+                                ValidationIssue(
+                                    path="customProperties.lifecycleStatus",
+                                    message=f"Invalid contract customProperties lifecycleStatus: {exc}",
+                                    severity="error",
+                                )
+                            )
+        return issues
 
     def _validate_schema_object(
         self, schema_idx: int, schema_obj: SchemaObject
     ) -> list[ValidationIssue]:
+        from semapact.lifecycle.status import normalize_status
+
         issues: list[ValidationIssue] = []
         path = f"schema[{schema_idx}]"
+
+        if schema_obj.customProperties:
+            for item in schema_obj.customProperties:
+                if str(getattr(item, "property", "") or "").strip().lower() == "lifecyclestatus":
+                    val = getattr(item, "value", None)
+                    if val is not None and str(val).strip() != "":
+                        try:
+                            normalize_status(val)
+                        except ValueError as exc:
+                            issues.append(
+                                ValidationIssue(
+                                    path=f"{path}.customProperties.lifecycleStatus",
+                                    message=f"Invalid schema customProperties lifecycleStatus: {exc}",
+                                    severity="error",
+                                )
+                            )
 
         if schema_obj.properties:
             for prop_idx, prop in enumerate(schema_obj.properties):
@@ -108,7 +165,25 @@ class ContractValidator:
     def _validate_property(
         self, path: str, prop: SchemaProperty
     ) -> list[ValidationIssue]:
+        from semapact.lifecycle.status import normalize_status
+
         issues: list[ValidationIssue] = []
+
+        if prop.customProperties:
+            for item in prop.customProperties:
+                if str(getattr(item, "property", "") or "").strip().lower() == "lifecyclestatus":
+                    val = getattr(item, "value", None)
+                    if val is not None and str(val).strip() != "":
+                        try:
+                            normalize_status(val)
+                        except ValueError as exc:
+                            issues.append(
+                                ValidationIssue(
+                                    path=f"{path}.customProperties.lifecycleStatus",
+                                    message=f"Invalid property customProperties lifecycleStatus: {exc}",
+                                    severity="error",
+                                )
+                            )
 
         if prop.quality:
             issues.extend(self._validate_quality_rules(f"{path}.quality", prop.quality))
@@ -123,6 +198,7 @@ class ContractValidator:
             issues.extend(self._validate_property(f"{path}.items", prop.items))
 
         return issues
+
 
     def _validate_quality_rules(
         self, path: str, rules: Iterable[DataQuality | None]
