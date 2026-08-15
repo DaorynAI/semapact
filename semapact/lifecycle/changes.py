@@ -732,7 +732,7 @@ def _analyze_relationships(
             GovernanceChange(
                 change_type=GovernanceChangeType.ADD,
                 entity_type=GovernanceEntityType.RELATIONSHIP,
-                identity=(rel_info["schema_id"], rel_key),
+                identity=rel_info["identity"],
                 path=rel_info["path"],
                 before=None,
                 after=rel_info["snapshot"],
@@ -746,7 +746,7 @@ def _analyze_relationships(
             GovernanceChange(
                 change_type=GovernanceChangeType.REMOVE,
                 entity_type=GovernanceEntityType.RELATIONSHIP,
-                identity=(rel_info["schema_id"], rel_key),
+                identity=rel_info["identity"],
                 path=rel_info["path"],
                 before=rel_info["snapshot"],
                 after=None,
@@ -773,8 +773,10 @@ def _extract_all_relationships(
                 from_str = normalize_endpoint_value(from_val)
                 to_str = normalize_endpoint_value(to_val)
                 rel_hash = f"{rel_type}:{from_str}->{to_str}"
-                result[rel_hash] = {
+                key = f"schema:{schema_id}:{rel_hash}"
+                result[key] = {
                     "schema_id": schema_id,
+                    "identity": (schema_id, rel_hash),
                     "path": f"schema[{schema_id}].relationships",
                     "snapshot": _to_json_compatible(rel),
                 }
@@ -789,8 +791,10 @@ def _extract_all_relationships(
                     from_str = f"{prop_key[0]}.{prop_key[1]}"
                     to_str = normalize_endpoint_value(to_val)
                     rel_hash = f"{rel_type}:{from_str}->{to_str}"
-                    result[rel_hash] = {
+                    key = f"prop:{schema_id}:{prop_key[1]}:{rel_hash}"
+                    result[key] = {
                         "schema_id": schema_id,
+                        "identity": (schema_id, prop_key[1], rel_hash),
                         "path": f"schema[{schema_id}].properties[{prop_key[1]}].relationships",
                         "snapshot": _to_json_compatible(rel),
                     }

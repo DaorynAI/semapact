@@ -139,7 +139,7 @@ def evaluate_merge_policy(
                 if base_schema is not None:
                     schema_status = resolve_schema_lifecycle(base_schema, contract=base_contract)
                     if participates_in_breaking_checks(schema_status) and change.change_type == GovernanceChangeType.REMOVE:
-                        rel_hash = change.identity[1] if len(change.identity) > 1 else ""
+                        rel_hash = change.identity[-1]
                         brk = BreakingChange(
                             code=GovernanceReasonCode.RELATIONSHIP_REMOVED,
                             path=change.path,

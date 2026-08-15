@@ -269,6 +269,41 @@ class TestGovernanceChangeAnalyzer:
         assert removed[0].domain == GovernanceChangeDomain.RELATIONSHIP
         assert added[0].domain == GovernanceChangeDomain.RELATIONSHIP
 
+    def test_same_relationship_signature_across_schemas_remove_from_one_only(self) -> None:
+        """Schema A and B both have same relationship signature; removing from A emits one REMOVE pointing to A."""
+        base = _make_base_contract()
+        assert base.schema_ is not None
+        base.schema_[0].relationships = [
+            Relationship(type="foreignKey", to="customers.id")
+        ]
+        base.schema_.append(
+            SchemaObject(
+                name="invoices",
+                physicalName="tbl_invoices",
+                relationships=[
+                    Relationship(type="foreignKey", to="customers.id")
+                ],
+                properties=[
+                    SchemaProperty(name="invoice_id", logicalType="string", required=True)
+                ],
+            )
+        )
+
+        cand = base.model_copy(deep=True)
+        assert cand.schema_ is not None
+        # Remove relationship from schema A (orders) only, keep on schema B (invoices)
+        cand.schema_[0].relationships = []
+
+        changes = analyze_governance_changes(base, cand)
+        rel_removes = [
+            c for c in changes
+            if c.change_type == GovernanceChangeType.REMOVE and c.entity_type == GovernanceEntityType.RELATIONSHIP
+        ]
+        assert len(rel_removes) == 1
+        assert rel_removes[0].identity[0] == "orders"
+        assert rel_removes[0].path == "schema[orders].relationships"
+        assert rel_removes[0].domain == GovernanceChangeDomain.RELATIONSHIP
+
     def test_quality_rule_add_and_remove(self) -> None:
         base = _make_base_contract()
         assert base.schema_ is not None

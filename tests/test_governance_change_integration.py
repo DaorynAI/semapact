@@ -9,6 +9,8 @@ from open_data_contract_standard.model import (
     DataQuality,
     Description,
     OpenDataContractStandard,
+    Relationship,
+    SchemaObject,
     SchemaProperty,
 )
 
@@ -122,6 +124,38 @@ class TestGovernancePolicyProjection:
         assert not policy_eval.valid
         assert len(policy_eval.breaking_changes) == 1
         assert policy_eval.breaking_changes[0].code == GovernanceReasonCode.PROPERTY_REMOVED
+
+    def test_relationship_removed_from_one_schema_emits_breaking_policy(self) -> None:
+        """Removing relationship from schema A only produces one breaking change pointing to A."""
+        base = _make_active_contract()
+        assert base.schema_ is not None
+        base.schema_[0].relationships = [
+            Relationship(type="foreignKey", to="customers.id")
+        ]
+        base.schema_.append(
+            SchemaObject(
+                name="invoices",
+                physicalName="tbl_invoices",
+                relationships=[
+                    Relationship(type="foreignKey", to="customers.id")
+                ],
+                properties=[
+                    SchemaProperty(name="invoice_id", logicalType="string", required=True)
+                ],
+            )
+        )
+
+        cand = base.model_copy(deep=True)
+        assert cand.schema_ is not None
+        cand.schema_[0].relationships = []
+
+        changes = analyze_governance_changes(base, cand)
+        policy_eval = evaluate_merge_policy(base, cand, changes=changes)
+
+        assert not policy_eval.valid
+        assert len(policy_eval.breaking_changes) == 1
+        assert policy_eval.breaking_changes[0].code == GovernanceReasonCode.RELATIONSHIP_REMOVED
+        assert policy_eval.breaking_changes[0].path == "schema[orders].relationships"
 
 
 # ==============================================================================
