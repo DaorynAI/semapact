@@ -3,10 +3,17 @@ from __future__ import annotations
 import re
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
+from semapact.lifecycle.changes import (
+    GovernanceChange,
+    GovernanceChangeDomain,
+    GovernanceChangeType,
+    GovernanceEntityType,
+    analyze_governance_changes,
+)
 from semapact.lifecycle.identity import (
     build_schema_index,
     build_property_index,
@@ -83,6 +90,7 @@ def classify_contract_change(
     base_contract: OpenDataContractStandard | dict[str, Any],
     candidate_contract: OpenDataContractStandard | dict[str, Any],
     *,
+    changes: Sequence[GovernanceChange] | None = None,
     policy_evaluation: PolicyEvaluation | None = None,
 ) -> ContractChangeAssessment:
     """Classify required version bump for one contract change set.
@@ -95,10 +103,13 @@ def classify_contract_change(
     base_model = contract_to_model(base_contract)
     candidate_model = contract_to_model(candidate_contract)
 
-    has_changes = _canonicalize(contract_to_dict(base_model)) != _canonicalize(
-        contract_to_dict(candidate_model)
+    canonical_changes = (
+        analyze_governance_changes(base_model, candidate_model)
+        if changes is None
+        else tuple(changes)
     )
-    if not has_changes:
+
+    if not canonical_changes:
         return ContractChangeAssessment(
             has_changes=False,
             required_bump="none",
@@ -111,7 +122,11 @@ def classify_contract_change(
         base_model.version,
     )
 
-    policy = policy_evaluation if policy_evaluation is not None else evaluate_merge_policy(base_model, candidate_model)
+    policy = (
+        policy_evaluation
+        if policy_evaluation is not None
+        else evaluate_merge_policy(base_model, candidate_model, changes=canonical_changes)
+    )
     if policy.breaking_changes:
         LOGGER.info(
             "Breaking changes detected in contract %s requiring major bump: %s",
@@ -126,11 +141,31 @@ def classify_contract_change(
         )
 
     reasons: list[str] = []
-    if _has_schema_or_property_additions(base_model, candidate_model):
+    has_additions = any(
+        c.change_type == GovernanceChangeType.ADD
+        and c.entity_type in (GovernanceEntityType.SCHEMA, GovernanceEntityType.PROPERTY)
+        for c in canonical_changes
+    )
+    has_deprecations = any(
+        c.change_type == GovernanceChangeType.DEPRECATE
+        and c.entity_type in (GovernanceEntityType.SCHEMA, GovernanceEntityType.PROPERTY)
+        for c in canonical_changes
+    )
+    has_structural = any(
+        c.domain in (
+            GovernanceChangeDomain.STRUCTURE,
+            GovernanceChangeDomain.RELATIONSHIP,
+            GovernanceChangeDomain.QUALITY,
+        )
+        and c.change_type != GovernanceChangeType.DEPRECATE
+        for c in canonical_changes
+    )
+
+    if has_additions:
         reasons.append("Schema or property additions require a minor version bump")
-    if _has_new_deprecations(base_model, candidate_model):
+    if has_deprecations:
         reasons.append("New schema/property deprecations require a minor version bump")
-    if _has_non_breaking_structural_changes(base_model, candidate_model):
+    if has_structural:
         reasons.append(
             "Non-breaking structural or quality changes require a minor version bump"
         )

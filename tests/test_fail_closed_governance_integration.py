@@ -195,7 +195,14 @@ def test_conflict_with_fail_on_conflict_does_not_bypass_gate(tmp_path):
 def test_import_existing_block_prevents_plugin_and_file_write(tmp_path, monkeypatch):
     """Verify import --existing with a BLOCK decision prevents post-gate plugin hook execution and file writing."""
     base_retired = _make_contract(status="retired")
-    candidate = _make_contract(status="active")
+    candidate = _make_contract(
+        status="active",
+        properties=[
+            SchemaProperty(name="id", logicalType="string", physicalType="varchar(255)", required=True),
+            SchemaProperty(name="amount", logicalType="number", physicalType="decimal(10,2)", required=False),
+            SchemaProperty(name="new_field", logicalType="string", physicalType="varchar(32)", required=False),
+        ],
+    )
 
     base_path = dump_yaml(contract_to_dict(base_retired), tmp_path / "existing_retired.yaml")
     cand_path = dump_yaml(contract_to_dict(candidate), tmp_path / "source.yaml")
@@ -461,7 +468,14 @@ def test_breaking_change_review_behavior(tmp_path, capsys):
 def test_pipeline_merge_conflict_fail_closed_on_retired_contract(tmp_path):
     """Verify that pipeline run on retired contract raises GovernanceBlockedError and writes audit manifest but no other artifacts."""
     base_retired = _make_contract(status="retired")
-    candidate = _make_contract(status="active")
+    candidate = _make_contract(
+        status="active",
+        properties=[
+            SchemaProperty(name="id", logicalType="string", physicalType="varchar(255)", required=True),
+            SchemaProperty(name="amount", logicalType="number", physicalType="decimal(10,2)", required=False),
+            SchemaProperty(name="new_field", logicalType="string", physicalType="varchar(32)", required=False),
+        ],
+    )
 
     base_path = dump_yaml(contract_to_dict(base_retired), tmp_path / "retired_base.yaml")
     cand_path = dump_yaml(contract_to_dict(candidate), tmp_path / "cand.yaml")

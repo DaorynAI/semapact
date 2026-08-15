@@ -27,6 +27,17 @@ from semapact.lifecycle.merge_engine import (
     MergeConflict,
     MergeResult,
 )
+from semapact.lifecycle.changes import (
+    GovernanceChange,
+    GovernanceChangeDomain,
+    GovernanceChangeEvidence,
+    GovernanceChangeEvidenceSource,
+    GovernanceChangeType,
+    GovernanceEntityType,
+    analyze_governance_changes,
+    describe_governance_change,
+    governance_change_sort_key,
+)
 from semapact.lifecycle.policy import (
     BreakingChange,
     PolicyEvaluation,
@@ -65,5 +76,15 @@ __all__ = [
     "BreakingChange",
     "PolicyEvaluation",
     "evaluate_merge_policy",
+
+    "GovernanceChangeType",
+    "GovernanceEntityType",
+    "GovernanceChangeDomain",
+    "GovernanceChangeEvidenceSource",
+    "GovernanceChangeEvidence",
+    "GovernanceChange",
+    "governance_change_sort_key",
+    "describe_governance_change",
+    "analyze_governance_changes",
 ]
 
