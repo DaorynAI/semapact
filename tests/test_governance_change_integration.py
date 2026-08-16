@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 from open_data_contract_standard.model import (
+    AuthoritativeDefinition,
     CustomProperty,
     DataQuality,
     Description,
@@ -13,6 +14,7 @@ from open_data_contract_standard.model import (
     Relationship,
     SchemaObject,
     SchemaProperty,
+    Server,
 )
 
 from semapact.change_context import ChangeContext
@@ -230,6 +232,169 @@ class TestReleaseClassificationParity:
         assert assessment.has_changes is True
         assert assessment.required_bump == "major"
         assert len(assessment.breaking_changes) == 1
+
+    def test_release_bump_structural_parity_matrix(self) -> None:
+        """Non-breaking structural field modifications must require 'minor' bump."""
+        # 1. servers -> minor
+        base = _make_active_contract()
+        cand = _make_active_contract()
+        cand.servers = [Server(type="spark", host="spark-node-1")]
+        assert classify_contract_change(base, cand).required_bump == "minor"
+
+        # 2. schema.id -> minor
+        cand = _make_active_contract()
+        assert cand.schema_ is not None
+        cand.schema_[0].id = "schema-orders-v1"
+        assert classify_contract_change(base, cand).required_bump == "minor"
+
+        # 3. dataGranularityDescription -> minor
+        cand = _make_active_contract()
+        assert cand.schema_ is not None
+        cand.schema_[0].dataGranularityDescription = "One row per order"
+        assert classify_contract_change(base, cand).required_bump == "minor"
+
+        # 4. property.id -> minor
+        cand = _make_active_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].id = "prop-orders-id"
+        assert classify_contract_change(base, cand).required_bump == "minor"
+
+        # 5. encryptedName -> minor
+        cand = _make_active_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].encryptedName = "enc_id"
+        assert classify_contract_change(base, cand).required_bump == "minor"
+
+        # 6. transformLogic -> minor
+        cand = _make_active_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].transformLogic = "hash(raw_id)"
+        assert classify_contract_change(base, cand).required_bump == "minor"
+
+        # 7. transformSourceObjects -> minor
+        cand = _make_active_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].transformSourceObjects = ["raw_orders"]
+        assert classify_contract_change(base, cand).required_bump == "minor"
+
+        # 8. criticalDataElement -> minor
+        cand = _make_active_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].criticalDataElement = True
+        assert classify_contract_change(base, cand).required_bump == "minor"
+
+    def test_release_bump_metadata_parity_matrix(self) -> None:
+        """Descriptive metadata field modifications must require 'none' bump."""
+        base = _make_active_contract()
+
+        # 1. description -> none
+        cand = _make_active_contract()
+        cand.description = Description(usage="Updated usage doc")
+        res = classify_contract_change(base, cand)
+        assert res.has_changes is True
+        assert res.required_bump == "none"
+
+        # 2. businessName -> none
+        cand = _make_active_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].businessName = "Orders Dataset"
+        cand.schema_[0].properties[0].businessName = "Order Identifier"
+        res = classify_contract_change(base, cand)
+        assert res.has_changes is True
+        assert res.required_bump == "none"
+
+        # 3. classification -> none
+        cand = _make_active_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].classification = "confidential"
+        res = classify_contract_change(base, cand)
+        assert res.has_changes is True
+        assert res.required_bump == "none"
+
+        # 4. examples -> none
+        cand = _make_active_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].examples = ["ORD-12345"]
+        res = classify_contract_change(base, cand)
+        assert res.has_changes is True
+        assert res.required_bump == "none"
+
+        # 5. transformDescription -> none
+        cand = _make_active_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].transformDescription = "Hashed for compliance"
+        res = classify_contract_change(base, cand)
+        assert res.has_changes is True
+        assert res.required_bump == "none"
+
+        # 6. authoritativeDefinitions on property -> none
+        cand = _make_active_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].authoritativeDefinitions = [
+            AuthoritativeDefinition(url="https://wiki/term")
+        ]
+        res = classify_contract_change(base, cand)
+        assert res.has_changes is True
+        assert res.required_bump == "none"
+
+        # 7. tags -> none
+        cand = _make_active_contract()
+        cand.tags = ["tag1", "tag2"]
+        res = classify_contract_change(base, cand)
+        assert res.has_changes is True
+        assert res.required_bump == "none"
+
+    def test_nested_property_quality_mutation_triggers_release_change(self) -> None:
+        """Modifying quality on a nested property sets has_changes=True and required_bump=minor."""
+        base = _make_active_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "customer",
+                            "logicalType": "object",
+                            "properties": [
+                                {
+                                    "name": "postcode",
+                                    "logicalType": "string",
+                                    "quality": [
+                                        {"name": "postcode_check", "type": "custom", "rule": "len == 4"}
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+        cand = _make_active_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "customer",
+                            "logicalType": "object",
+                            "properties": [
+                                {
+                                    "name": "postcode",
+                                    "logicalType": "string",
+                                    "quality": [
+                                        {"name": "postcode_check", "type": "custom", "rule": "len == 5"}
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+
+        assessment = classify_contract_change(base, cand)
+        assert assessment.has_changes is True
+        assert assessment.required_bump == "minor"
+
 
 
 # ==============================================================================

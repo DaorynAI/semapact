@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 from open_data_contract_standard.model import (
+    AuthoritativeDefinition,
     CustomProperty,
     DataQuality,
     OpenDataContractStandard,
@@ -11,6 +12,7 @@ from open_data_contract_standard.model import (
     Relationship,
     SchemaObject,
     SchemaProperty,
+    Server,
 )
 
 from semapact.lifecycle.changes import (
@@ -433,8 +435,8 @@ class TestExhaustiveFieldChanges:
     def test_root_metadata_fields_modification(self) -> None:
         base = _make_base_contract()
         cand = _make_base_contract()
-        cand.servers = [{"type": "spark", "host": "spark-cluster-1"}]
-        cand.authoritativeDefinitions = [{"type": "business", "url": "https://wiki.example.com"}]
+        cand.servers = [Server(type="spark", host="spark-cluster-1")]
+        cand.authoritativeDefinitions = [AuthoritativeDefinition(type="business", url="https://wiki.example.com")]
         cand.contractCreatedTs = "2026-08-16T10:00:00Z"
         cand.price = Pricing(priceAmount=100.0, priceCurrency="USD")
 
@@ -479,4 +481,268 @@ class TestExhaustiveFieldChanges:
         assert "criticalDataElement" in fields
         assert "encryptedName" in fields
         assert "transformLogic" in fields
+
+
+class TestNestedQualityAndRelationshipsCoverage:
+    """Validate full recursive coverage for nested struct properties and array items."""
+
+    def test_deep_nested_property_quality_mutation(self) -> None:
+        """Deeply nested property quality mutation emits QUALITY GovernanceChange."""
+        base = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "customer",
+                            "logicalType": "object",
+                            "properties": [
+                                {
+                                    "name": "address",
+                                    "logicalType": "object",
+                                    "properties": [
+                                        {
+                                            "name": "postcode",
+                                            "logicalType": "string",
+                                            "quality": [
+                                                {
+                                                    "name": "valid_postcode",
+                                                    "type": "custom",
+                                                    "rule": "length == 4",
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+        cand = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "customer",
+                            "logicalType": "object",
+                            "properties": [
+                                {
+                                    "name": "address",
+                                    "logicalType": "object",
+                                    "properties": [
+                                        {
+                                            "name": "postcode",
+                                            "logicalType": "string",
+                                            "quality": [
+                                                {
+                                                    "name": "valid_postcode",
+                                                    "type": "custom",
+                                                    "rule": "length == 5",
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+
+        changes = analyze_governance_changes(base, cand)
+        quality_changes = [c for c in changes if c.entity_type == GovernanceEntityType.QUALITY]
+
+        assert len(quality_changes) == 1
+        qc = quality_changes[0]
+        assert qc.change_type == GovernanceChangeType.MODIFY
+        assert qc.identity == ("orders", "customer", "address", "postcode", "valid_postcode")
+        assert qc.path == "schema[orders].properties[customer].properties[address].properties[postcode].quality[valid_postcode]"
+        assert qc.domain == GovernanceChangeDomain.QUALITY
+
+    def test_deep_nested_property_relationship_mutation(self) -> None:
+        """Deeply nested property relationship removal emits RELATIONSHIP GovernanceChange."""
+        base = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "customer",
+                            "logicalType": "object",
+                            "properties": [
+                                {
+                                    "name": "address",
+                                    "logicalType": "object",
+                                    "properties": [
+                                        {
+                                            "name": "postcode",
+                                            "logicalType": "string",
+                                            "relationships": [
+                                                {
+                                                    "type": "foreignKey",
+                                                    "to": "locations.postcode",
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+        cand = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "customer",
+                            "logicalType": "object",
+                            "properties": [
+                                {
+                                    "name": "address",
+                                    "logicalType": "object",
+                                    "properties": [
+                                        {
+                                            "name": "postcode",
+                                            "logicalType": "string",
+                                            "relationships": [],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+
+        changes = analyze_governance_changes(base, cand)
+        rel_changes = [c for c in changes if c.entity_type == GovernanceEntityType.RELATIONSHIP]
+
+        assert len(rel_changes) == 1
+        rc = rel_changes[0]
+        assert rc.change_type == GovernanceChangeType.REMOVE
+        assert rc.identity[:4] == ("orders", "customer", "address", "postcode")
+        assert rc.path == "schema[orders].properties[customer].properties[address].properties[postcode].relationships"
+        assert rc.domain == GovernanceChangeDomain.RELATIONSHIP
+
+    def test_array_items_quality_and_relationship(self) -> None:
+        """Array items quality and relationship modifications are fully captured."""
+        base = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "lines",
+                            "logicalType": "array",
+                            "items": {
+                                "logicalType": "string",
+                                "quality": [
+                                    {"name": "non_empty", "type": "custom", "rule": "len > 0"}
+                                ],
+                                "relationships": [
+                                    {"type": "foreignKey", "to": "items.item_id"}
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+        cand = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "lines",
+                            "logicalType": "array",
+                            "items": {
+                                "logicalType": "string",
+                                "quality": [
+                                    {"name": "non_empty", "type": "custom", "rule": "len > 5"}
+                                ],
+                                "relationships": [],
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+
+        changes = analyze_governance_changes(base, cand)
+        quality_changes = [c for c in changes if c.entity_type == GovernanceEntityType.QUALITY]
+        rel_changes = [c for c in changes if c.entity_type == GovernanceEntityType.RELATIONSHIP]
+
+        assert len(quality_changes) == 1
+        assert quality_changes[0].identity == ("orders", "lines", "items", "non_empty")
+        assert quality_changes[0].path == "schema[orders].properties[lines].items.quality[non_empty]"
+
+        assert len(rel_changes) == 1
+        assert rel_changes[0].identity[:3] == ("orders", "lines", "items")
+        assert rel_changes[0].path == "schema[orders].properties[lines].items.relationships"
+
+
+class TestItemsNoDuplicateRepresentation:
+    """Ensure array item mutations produce exactly one canonical change representation."""
+
+    def test_array_item_field_mutation_produces_single_change(self) -> None:
+        """Modifying array item physicalType produces exactly ONE GovernanceChange."""
+        base = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "lines",
+                            "logicalType": "array",
+                            "items": {
+                                "logicalType": "string",
+                                "physicalType": "varchar(100)",
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+        cand = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "lines",
+                            "logicalType": "array",
+                            "items": {
+                                "logicalType": "string",
+                                "physicalType": "varchar(20)",
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+
+        changes = analyze_governance_changes(base, cand)
+
+        # Must produce exactly ONE change, NOT duplicate parent.items + child.physicalType
+        assert len(changes) == 1
+        ch = changes[0]
+        assert ch.change_type == GovernanceChangeType.MODIFY
+        assert ch.entity_type == GovernanceEntityType.PROPERTY
+        assert ch.identity == ("orders", "lines", "items")
+        assert ch.path == "schema[orders].properties[lines].items.physicalType"
+        assert ch.field == "physicalType"
+        assert ch.before == "varchar(100)"
+        assert ch.after == "varchar(20)"
+        assert ch.domain == GovernanceChangeDomain.STRUCTURE
+
 

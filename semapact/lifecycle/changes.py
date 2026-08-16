@@ -17,6 +17,7 @@ from semapact.governance_codes import GovernanceReasonCode
 from semapact.lifecycle.identity import (
     build_property_index,
     build_schema_index,
+    normalize_identity_name,
 )
 from semapact.lifecycle.relationships import normalize_endpoint_value
 from semapact.lifecycle.status import (
@@ -53,12 +54,19 @@ ODCS_ROOT_METADATA_FIELDS: frozenset[str] = frozenset({
     "roles",
     "apiVersion",
     "kind",
-    "servers",
-    "authoritativeDefinitions",
-    "contractCreatedTs",
 })
 
-ODCS_ROOT_HANDLED_FIELDS: frozenset[str] = ODCS_ROOT_SPECIAL_FIELDS | ODCS_ROOT_METADATA_FIELDS
+ODCS_ROOT_STRUCTURAL_FIELDS: frozenset[str] = frozenset({
+    "servers",
+    "contractCreatedTs",
+    "authoritativeDefinitions",
+})
+
+ODCS_ROOT_HANDLED_FIELDS: frozenset[str] = (
+    ODCS_ROOT_SPECIAL_FIELDS
+    | ODCS_ROOT_METADATA_FIELDS
+    | ODCS_ROOT_STRUCTURAL_FIELDS
+)
 ODCS_ROOT_IGNORED_FIELDS: frozenset[str] = frozenset()
 
 # 2. Schema fields
@@ -71,24 +79,24 @@ ODCS_SCHEMA_SPECIAL_FIELDS: frozenset[str] = frozenset({
     "customProperties",
 })
 
+ODCS_SCHEMA_METADATA_FIELDS: frozenset[str] = frozenset({
+    "description",
+    "businessName",
+})
+
 ODCS_SCHEMA_STRUCTURAL_FIELDS: frozenset[str] = frozenset({
     "logicalType",
     "physicalType",
     "physicalName",
-})
-
-ODCS_SCHEMA_METADATA_FIELDS: frozenset[str] = frozenset({
     "id",
-    "description",
-    "businessName",
     "dataGranularityDescription",
     "authoritativeDefinitions",
 })
 
 ODCS_SCHEMA_HANDLED_FIELDS: frozenset[str] = (
     ODCS_SCHEMA_SPECIAL_FIELDS
-    | ODCS_SCHEMA_STRUCTURAL_FIELDS
     | ODCS_SCHEMA_METADATA_FIELDS
+    | ODCS_SCHEMA_STRUCTURAL_FIELDS
 )
 ODCS_SCHEMA_IGNORED_FIELDS: frozenset[str] = frozenset()
 
@@ -96,10 +104,20 @@ ODCS_SCHEMA_IGNORED_FIELDS: frozenset[str] = frozenset()
 ODCS_PROPERTY_SPECIAL_FIELDS: frozenset[str] = frozenset({
     "name",
     "properties",
+    "items",
     "relationships",
     "quality",
     "tags",
     "customProperties",
+})
+
+ODCS_PROPERTY_METADATA_FIELDS: frozenset[str] = frozenset({
+    "description",
+    "businessName",
+    "classification",
+    "examples",
+    "transformDescription",
+    "authoritativeDefinitions",
 })
 
 ODCS_PROPERTY_STRUCTURAL_FIELDS: frozenset[str] = frozenset({
@@ -113,27 +131,17 @@ ODCS_PROPERTY_STRUCTURAL_FIELDS: frozenset[str] = frozenset({
     "unique",
     "partitioned",
     "partitionKeyPosition",
-    "items",
-})
-
-ODCS_PROPERTY_METADATA_FIELDS: frozenset[str] = frozenset({
     "id",
-    "description",
-    "businessName",
-    "classification",
     "encryptedName",
     "transformSourceObjects",
     "transformLogic",
-    "transformDescription",
-    "examples",
     "criticalDataElement",
-    "authoritativeDefinitions",
 })
 
 ODCS_PROPERTY_HANDLED_FIELDS: frozenset[str] = (
     ODCS_PROPERTY_SPECIAL_FIELDS
-    | ODCS_PROPERTY_STRUCTURAL_FIELDS
     | ODCS_PROPERTY_METADATA_FIELDS
+    | ODCS_PROPERTY_STRUCTURAL_FIELDS
 )
 ODCS_PROPERTY_IGNORED_FIELDS: frozenset[str] = frozenset()
 
@@ -356,6 +364,24 @@ def _analyze_contract_root(
                     before=base_status or None,
                     after=cand_status or None,
                     domain=GovernanceChangeDomain.LIFECYCLE,
+                )
+            )
+
+    # Structural root fields
+    for field_name in sorted(ODCS_ROOT_STRUCTURAL_FIELDS):
+        base_val = getattr(base, field_name, None)
+        cand_val = getattr(candidate, field_name, None)
+        if _to_json_compatible(base_val) != _to_json_compatible(cand_val):
+            changes.append(
+                GovernanceChange(
+                    change_type=GovernanceChangeType.MODIFY,
+                    entity_type=GovernanceEntityType.CONTRACT,
+                    identity=identity,
+                    path=field_name,
+                    field=field_name,
+                    before=_to_json_compatible(base_val),
+                    after=_to_json_compatible(cand_val),
+                    domain=GovernanceChangeDomain.STRUCTURE,
                 )
             )
 
@@ -619,142 +645,242 @@ def _compare_properties(
         prop_name = prop_key[1]
         prop_ident = (*ancestry, prop_name)
         prop_path = f"{parent_path}.properties[{prop_name}]"
-
-        base_is_dep = is_explicitly_deprecated(base_prop)
-        cand_is_dep = is_explicitly_deprecated(cand_prop)
-        prop_deprecated_transition = not base_is_dep and cand_is_dep
-
-        if prop_deprecated_transition:
-            base_status = resolve_declared_entity_lifecycle(base_prop)
-            base_status_str = base_status.value if base_status is not None else None
-            changes.append(
-                GovernanceChange(
-                    change_type=GovernanceChangeType.DEPRECATE,
-                    entity_type=GovernanceEntityType.PROPERTY,
-                    identity=prop_ident,
-                    path=prop_path,
-                    field="lifecycleStatus",
-                    before=base_status_str,
-                    after="deprecated",
-                    domain=GovernanceChangeDomain.LIFECYCLE,
-                )
+        changes.extend(
+            _compare_single_property_direct(
+                schema_id=schema_id,
+                prop_ident=prop_ident,
+                prop_path=prop_path,
+                base_prop=base_prop,
+                cand_prop=cand_prop,
             )
+        )
 
-        # Structural fields
-        for field_name in sorted(ODCS_PROPERTY_STRUCTURAL_FIELDS):
-            b_val = getattr(base_prop, field_name, None)
-            c_val = getattr(cand_prop, field_name, None)
-            if _to_json_compatible(b_val) != _to_json_compatible(c_val):
-                changes.append(
-                    GovernanceChange(
-                        change_type=GovernanceChangeType.MODIFY,
-                        entity_type=GovernanceEntityType.PROPERTY,
-                        identity=prop_ident,
-                        path=f"{prop_path}.{field_name}",
-                        field=field_name,
-                        before=_to_json_compatible(b_val),
-                        after=_to_json_compatible(c_val),
-                        domain=GovernanceChangeDomain.STRUCTURE,
-                    )
-                )
+    return changes
 
-        # Enum / enumValues
-        base_enums = sorted(_enum_values(base_prop))
-        cand_enums = sorted(_enum_values(cand_prop))
-        if base_enums != cand_enums:
+
+def _compare_single_property_direct(
+    *,
+    schema_id: str,
+    prop_ident: tuple[str, ...],
+    prop_path: str,
+    base_prop: SchemaProperty,
+    cand_prop: SchemaProperty,
+) -> list[GovernanceChange]:
+    changes: list[GovernanceChange] = []
+    base_is_dep = is_explicitly_deprecated(base_prop)
+    cand_is_dep = is_explicitly_deprecated(cand_prop)
+    prop_deprecated_transition = not base_is_dep and cand_is_dep
+
+    if prop_deprecated_transition:
+        base_status = resolve_declared_entity_lifecycle(base_prop)
+        base_status_str = base_status.value if base_status is not None else None
+        changes.append(
+            GovernanceChange(
+                change_type=GovernanceChangeType.DEPRECATE,
+                entity_type=GovernanceEntityType.PROPERTY,
+                identity=prop_ident,
+                path=prop_path,
+                field="lifecycleStatus",
+                before=base_status_str,
+                after="deprecated",
+                domain=GovernanceChangeDomain.LIFECYCLE,
+            )
+        )
+
+    # Structural fields
+    for field_name in sorted(ODCS_PROPERTY_STRUCTURAL_FIELDS):
+        b_val = getattr(base_prop, field_name, None)
+        c_val = getattr(cand_prop, field_name, None)
+        if _to_json_compatible(b_val) != _to_json_compatible(c_val):
             changes.append(
                 GovernanceChange(
                     change_type=GovernanceChangeType.MODIFY,
                     entity_type=GovernanceEntityType.PROPERTY,
                     identity=prop_ident,
-                    path=f"{prop_path}.enum",
-                    field="enum",
-                    before=base_enums or None,
-                    after=cand_enums or None,
+                    path=f"{prop_path}.{field_name}",
+                    field=field_name,
+                    before=_to_json_compatible(b_val),
+                    after=_to_json_compatible(c_val),
                     domain=GovernanceChangeDomain.STRUCTURE,
                 )
             )
 
-        # Metadata fields and dynamic model fields
-        prop_metadata_fields = sorted(
-            ODCS_PROPERTY_METADATA_FIELDS
-            | (set(SchemaProperty.model_fields) - ODCS_PROPERTY_HANDLED_FIELDS)
+    # Enum / enumValues
+    base_enums = sorted(_enum_values(base_prop))
+    cand_enums = sorted(_enum_values(cand_prop))
+    if base_enums != cand_enums:
+        changes.append(
+            GovernanceChange(
+                change_type=GovernanceChangeType.MODIFY,
+                entity_type=GovernanceEntityType.PROPERTY,
+                identity=prop_ident,
+                path=f"{prop_path}.enum",
+                field="enum",
+                before=base_enums or None,
+                after=cand_enums or None,
+                domain=GovernanceChangeDomain.STRUCTURE,
+            )
         )
-        for field_name in prop_metadata_fields:
-            b_val = getattr(base_prop, field_name, None)
-            c_val = getattr(cand_prop, field_name, None)
-            if _to_json_compatible(b_val) != _to_json_compatible(c_val):
-                changes.append(
-                    GovernanceChange(
-                        change_type=GovernanceChangeType.MODIFY,
-                        entity_type=GovernanceEntityType.PROPERTY,
-                        identity=prop_ident,
-                        path=f"{prop_path}.{field_name}",
-                        field=field_name,
-                        before=_to_json_compatible(b_val),
-                        after=_to_json_compatible(c_val),
-                        domain=GovernanceChangeDomain.METADATA,
-                    )
-                )
 
-        # Tags
-        base_tags = [t for t in (base_prop.tags or [])]
-        cand_tags = [t for t in (cand_prop.tags or [])]
-        if prop_deprecated_transition:
-            cand_tags = [t for t in cand_tags if t != "deprecated"]
-        if sorted(base_tags) != sorted(cand_tags):
+    # Metadata fields and dynamic model fields
+    prop_metadata_fields = sorted(
+        ODCS_PROPERTY_METADATA_FIELDS
+        | (set(SchemaProperty.model_fields) - ODCS_PROPERTY_HANDLED_FIELDS)
+    )
+    for field_name in prop_metadata_fields:
+        b_val = getattr(base_prop, field_name, None)
+        c_val = getattr(cand_prop, field_name, None)
+        if _to_json_compatible(b_val) != _to_json_compatible(c_val):
             changes.append(
                 GovernanceChange(
                     change_type=GovernanceChangeType.MODIFY,
                     entity_type=GovernanceEntityType.PROPERTY,
                     identity=prop_ident,
-                    path=f"{prop_path}.tags",
-                    field="tags",
-                    before=sorted(base_tags) or None,
-                    after=sorted(cand_tags) or None,
+                    path=f"{prop_path}.{field_name}",
+                    field=field_name,
+                    before=_to_json_compatible(b_val),
+                    after=_to_json_compatible(c_val),
                     domain=GovernanceChangeDomain.METADATA,
                 )
             )
 
-        # Custom properties
-        changes.extend(
-            _compare_custom_properties(
-                identity=prop_ident,
-                path=f"{prop_path}.customProperties",
-                base_props=base_prop.customProperties,
-                cand_props=cand_prop.customProperties,
-                is_deprecated_transition=prop_deprecated_transition,
+    # Tags
+    base_tags = [t for t in (base_prop.tags or [])]
+    cand_tags = [t for t in (cand_prop.tags or [])]
+    if prop_deprecated_transition:
+        cand_tags = [t for t in cand_tags if t != "deprecated"]
+    if sorted(base_tags) != sorted(cand_tags):
+        changes.append(
+            GovernanceChange(
+                change_type=GovernanceChangeType.MODIFY,
                 entity_type=GovernanceEntityType.PROPERTY,
+                identity=prop_ident,
+                path=f"{prop_path}.tags",
+                field="tags",
+                before=sorted(base_tags) or None,
+                after=sorted(cand_tags) or None,
+                domain=GovernanceChangeDomain.METADATA,
             )
         )
 
-        # Nested struct properties
-        if base_prop.properties or cand_prop.properties:
-            changes.extend(
-                _compare_properties(
-                    schema_id=schema_id,
-                    ancestry=prop_ident,
-                    base_props=base_prop.properties or [],
-                    cand_props=cand_prop.properties or [],
-                    parent_path=prop_path,
+    # Custom properties
+    changes.extend(
+        _compare_custom_properties(
+            identity=prop_ident,
+            path=f"{prop_path}.customProperties",
+            base_props=base_prop.customProperties,
+            cand_props=cand_prop.customProperties,
+            is_deprecated_transition=prop_deprecated_transition,
+            entity_type=GovernanceEntityType.PROPERTY,
+        )
+    )
+
+    # Nested struct properties
+    if base_prop.properties or cand_prop.properties:
+        changes.extend(
+            _compare_properties(
+                schema_id=schema_id,
+                ancestry=prop_ident,
+                base_props=base_prop.properties or [],
+                cand_props=cand_prop.properties or [],
+                parent_path=prop_path,
+            )
+        )
+
+    # Array items property (single child object)
+    if base_prop.items or cand_prop.items:
+        if base_prop.items is None and cand_prop.items is not None:
+            changes.append(
+                GovernanceChange(
+                    change_type=GovernanceChangeType.ADD,
+                    entity_type=GovernanceEntityType.PROPERTY,
+                    identity=(*prop_ident, "items"),
+                    path=f"{prop_path}.items",
+                    before=None,
+                    after=_to_json_compatible(cand_prop.items),
+                    domain=GovernanceChangeDomain.STRUCTURE,
                 )
             )
-
-        # Array items property
-        if base_prop.items or cand_prop.items:
-            base_items = [base_prop.items] if base_prop.items else []
-            cand_items = [cand_prop.items] if cand_prop.items else []
+        elif base_prop.items is not None and cand_prop.items is None:
+            changes.append(
+                GovernanceChange(
+                    change_type=GovernanceChangeType.REMOVE,
+                    entity_type=GovernanceEntityType.PROPERTY,
+                    identity=(*prop_ident, "items"),
+                    path=f"{prop_path}.items",
+                    before=_to_json_compatible(base_prop.items),
+                    after=None,
+                    domain=GovernanceChangeDomain.STRUCTURE,
+                )
+            )
+        elif base_prop.items is not None and cand_prop.items is not None:
             changes.extend(
-                _compare_properties(
+                _compare_single_property_direct(
                     schema_id=schema_id,
-                    ancestry=(*prop_ident, "items"),
-                    base_props=base_items,
-                    cand_props=cand_items,
-                    parent_path=f"{prop_path}.items",
+                    prop_ident=(*prop_ident, "items"),
+                    prop_path=f"{prop_path}.items",
+                    base_prop=base_prop.items,
+                    cand_prop=cand_prop.items,
                 )
             )
 
     return changes
+
+
+def _walk_all_properties(
+    schema_id: str,
+    properties: list[SchemaProperty] | None,
+    ancestry: tuple[str, ...] | None = None,
+    parent_path: str | None = None,
+) -> list[tuple[tuple[str, ...], str, SchemaProperty]]:
+    """Recursively walk all properties and array items, yielding (ancestry, path, property)."""
+    results: list[tuple[tuple[str, ...], str, SchemaProperty]] = []
+    if not properties:
+        return results
+
+    anc = ancestry or (schema_id,)
+    base_path = parent_path or f"schema[{schema_id}]"
+
+    for prop in properties:
+        p_name = normalize_identity_name(getattr(prop, "name", None) or "item", "Property")
+        prop_anc = (*anc, p_name)
+        prop_path = f"{base_path}.properties[{p_name}]"
+        results.append((prop_anc, prop_path, prop))
+
+        if prop.properties:
+            results.extend(
+                _walk_all_properties(
+                    schema_id,
+                    prop.properties,
+                    ancestry=prop_anc,
+                    parent_path=prop_path,
+                )
+            )
+
+        if prop.items:
+            item_anc = (*prop_anc, "items")
+            item_path = f"{prop_path}.items"
+            results.append((item_anc, item_path, prop.items))
+            if prop.items.properties:
+                results.extend(
+                    _walk_all_properties(
+                        schema_id,
+                        prop.items.properties,
+                        ancestry=item_anc,
+                        parent_path=item_path,
+                    )
+                )
+            if prop.items.items:
+                results.extend(
+                    _walk_all_properties(
+                        schema_id,
+                        [prop.items.items],
+                        ancestry=item_anc,
+                        parent_path=item_path,
+                    )
+                )
+
+    return results
 
 
 def _compare_custom_properties(
@@ -872,21 +998,20 @@ def _extract_all_relationships(
                     "snapshot": _to_json_compatible(rel),
                 }
 
-        # Property level relationships
-        props = build_property_index(schema_id, schema_obj.properties or [])
-        for prop_key, prop_obj in props.items():
+        # Recursive property level relationships (top-level, nested, and items)
+        for prop_anc, prop_path, prop_obj in _walk_all_properties(schema_id, schema_obj.properties or []):
             if prop_obj.relationships:
                 for rel in prop_obj.relationships:
                     rel_type = str(getattr(rel, "type", "") or "foreignKey")
                     to_val = getattr(rel, "to", None) or ""
-                    from_str = f"{prop_key[0]}.{prop_key[1]}"
+                    from_str = ".".join(prop_anc)
                     to_str = normalize_endpoint_value(to_val)
                     rel_hash = f"{rel_type}:{from_str}->{to_str}"
-                    key = f"prop:{schema_id}:{prop_key[1]}:{rel_hash}"
+                    key = f"prop:{'.'.join(prop_anc)}:{rel_hash}"
                     result[key] = {
                         "schema_id": schema_id,
-                        "identity": (schema_id, prop_key[1], rel_hash),
-                        "path": f"schema[{schema_id}].properties[{prop_key[1]}].relationships",
+                        "identity": (*prop_anc, rel_hash),
+                        "path": f"{prop_path}.relationships",
                         "snapshot": _to_json_compatible(rel),
                     }
 
@@ -948,6 +1073,22 @@ def _analyze_quality_rules(
     return changes
 
 
+def _quality_rule_identifier(rule: Any, idx: int) -> str:
+    r_id = getattr(rule, "id", None)
+    if r_id:
+        return str(r_id).strip().lower()
+    r_name = getattr(rule, "name", None)
+    if r_name:
+        return str(r_name).strip().lower()
+    r_rule = getattr(rule, "rule", None)
+    if r_rule:
+        return str(r_rule).strip().lower()
+    r_type = getattr(rule, "type", None)
+    if r_type:
+        return f"{str(r_type).strip().lower()}_{idx}"
+    return f"rule_{idx}"
+
+
 def _extract_all_quality_rules(
     contract: OpenDataContractStandard,
 ) -> dict[str, dict[str, Any]]:
@@ -957,7 +1098,7 @@ def _extract_all_quality_rules(
     contract_quality = getattr(contract, "quality", None)
     if contract_quality:
         for idx, rule in enumerate(contract_quality):
-            r_name = str(getattr(rule, "name", None) or getattr(rule, "type", None) or f"rule_{idx}").strip().lower()
+            r_name = _quality_rule_identifier(rule, idx)
             key = f"contract:{r_name}"
             result[key] = {
                 "identity": (str(contract.id or ""), r_name),
@@ -965,12 +1106,12 @@ def _extract_all_quality_rules(
                 "snapshot": _to_json_compatible(rule),
             }
 
-    # Schema & property level quality
+    # Schema & recursive property level quality
     schema_index = build_schema_index(contract)
     for schema_id, schema_obj in schema_index.items():
         if schema_obj.quality:
             for idx, rule in enumerate(schema_obj.quality):
-                r_name = str(getattr(rule, "name", None) or getattr(rule, "type", None) or f"rule_{idx}").strip().lower()
+                r_name = _quality_rule_identifier(rule, idx)
                 key = f"schema:{schema_id}:{r_name}"
                 result[key] = {
                     "identity": (schema_id, r_name),
@@ -978,15 +1119,15 @@ def _extract_all_quality_rules(
                     "snapshot": _to_json_compatible(rule),
                 }
 
-        props = build_property_index(schema_id, schema_obj.properties or [])
-        for prop_key, prop_obj in props.items():
+        # Recursive properties & items
+        for prop_anc, prop_path, prop_obj in _walk_all_properties(schema_id, schema_obj.properties or []):
             if prop_obj.quality:
                 for idx, rule in enumerate(prop_obj.quality):
-                    r_name = str(getattr(rule, "name", None) or getattr(rule, "type", None) or f"rule_{idx}").strip().lower()
-                    key = f"prop:{schema_id}:{prop_key[1]}:{r_name}"
+                    r_name = _quality_rule_identifier(rule, idx)
+                    key = f"prop:{'.'.join(prop_anc)}:{r_name}"
                     result[key] = {
-                        "identity": (schema_id, prop_key[1], r_name),
-                        "path": f"schema[{schema_id}].properties[{prop_key[1]}].quality[{r_name}]",
+                        "identity": (*prop_anc, r_name),
+                        "path": f"{prop_path}.quality[{r_name}]",
                         "snapshot": _to_json_compatible(rule),
                     }
 
