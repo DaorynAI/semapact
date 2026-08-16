@@ -96,7 +96,7 @@ def evaluate_governance_decision(
 
     contract_id = str(base_contract.id or candidate_contract.id or "")
     evidence = ChangeEvidence(
-        has_changes=bool(raw_changes),
+        has_changes=bool(raw_changes) or _has_contract_mutation(base_contract, candidate_contract),
         merge_conflicts_count=len(merge_conflicts),
     )
 
@@ -210,6 +210,14 @@ def _correlate_merge_conflicts(
     return tuple(correlated)
 
 
+def _has_contract_mutation(
+    base_contract: OpenDataContractStandard,
+    candidate_contract: OpenDataContractStandard,
+) -> bool:
+    """Authoritative check for any mutation between base and candidate contracts."""
+    return contract_to_dict(base_contract) != contract_to_dict(candidate_contract)
+
+
 def _build_policy_outcome(
     base_contract: OpenDataContractStandard,
     candidate_contract: OpenDataContractStandard,
@@ -232,7 +240,7 @@ def _build_policy_outcome(
         )
     except ValidationError:
         change_assessment = ContractChangeAssessment(
-            has_changes=bool(raw_changes),
+            has_changes=bool(raw_changes) or _has_contract_mutation(base_contract, candidate_contract),
             required_bump="none",
             breaking_changes=[],
             reasons=["Validation error"],
@@ -248,7 +256,10 @@ def _build_policy_outcome(
     except (ValueError, TypeError):
         candidate_status = LifecycleStatus.DRAFT
 
-    retired_mutation = base_status is LifecycleStatus.RETIRED and bool(raw_changes)
+    retired_mutation = (
+        base_status is LifecycleStatus.RETIRED
+        and _has_contract_mutation(base_contract, candidate_contract)
+    )
     retired_transition = (
         base_status is not LifecycleStatus.RETIRED
         and candidate_status is LifecycleStatus.RETIRED

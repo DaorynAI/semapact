@@ -9,6 +9,7 @@ from open_data_contract_standard.model import (
     DataQuality,
     Description,
     OpenDataContractStandard,
+    Pricing,
     Relationship,
     SchemaObject,
     SchemaProperty,
@@ -16,7 +17,7 @@ from open_data_contract_standard.model import (
 
 from semapact.change_context import ChangeContext
 from semapact.core.release import classify_contract_change
-from semapact.governance import evaluate_governance_decision
+from semapact.governance import DecisionResult, evaluate_governance_decision
 from semapact.governance_codes import GovernanceReasonCode
 from semapact.lifecycle.changes import (
     GovernanceChangeEvidenceSource,
@@ -291,5 +292,41 @@ class TestEvaluatorGovernanceChangeIntegration:
 
         assert any(
             r.code == GovernanceReasonCode.MERGE_CONFLICT and "Unmatched conflict message" in r.message
+            for r in decision.reasons
+        )
+
+    def test_retired_base_mutation_blocks_even_with_validation_error(self) -> None:
+        """Retired mutation must emit RETIRED_CONTRACT_MODIFIED even if candidate fails validation."""
+        base = _make_active_contract(status="retired")
+        cand = _make_active_contract(status="retired")
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        # Introduce duplicate property identity in candidate (validation error)
+        cand.schema_[0].properties.append(
+            SchemaProperty(name="id", logicalType="string", physicalType="text")
+        )
+
+        decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+
+        assert decision.decision == DecisionResult.BLOCK
+        assert any(
+            r.code == GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED
+            for r in decision.reasons
+        )
+        assert any(
+            r.code == GovernanceReasonCode.VALIDATION_FAILED
+            for r in decision.reasons
+        )
+
+    def test_retired_base_unhandled_or_metadata_mutation_blocks(self) -> None:
+        """Retired base mutation in metadata or top-level field produces BLOCK and RETIRED_CONTRACT_MODIFIED."""
+        base = _make_active_contract(status="retired")
+        cand = _make_active_contract(status="retired")
+        cand.price = Pricing(priceAmount=999.0, priceCurrency="USD")
+
+        decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+
+        assert decision.decision == DecisionResult.BLOCK
+        assert any(
+            r.code == GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED
             for r in decision.reasons
         )

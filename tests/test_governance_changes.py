@@ -7,12 +7,19 @@ from open_data_contract_standard.model import (
     CustomProperty,
     DataQuality,
     OpenDataContractStandard,
+    Pricing,
     Relationship,
     SchemaObject,
     SchemaProperty,
 )
 
 from semapact.lifecycle.changes import (
+    ODCS_PROPERTY_HANDLED_FIELDS,
+    ODCS_PROPERTY_IGNORED_FIELDS,
+    ODCS_ROOT_HANDLED_FIELDS,
+    ODCS_ROOT_IGNORED_FIELDS,
+    ODCS_SCHEMA_HANDLED_FIELDS,
+    ODCS_SCHEMA_IGNORED_FIELDS,
     GovernanceChange,
     GovernanceChangeDomain,
     GovernanceChangeType,
@@ -385,3 +392,91 @@ class TestGovernanceChangeDeterminism:
         assert "physicalType" in description
         assert "'decimal(10,2)'" in description
         assert "'decimal(8,2)'" in description
+
+
+# ==============================================================================
+# 3. Explicit ODCS Field Coverage Contract & Exhaustive Field Tests
+# ==============================================================================
+
+
+class TestODCSFieldCoverageContract:
+    """Validate 100% field coverage of ODCS models in the governance change analyzer."""
+
+    def test_odcs_root_field_coverage(self) -> None:
+        actual_fields = set(OpenDataContractStandard.model_fields)
+        expected_fields = ODCS_ROOT_HANDLED_FIELDS | ODCS_ROOT_IGNORED_FIELDS
+        assert actual_fields == expected_fields, (
+            f"ODCS root fields mismatch! Missing: {actual_fields - expected_fields}, "
+            f"Unexpected: {expected_fields - actual_fields}"
+        )
+
+    def test_odcs_schema_field_coverage(self) -> None:
+        actual_fields = set(SchemaObject.model_fields)
+        expected_fields = ODCS_SCHEMA_HANDLED_FIELDS | ODCS_SCHEMA_IGNORED_FIELDS
+        assert actual_fields == expected_fields, (
+            f"ODCS schema fields mismatch! Missing: {actual_fields - expected_fields}, "
+            f"Unexpected: {expected_fields - actual_fields}"
+        )
+
+    def test_odcs_property_field_coverage(self) -> None:
+        actual_fields = set(SchemaProperty.model_fields)
+        expected_fields = ODCS_PROPERTY_HANDLED_FIELDS | ODCS_PROPERTY_IGNORED_FIELDS
+        assert actual_fields == expected_fields, (
+            f"ODCS property fields mismatch! Missing: {actual_fields - expected_fields}, "
+            f"Unexpected: {expected_fields - actual_fields}"
+        )
+
+
+class TestExhaustiveFieldChanges:
+    """Verify that mutations on all ODCS fields emit expected GovernanceChange records."""
+
+    def test_root_metadata_fields_modification(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        cand.servers = [{"type": "spark", "host": "spark-cluster-1"}]
+        cand.authoritativeDefinitions = [{"type": "business", "url": "https://wiki.example.com"}]
+        cand.contractCreatedTs = "2026-08-16T10:00:00Z"
+        cand.price = Pricing(priceAmount=100.0, priceCurrency="USD")
+
+        changes = analyze_governance_changes(base, cand)
+        fields = {c.field for c in changes if c.entity_type == GovernanceEntityType.CONTRACT}
+
+        assert "servers" in fields
+        assert "authoritativeDefinitions" in fields
+        assert "contractCreatedTs" in fields
+        assert "price" in fields
+
+    def test_schema_metadata_and_structural_fields_modification(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        assert cand.schema_ is not None
+        cand.schema_[0].id = "schema-orders-v1"
+        cand.schema_[0].dataGranularityDescription = "One row per order line item"
+        cand.schema_[0].logicalType = "table"
+
+        changes = analyze_governance_changes(base, cand)
+        fields = {c.field for c in changes if c.entity_type == GovernanceEntityType.SCHEMA}
+
+        assert "id" in fields
+        assert "dataGranularityDescription" in fields
+        assert "logicalType" in fields
+
+    def test_property_structural_and_metadata_fields_modification(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].id = "prop-order-id"
+        cand.schema_[0].properties[0].partitioned = True
+        cand.schema_[0].properties[0].criticalDataElement = True
+        cand.schema_[0].properties[0].encryptedName = "enc_order_id"
+        cand.schema_[0].properties[0].transformLogic = "sha256(raw_order_id)"
+
+        changes = analyze_governance_changes(base, cand)
+        fields = {c.field for c in changes if c.entity_type == GovernanceEntityType.PROPERTY}
+
+        assert "id" in fields
+        assert "partitioned" in fields
+        assert "criticalDataElement" in fields
+        assert "encryptedName" in fields
+        assert "transformLogic" in fields
+

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 from open_data_contract_standard.model import (
     CustomProperty,
     OpenDataContractStandard,
+    SchemaObject,
     SchemaProperty,
 )
 from semapact.governance_codes import GovernanceReasonCode
@@ -22,6 +23,119 @@ from semapact.lifecycle.status import (
     is_explicitly_deprecated,
     resolve_declared_entity_lifecycle,
 )
+
+
+# ==============================================================================
+# ODCS Field Coverage Contract
+# ==============================================================================
+
+# 1. Root contract fields
+ODCS_ROOT_SPECIAL_FIELDS: frozenset[str] = frozenset({
+    "id",
+    "version",
+    "status",
+    "schema_",
+    "tags",
+    "customProperties",
+})
+
+ODCS_ROOT_METADATA_FIELDS: frozenset[str] = frozenset({
+    "name",
+    "description",
+    "domain",
+    "dataProduct",
+    "tenant",
+    "team",
+    "price",
+    "slaDefaultElement",
+    "slaProperties",
+    "support",
+    "roles",
+    "apiVersion",
+    "kind",
+    "servers",
+    "authoritativeDefinitions",
+    "contractCreatedTs",
+})
+
+ODCS_ROOT_HANDLED_FIELDS: frozenset[str] = ODCS_ROOT_SPECIAL_FIELDS | ODCS_ROOT_METADATA_FIELDS
+ODCS_ROOT_IGNORED_FIELDS: frozenset[str] = frozenset()
+
+# 2. Schema fields
+ODCS_SCHEMA_SPECIAL_FIELDS: frozenset[str] = frozenset({
+    "name",
+    "properties",
+    "relationships",
+    "quality",
+    "tags",
+    "customProperties",
+})
+
+ODCS_SCHEMA_STRUCTURAL_FIELDS: frozenset[str] = frozenset({
+    "logicalType",
+    "physicalType",
+    "physicalName",
+})
+
+ODCS_SCHEMA_METADATA_FIELDS: frozenset[str] = frozenset({
+    "id",
+    "description",
+    "businessName",
+    "dataGranularityDescription",
+    "authoritativeDefinitions",
+})
+
+ODCS_SCHEMA_HANDLED_FIELDS: frozenset[str] = (
+    ODCS_SCHEMA_SPECIAL_FIELDS
+    | ODCS_SCHEMA_STRUCTURAL_FIELDS
+    | ODCS_SCHEMA_METADATA_FIELDS
+)
+ODCS_SCHEMA_IGNORED_FIELDS: frozenset[str] = frozenset()
+
+# 3. Property fields
+ODCS_PROPERTY_SPECIAL_FIELDS: frozenset[str] = frozenset({
+    "name",
+    "properties",
+    "relationships",
+    "quality",
+    "tags",
+    "customProperties",
+})
+
+ODCS_PROPERTY_STRUCTURAL_FIELDS: frozenset[str] = frozenset({
+    "logicalType",
+    "logicalTypeOptions",
+    "physicalType",
+    "physicalName",
+    "required",
+    "primaryKey",
+    "primaryKeyPosition",
+    "unique",
+    "partitioned",
+    "partitionKeyPosition",
+    "items",
+})
+
+ODCS_PROPERTY_METADATA_FIELDS: frozenset[str] = frozenset({
+    "id",
+    "description",
+    "businessName",
+    "classification",
+    "encryptedName",
+    "transformSourceObjects",
+    "transformLogic",
+    "transformDescription",
+    "examples",
+    "criticalDataElement",
+    "authoritativeDefinitions",
+})
+
+ODCS_PROPERTY_HANDLED_FIELDS: frozenset[str] = (
+    ODCS_PROPERTY_SPECIAL_FIELDS
+    | ODCS_PROPERTY_STRUCTURAL_FIELDS
+    | ODCS_PROPERTY_METADATA_FIELDS
+)
+ODCS_PROPERTY_IGNORED_FIELDS: frozenset[str] = frozenset()
 
 
 class GovernanceChangeType(str, Enum):
@@ -245,22 +359,12 @@ def _analyze_contract_root(
                 )
             )
 
-    # Descriptive metadata fields
-    for field_name in (
-        "name",
-        "description",
-        "domain",
-        "dataProduct",
-        "tenant",
-        "team",
-        "price",
-        "slaDefaultElement",
-        "slaProperties",
-        "support",
-        "roles",
-        "apiVersion",
-        "kind",
-    ):
+    # Descriptive metadata fields and dynamic model fields
+    metadata_fields = sorted(
+        ODCS_ROOT_METADATA_FIELDS
+        | (set(OpenDataContractStandard.model_fields) - ODCS_ROOT_HANDLED_FIELDS)
+    )
+    for field_name in metadata_fields:
         base_val = getattr(base, field_name, None)
         cand_val = getattr(candidate, field_name, None)
         if _to_json_compatible(base_val) != _to_json_compatible(cand_val):
@@ -375,7 +479,7 @@ def _analyze_schemas_and_properties(
             )
 
         # Structural attributes
-        for field_name in ("physicalName", "physicalType", "logicalType"):
+        for field_name in sorted(ODCS_SCHEMA_STRUCTURAL_FIELDS):
             b_val = getattr(base_schema, field_name, None)
             c_val = getattr(cand_schema, field_name, None)
             if b_val != c_val:
@@ -392,8 +496,12 @@ def _analyze_schemas_and_properties(
                     )
                 )
 
-        # Metadata attributes
-        for field_name in ("description", "businessName", "dataGranularityDescription"):
+        # Metadata attributes and dynamic model fields
+        schema_metadata_fields = sorted(
+            ODCS_SCHEMA_METADATA_FIELDS
+            | (set(SchemaObject.model_fields) - ODCS_SCHEMA_HANDLED_FIELDS)
+        )
+        for field_name in schema_metadata_fields:
             b_val = getattr(base_schema, field_name, None)
             c_val = getattr(cand_schema, field_name, None)
             if _to_json_compatible(b_val) != _to_json_compatible(c_val):
@@ -533,21 +641,7 @@ def _compare_properties(
             )
 
         # Structural fields
-        for field_name in (
-            "logicalType",
-            "physicalType",
-            "physicalName",
-            "required",
-            "primaryKey",
-            "primaryKeyPosition",
-            "unique",
-            "partitioned",
-            "partitionKeyPosition",
-            "logicalTypeOptions",
-            "transformLogic",
-            "transformSourceObjects",
-            "encryptedName",
-        ):
+        for field_name in sorted(ODCS_PROPERTY_STRUCTURAL_FIELDS):
             b_val = getattr(base_prop, field_name, None)
             c_val = getattr(cand_prop, field_name, None)
             if _to_json_compatible(b_val) != _to_json_compatible(c_val):
@@ -581,15 +675,12 @@ def _compare_properties(
                 )
             )
 
-        # Metadata fields
-        for field_name in (
-            "description",
-            "businessName",
-            "classification",
-            "examples",
-            "transformDescription",
-            "authoritativeDefinitions",
-        ):
+        # Metadata fields and dynamic model fields
+        prop_metadata_fields = sorted(
+            ODCS_PROPERTY_METADATA_FIELDS
+            | (set(SchemaProperty.model_fields) - ODCS_PROPERTY_HANDLED_FIELDS)
+        )
+        for field_name in prop_metadata_fields:
             b_val = getattr(base_prop, field_name, None)
             c_val = getattr(cand_prop, field_name, None)
             if _to_json_compatible(b_val) != _to_json_compatible(c_val):
