@@ -54,12 +54,12 @@ ODCS_ROOT_METADATA_FIELDS: frozenset[str] = frozenset({
     "roles",
     "apiVersion",
     "kind",
+    "authoritativeDefinitions",
+    "contractCreatedTs",
 })
 
 ODCS_ROOT_STRUCTURAL_FIELDS: frozenset[str] = frozenset({
     "servers",
-    "contractCreatedTs",
-    "authoritativeDefinitions",
 })
 
 ODCS_ROOT_HANDLED_FIELDS: frozenset[str] = (
@@ -82,15 +82,15 @@ ODCS_SCHEMA_SPECIAL_FIELDS: frozenset[str] = frozenset({
 ODCS_SCHEMA_METADATA_FIELDS: frozenset[str] = frozenset({
     "description",
     "businessName",
+    "authoritativeDefinitions",
 })
 
 ODCS_SCHEMA_STRUCTURAL_FIELDS: frozenset[str] = frozenset({
+    "id",
+    "dataGranularityDescription",
     "logicalType",
     "physicalType",
     "physicalName",
-    "id",
-    "dataGranularityDescription",
-    "authoritativeDefinitions",
 })
 
 ODCS_SCHEMA_HANDLED_FIELDS: frozenset[str] = (

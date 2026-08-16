@@ -337,7 +337,33 @@ class TestReleaseClassificationParity:
         assert res.has_changes is True
         assert res.required_bump == "none"
 
-        # 7. tags -> none
+        # 7. authoritativeDefinitions on root -> none
+        cand = _make_active_contract()
+        cand.authoritativeDefinitions = [
+            AuthoritativeDefinition(url="https://wiki/contract-term")
+        ]
+        res = classify_contract_change(base, cand)
+        assert res.has_changes is True
+        assert res.required_bump == "none"
+
+        # 8. contractCreatedTs on root -> none
+        cand = _make_active_contract()
+        cand.contractCreatedTs = "2026-08-16T12:00:00Z"
+        res = classify_contract_change(base, cand)
+        assert res.has_changes is True
+        assert res.required_bump == "none"
+
+        # 9. authoritativeDefinitions on schema -> none
+        cand = _make_active_contract()
+        assert cand.schema_ is not None
+        cand.schema_[0].authoritativeDefinitions = [
+            AuthoritativeDefinition(url="https://wiki/schema-term")
+        ]
+        res = classify_contract_change(base, cand)
+        assert res.has_changes is True
+        assert res.required_bump == "none"
+
+        # 10. tags -> none
         cand = _make_active_contract()
         cand.tags = ["tag1", "tag2"]
         res = classify_contract_change(base, cand)
