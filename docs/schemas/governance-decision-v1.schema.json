@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daorynai.github.io/semapact/schemas/governance-decision-v1.schema.json",
+  "title": "SemaPact GovernanceDecision V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "decisionId",
+    "decision",
+    "contractId",
+    "effectiveDate",
+    "breaking",
+    "requiredVersionBump",
+    "reasonCodes",
+    "reasons",
+    "changes",
+    "validation",
+    "policy",
+    "evidence"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1"},
+    "decisionId": {"type": "string"},
+    "decision": {"enum": ["ALLOW", "BLOCK", "REVIEW"]},
+    "contractId": {"type": "string"},
+    "effectiveDate": {"type": "string", "format": "date"},
+    "breaking": {"type": "boolean"},
+    "requiredVersionBump": {"enum": ["none", "minor", "major"]},
+    "reasonCodes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/reasonCode"}
+    },
+    "reasons": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/reason"}
+    },
+    "changes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/change"}
+    },
+    "validation": {"$ref": "#/$defs/validation"},
+    "policy": {"$ref": "#/$defs/policy"},
+    "evidence": {"$ref": "#/$defs/decisionEvidence"}
+  },
+  "$defs": {
+    "reasonCode": {
+      "enum": [
+        "CHANGE_ASSESSMENT",
+        "CONTRACT_ID_CHANGED",
+        "CONTRACT_RETIRED_TRANSITION",
+        "CONTRACT_VERSION_MANUALLY_CHANGED",
+        "DECIMAL_PRECISION_REDUCED",
+        "DECIMAL_SCALE_REDUCED",
+        "ENUM_VALUES_REMOVED",
+        "LOGICAL_TYPE_CHANGED",
+        "MERGE_CONFLICT",
+        "PHYSICAL_TYPE_NARROWED",
+        "PROPERTY_REMOVED",
+        "RELATIONSHIP_REMOVED",
+        "REQUIRED_TIGHTENED",
+        "RETIRED_CONTRACT_MODIFIED",
+        "SCHEMA_REMOVED",
+        "VALIDATION_FAILED"
+      ]
+    },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "path", "message"],
+      "properties": {
+        "code": {"$ref": "#/$defs/reasonCode"},
+        "severity": {"enum": ["ERROR", "WARNING", "INFO"]},
+        "path": {"type": ["string", "null"]},
+        "message": {"type": "string"}
+      }
+    },
+    "changeEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "code"],
+      "properties": {
+        "source": {"enum": ["MERGE_CONFLICT"]},
+        "code": {"type": "string"}
+      }
+    },
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changeType",
+        "entityType",
+        "identity",
+        "path",
+        "field",
+        "before",
+        "after",
+        "domain",
+        "breaking",
+        "reasonCodes",
+        "evidence"
+      ],
+      "properties": {
+        "changeType": {"enum": ["ADD", "REMOVE", "MODIFY", "DEPRECATE"]},
+        "entityType": {"enum": ["CONTRACT", "SCHEMA", "PROPERTY", "RELATIONSHIP", "QUALITY"]},
+        "identity": {"type": "array", "items": {"type": "string"}},
+        "path": {"type": "string"},
+        "field": {"type": ["string", "null"]},
+        "before": {},
+        "after": {},
+        "domain": {"enum": ["IDENTITY", "VERSION", "LIFECYCLE", "STRUCTURE", "RELATIONSHIP", "QUALITY", "METADATA"]},
+        "breaking": {"type": "boolean"},
+        "reasonCodes": {"type": "array", "items": {"$ref": "#/$defs/reasonCode"}},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/changeEvidence"}}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valid", "issueCodes", "issues"],
+      "properties": {
+        "valid": {"type": "boolean"},
+        "issueCodes": {"type": "array", "items": {"$ref": "#/$defs/reasonCode"}},
+        "issues": {"type": "array", "items": {"$ref": "#/$defs/reason"}}
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valid", "idViolation", "versionViolation", "retiredViolation"],
+      "properties": {
+        "valid": {"type": "boolean"},
+        "idViolation": {"type": "boolean"},
+        "versionViolation": {"type": "boolean"},
+        "retiredViolation": {"type": "boolean"}
+      }
+    },
+    "decisionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hasChanges", "mergeConflictsCount"],
+      "properties": {
+        "hasChanges": {"type": "boolean"},
+        "mergeConflictsCount": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

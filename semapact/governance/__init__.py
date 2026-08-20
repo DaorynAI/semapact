@@ -23,6 +23,16 @@ from semapact.governance.gate import (
     enforce_governance_gate,
     evaluate_governance_gate,
 )
+from semapact.governance.serialization import (
+    GOVERNANCE_DECISION_SCHEMA_VERSION,
+    GovernanceDecisionPayloadV1,
+    governance_decision_json_schema,
+    governance_decision_payload_to_json,
+    governance_decision_to_dict,
+    governance_decision_to_json,
+    governance_decision_to_payload,
+    parse_governance_decision_json,
+)
 
 __all__ = [
     "ChangeContext",
@@ -39,7 +49,15 @@ __all__ = [
     "GovernanceModel",
     "GovernanceOperation",
     "GovernanceGateResult",
+    "GOVERNANCE_DECISION_SCHEMA_VERSION",
+    "GovernanceDecisionPayloadV1",
     "evaluate_governance_decision",
     "evaluate_governance_gate",
     "enforce_governance_gate",
+    "governance_decision_json_schema",
+    "governance_decision_payload_to_json",
+    "governance_decision_to_dict",
+    "governance_decision_to_json",
+    "governance_decision_to_payload",
+    "parse_governance_decision_json",
 ]

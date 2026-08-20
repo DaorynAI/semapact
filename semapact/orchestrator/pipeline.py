@@ -31,6 +31,7 @@ from semapact.governance import (
     GovernanceOperation,
     enforce_governance_gate,
     evaluate_governance_decision,
+    governance_decision_to_dict,
 )
 from semapact.importers.unity_importer import import_unity_contract
 from semapact.core.loader import ContractLoader, RuntimeContext
@@ -58,7 +59,7 @@ def _build_manifest_payload(
     a single source of truth for manifest field names and serialization.
     """
     return {
-        "governanceDecision": decision.model_dump(mode="json"),
+        "governanceDecision": governance_decision_to_dict(decision),
         "valid": decision.validation.valid,
         "policyValid": decision.policy.valid,
         "idViolation": decision.policy.id_violation,
