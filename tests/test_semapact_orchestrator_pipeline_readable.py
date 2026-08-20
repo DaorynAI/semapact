@@ -8,7 +8,7 @@ import pytest
 import pandas as pd
 
 from datacontract.data_contract import DataContract
-from open_data_contract_standard.model import OpenDataContractStandard
+from open_data_contract_standard.model import OpenDataContractStandard, SchemaProperty
 from semapact.core.validator import ValidationIssue, ValidationReport
 from semapact.devops.audit import AuditMetadata
 from semapact.lifecycle.merge_engine import MergeConflict, MergeResult
@@ -297,10 +297,15 @@ def test_pipeline_run_blocks_retired_contract(monkeypatch, sample_odcs_model):
     retired_contract = sample_odcs_model.model_copy(deep=True)
     retired_contract.status = "retired"
 
+    candidate = sample_odcs_model.model_copy(deep=True)
+    candidate.schema_[0].properties.append(  # type: ignore[union-attr]
+        SchemaProperty(name="new_col", logicalType="string", physicalType="varchar(32)", required=False)
+    )
+
     monkeypatch.setattr(
         ContractPipeline,
         "import_schema",
-        lambda self, *args, **kwargs: sample_odcs_model,
+        lambda self, *args, **kwargs: candidate,
     )
     monkeypatch.setattr(type(pipeline.loader), "load", lambda self, _: retired_contract)
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from semapact.change_context import ChangeContext
 from semapact.core.release import RequiredBump
 from semapact.governance_codes import GovernanceReasonCode, GovernanceSeverity
+from semapact.lifecycle.changes import GovernanceChange
 from semapact.lifecycle.policy import BreakingChange
 
 
@@ -83,6 +84,7 @@ class GovernanceDecision(GovernanceModel):
     policy: PolicyOutcome
     evidence: ChangeEvidence
     reasons: tuple[GovernanceReason, ...] = ()
+    changes: tuple[GovernanceChange, ...] = ()
 
     @model_validator(mode="after")
     def _validate_allow_invariants(self) -> GovernanceDecision:

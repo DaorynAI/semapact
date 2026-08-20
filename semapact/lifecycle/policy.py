@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Sequence
 
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
@@ -11,6 +11,12 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 from semapact.governance_codes import GovernanceReasonCode
+from semapact.lifecycle.changes import (
+    GovernanceChange,
+    GovernanceChangeType,
+    GovernanceEntityType,
+    analyze_governance_changes,
+)
 from semapact.lifecycle.helpers import (
     decimal_precision_reduction,
     decimal_scale_reduction,
@@ -49,113 +55,189 @@ class PolicyEvaluation:
     breaking_changes: list[BreakingChange] = field(default_factory=list)
     id_violation: bool = False
     version_violation: bool = False
+    annotated_changes: tuple[GovernanceChange, ...] = ()
 
 
 def evaluate_merge_policy(
     base_contract: OpenDataContractStandard,
     merged_contract: OpenDataContractStandard,
+    *,
+    changes: Sequence[GovernanceChange] | None = None,
 ) -> PolicyEvaluation:
     """Validate identities for all contracts and evaluate breaking changes for active contracts."""
     validate_contract_identities(base_contract)
     validate_contract_identities(merged_contract)
 
+    canonical_changes = (
+        analyze_governance_changes(base_contract, merged_contract)
+        if changes is None
+        else tuple(changes)
+    )
+
     breaks: list[BreakingChange] = []
     id_violation = False
     version_violation = False
+    annotated_changes: list[GovernanceChange] = []
 
-    if _root_id_changed(base_contract, merged_contract):
-        id_violation = True
-        LOGGER.warning(
-            "Policy violation: Root ID changed in contract %s", base_contract.id
-        )
-        breaks.append(
-            BreakingChange(
-                code=GovernanceReasonCode.CONTRACT_ID_CHANGED,
-                path="id",
-                message="Contract ID mismatch. You changed the root ID of the contract, which is immutable. If you want to create a new contract, use 'semapact import --new' or change the ID back.",
-            )
-        )
+    base_is_active = is_active_contract(base_contract)
+    base_schema_index = build_schema_index(base_contract) if base_is_active else {}
 
-    if _root_version_changed(base_contract, merged_contract):
-        version_violation = True
-        LOGGER.warning(
-            "Policy violation: Root version changed in contract %s", base_contract.id
-        )
-        breaks.append(
-            BreakingChange(
-                code=GovernanceReasonCode.CONTRACT_VERSION_MANUALLY_CHANGED,
-                path="version",
-                message="Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change and use 'semapact release prepare'.",
-            )
-        )
+    for change in canonical_changes:
+        change_breaks: list[BreakingChange] = []
+        change_reasons: list[GovernanceReasonCode] = list(change.reason_codes)
 
-    if not is_active_contract(base_contract):
-        return PolicyEvaluation(
-            valid=not breaks,
-            breaking_changes=breaks,
-            id_violation=id_violation,
-            version_violation=version_violation,
-        )
-
-    base_schema_index = build_schema_index(base_contract)
-    merged_schema_index = build_schema_index(merged_contract)
-
-    for schema_key, schema in base_schema_index.items():
-        schema_status = resolve_schema_lifecycle(schema, contract=base_contract)
-        if not participates_in_breaking_checks(schema_status):
-            continue
-
-        target_schema = merged_schema_index.get(schema_key)
-        if target_schema is None:
-            breaks.append(
-                BreakingChange(
-                    code=GovernanceReasonCode.SCHEMA_REMOVED,
-                    path=f"schema[{schema_key}]",
-                    message="Schema removed from active contract",
+        # 1. Contract root violations
+        if change.entity_type == GovernanceEntityType.CONTRACT:
+            if change.field == "id":
+                id_violation = True
+                LOGGER.warning(
+                    "Policy violation: Root ID changed in contract %s", base_contract.id
                 )
-            )
-            continue
-
-        base_props = build_property_index(schema_key, schema.properties or [])
-        target_props = build_property_index(schema_key, target_schema.properties or [])
-
-        base_rels = _extract_relationship_hashes(schema, base_props)
-        target_rels = _extract_relationship_hashes(target_schema, target_props)
-        for rel_hash in base_rels:
-            if rel_hash not in target_rels:
-                breaks.append(
-                    BreakingChange(
-                        code=GovernanceReasonCode.RELATIONSHIP_REMOVED,
-                        path=f"schema[{schema_key}].relationships",
-                        message=f"Relationship '{rel_hash}' removed from active lifecycle scope. Downstream joins may fail.",
-                    )
+                brk = BreakingChange(
+                    code=GovernanceReasonCode.CONTRACT_ID_CHANGED,
+                    path="id",
+                    message="Contract ID mismatch. You changed the root ID of the contract, which is immutable. If you want to create a new contract, use 'semapact import --new' or change the ID back.",
                 )
-        for prop_key, base_prop in base_props.items():
-            prop_status = resolve_property_lifecycle(
-                base_prop,
-                parent_lifecycle=schema_status,
-            )
-            if not participates_in_breaking_checks(prop_status):
-                continue
-            if prop_key not in target_props:
-                prop_name = prop_key[1]  # (schema_id, prop_id) -> prop_id
-                breaks.append(
-                    BreakingChange(
-                        code=GovernanceReasonCode.PROPERTY_REMOVED,
-                        path=f"schema[{schema_key}].properties[{prop_name}]",
-                        message="Property removed from active lifecycle scope",
-                    )
+                change_breaks.append(brk)
+                change_reasons.append(brk.code)
+            elif change.field == "version":
+                version_violation = True
+                LOGGER.warning(
+                    "Policy violation: Root version changed in contract %s", base_contract.id
                 )
-                continue
+                brk = BreakingChange(
+                    code=GovernanceReasonCode.CONTRACT_VERSION_MANUALLY_CHANGED,
+                    path="version",
+                    message="Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change and use 'semapact release prepare'.",
+                )
+                change_breaks.append(brk)
+                change_reasons.append(brk.code)
 
-            target_prop = target_props[prop_key]
-            breaks.extend(
-                _property_breaking_changes(
-                    base_prop=base_prop,
-                    target_prop=target_prop,
-                    path=f"schema[{schema_key}].properties[{prop_key[1]}]",
-                )
+        # 2. Active contract breaking change evaluation
+        if base_is_active:
+            if change.entity_type == GovernanceEntityType.SCHEMA:
+                schema_id = change.identity[0]
+                base_schema = base_schema_index.get(schema_id)
+                if base_schema is not None:
+                    schema_status = resolve_schema_lifecycle(base_schema, contract=base_contract)
+                    if (
+                        participates_in_breaking_checks(schema_status)
+                        and change.change_type == GovernanceChangeType.REMOVE
+                        and change.field is None
+                    ):
+                        brk = BreakingChange(
+                            code=GovernanceReasonCode.SCHEMA_REMOVED,
+                            path=change.path,
+                            message="Schema removed from active contract",
+                        )
+                        change_breaks.append(brk)
+                        change_reasons.append(brk.code)
+
+            elif change.entity_type == GovernanceEntityType.RELATIONSHIP:
+                schema_id = change.identity[0]
+                base_schema = base_schema_index.get(schema_id)
+                if base_schema is not None:
+                    schema_status = resolve_schema_lifecycle(base_schema, contract=base_contract)
+                    if participates_in_breaking_checks(schema_status) and change.change_type == GovernanceChangeType.REMOVE:
+                        rel_hash = change.identity[-1]
+                        brk = BreakingChange(
+                            code=GovernanceReasonCode.RELATIONSHIP_REMOVED,
+                            path=change.path,
+                            message=f"Relationship '{rel_hash}' removed from active lifecycle scope. Downstream joins may fail.",
+                        )
+                        change_breaks.append(brk)
+                        change_reasons.append(brk.code)
+
+            elif change.entity_type == GovernanceEntityType.PROPERTY:
+                schema_id = change.identity[0]
+                prop_name = change.identity[1]
+                base_schema = base_schema_index.get(schema_id)
+                if base_schema is not None:
+                    schema_status = resolve_schema_lifecycle(base_schema, contract=base_contract)
+                    if participates_in_breaking_checks(schema_status):
+                        base_props = build_property_index(schema_id, base_schema.properties or [])
+                        base_prop = base_props.get((schema_id, prop_name))
+                        if base_prop is not None:
+                            prop_status = resolve_property_lifecycle(base_prop, parent_lifecycle=schema_status)
+                            if participates_in_breaking_checks(prop_status):
+                                if change.change_type == GovernanceChangeType.REMOVE and change.field is None:
+                                    brk = BreakingChange(
+                                        code=GovernanceReasonCode.PROPERTY_REMOVED,
+                                        path=change.path,
+                                        message="Property removed from active lifecycle scope",
+                                    )
+                                    change_breaks.append(brk)
+                                    change_reasons.append(brk.code)
+                                elif change.change_type == GovernanceChangeType.MODIFY:
+                                    if change.field == "logicalType":
+                                        b_log = change.before
+                                        c_log = change.after
+                                        if b_log is not None and c_log is not None and str(b_log) != str(c_log):
+                                            brk = BreakingChange(
+                                                code=GovernanceReasonCode.LOGICAL_TYPE_CHANGED,
+                                                path=change.path,
+                                                message=f"Logical type changed from {b_log!r} to {c_log!r}",
+                                            )
+                                            change_breaks.append(brk)
+                                            change_reasons.append(brk.code)
+                                    elif change.field == "physicalType":
+                                        b_phys = change.before
+                                        c_phys = change.after
+                                        if _is_physical_type_narrowing(b_phys, c_phys):
+                                            brk = BreakingChange(
+                                                code=GovernanceReasonCode.PHYSICAL_TYPE_NARROWED,
+                                                path=change.path,
+                                                message=f"Physical type narrowed from {b_phys!r} to {c_phys!r}",
+                                            )
+                                            change_breaks.append(brk)
+                                            change_reasons.append(brk.code)
+                                        if decimal_precision_reduction(c_phys, b_phys):
+                                            brk = BreakingChange(
+                                                code=GovernanceReasonCode.DECIMAL_PRECISION_REDUCED,
+                                                path=change.path,
+                                                message=f"Decimal precision reduced from {b_phys!r} to {c_phys!r}",
+                                            )
+                                            change_breaks.append(brk)
+                                            change_reasons.append(brk.code)
+                                        if decimal_scale_reduction(c_phys, b_phys):
+                                            brk = BreakingChange(
+                                                code=GovernanceReasonCode.DECIMAL_SCALE_REDUCED,
+                                                path=change.path,
+                                                message=f"Decimal scale reduced from {b_phys!r} to {c_phys!r}",
+                                            )
+                                            change_breaks.append(brk)
+                                            change_reasons.append(brk.code)
+                                    elif change.field == "required":
+                                        if change.before is False and change.after is True:
+                                            brk = BreakingChange(
+                                                code=GovernanceReasonCode.REQUIRED_TIGHTENED,
+                                                path=change.path,
+                                                message="Required flag tightened from False to True",
+                                            )
+                                            change_breaks.append(brk)
+                                            change_reasons.append(brk.code)
+                                    elif change.field == "enum":
+                                        base_set = set(change.before) if isinstance(change.before, (list, tuple)) else set()
+                                        cand_set = set(change.after) if isinstance(change.after, (list, tuple)) else set()
+                                        if base_set and not base_set.issubset(cand_set):
+                                            brk = BreakingChange(
+                                                code=GovernanceReasonCode.ENUM_VALUES_REMOVED,
+                                                path=change.path,
+                                                message="Enum values reduced",
+                                            )
+                                            change_breaks.append(brk)
+                                            change_reasons.append(brk.code)
+
+        breaks.extend(change_breaks)
+        sorted_reasons = tuple(sorted(set(change_reasons), key=lambda r: r.value))
+        annotated_changes.append(
+            change.model_copy(
+                update={
+                    "breaking": bool(change_breaks) or change.breaking,
+                    "reason_codes": sorted_reasons,
+                }
             )
+        )
 
     if breaks:
         LOGGER.info(
@@ -174,6 +256,7 @@ def evaluate_merge_policy(
         breaking_changes=breaks,
         id_violation=id_violation,
         version_violation=version_violation,
+        annotated_changes=tuple(annotated_changes),
     )
 
 

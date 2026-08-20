@@ -22,6 +22,12 @@ from semapact.governance.models import (
     ValidationOutcome,
 )
 from semapact.governance_codes import GovernanceReasonCode, reason_severity
+from semapact.lifecycle.changes import (
+    GovernanceChange,
+    GovernanceChangeEvidence,
+    GovernanceChangeEvidenceSource,
+    analyze_governance_changes,
+)
 from semapact.lifecycle.identity import validate_contract_identities
 from semapact.lifecycle.merge_engine import MergeConflict
 from semapact.lifecycle.policy import PolicyEvaluation, evaluate_merge_policy
@@ -48,12 +54,21 @@ def evaluate_governance_decision(
     # 1. Validation outcome
     validation_outcome = _build_validation_outcome(candidate_contract)
 
-    # 2. Policy outcome and change classification
-    policy_outcome, change_assessment, retired_transition = _build_policy_outcome(
-        base_contract, candidate_contract
+    # 2. Canonical change analysis (computed once)
+    try:
+        raw_changes = analyze_governance_changes(base_contract, candidate_contract)
+    except ValidationError:
+        raw_changes = ()
+
+    # 3. Policy outcome and change classification
+    policy_outcome, change_assessment, retired_transition, annotated_changes = _build_policy_outcome(
+        base_contract, candidate_contract, raw_changes=raw_changes
     )
 
-    # 3. Reason aggregation (deduplication & sorting)
+    # 4. Attach merge conflict evidence to matching changes
+    final_changes = _correlate_merge_conflicts(annotated_changes, merge_conflicts)
+
+    # 5. Reason aggregation (deduplication & sorting)
     reasons = _aggregate_reasons(
         validation_outcome=validation_outcome,
         policy_outcome=policy_outcome,
@@ -61,7 +76,7 @@ def evaluate_governance_decision(
         merge_conflicts=merge_conflicts,
     )
 
-    # 4. Decision mapping
+    # 6. Decision mapping
     decision_result = _determine_decision(
         validation_outcome=validation_outcome,
         policy_outcome=policy_outcome,
@@ -70,7 +85,7 @@ def evaluate_governance_decision(
         retired_transition=retired_transition,
     )
 
-    # 5. Fingerprint & Decision ID generation
+    # 7. Fingerprint & Decision ID generation
     decision_id = _generate_decision_id(
         base_contract=base_contract,
         candidate_contract=candidate_contract,
@@ -81,7 +96,7 @@ def evaluate_governance_decision(
 
     contract_id = str(base_contract.id or candidate_contract.id or "")
     evidence = ChangeEvidence(
-        has_changes=change_assessment.has_changes,
+        has_changes=bool(raw_changes) or _has_contract_mutation(base_contract, candidate_contract),
         merge_conflicts_count=len(merge_conflicts),
     )
 
@@ -96,6 +111,7 @@ def evaluate_governance_decision(
         validation=validation_outcome,
         policy=policy_outcome,
         evidence=evidence,
+        changes=final_changes,
     )
 
 
@@ -145,60 +161,105 @@ def _build_validation_outcome(candidate_contract: OpenDataContractStandard) -> V
     return ValidationOutcome(valid=valid, issues=tuple(val_issues))
 
 
-def _is_retired_mutation(
+def _correlate_merge_conflicts(
+    changes: Sequence[GovernanceChange],
+    merge_conflicts: Sequence[MergeConflict],
+) -> tuple[GovernanceChange, ...]:
+    """Attach typed merge-conflict evidence to canonical changes matching conflict paths."""
+    if not merge_conflicts:
+        return tuple(changes)
+
+    conflict_map: dict[str, list[MergeConflict]] = {}
+    for c in merge_conflicts:
+        keys: list[str] = []
+        if c.path:
+            keys.append(c.path.strip().lower())
+        if c.schema_id and c.property_name:
+            keys.append(f"{c.schema_id.strip().lower()}.{c.property_name.strip().lower()}")
+            keys.append(
+                f"schema[{c.schema_id.strip().lower()}].properties[{c.property_name.strip().lower()}]"
+            )
+        for k in keys:
+            conflict_map.setdefault(k, []).append(c)
+
+    correlated: list[GovernanceChange] = []
+    for change in changes:
+        matched_conflicts: list[MergeConflict] = []
+        change_path_lower = change.path.strip().lower()
+        if change_path_lower in conflict_map:
+            matched_conflicts.extend(conflict_map[change_path_lower])
+        ident_key = ".".join(change.identity).lower()
+        if ident_key in conflict_map:
+            matched_conflicts.extend(conflict_map[ident_key])
+
+        if matched_conflicts:
+            ev_list = list(change.evidence)
+            for mc in matched_conflicts:
+                code_val = str(mc.rule or "merge_conflict")
+                ev_obj = GovernanceChangeEvidence(
+                    source=GovernanceChangeEvidenceSource.MERGE_CONFLICT,
+                    code=code_val,
+                )
+                if ev_obj not in ev_list:
+                    ev_list.append(ev_obj)
+            sorted_ev = tuple(sorted(ev_list, key=lambda e: (e.source.value, e.code)))
+            correlated.append(change.model_copy(update={"evidence": sorted_ev}))
+        else:
+            correlated.append(change)
+
+    return tuple(correlated)
+
+
+def _has_contract_mutation(
     base_contract: OpenDataContractStandard,
     candidate_contract: OpenDataContractStandard,
 ) -> bool:
-    """Deterministically detect if a candidate mutates an already retired base contract."""
-    try:
-        base_status = resolve_contract_lifecycle(base_contract)
-    except (ValueError, TypeError):
-        base_status = LifecycleStatus.DRAFT
-
-    if base_status is not LifecycleStatus.RETIRED:
-        return False
-
-    return _contract_has_any_change(base_contract, candidate_contract)
-
-
-def _contract_has_any_change(
-    base_contract: OpenDataContractStandard,
-    candidate_contract: OpenDataContractStandard,
-) -> bool:
-    """Deterministically check if candidate differs from base in any way."""
+    """Authoritative check for any mutation between base and candidate contracts."""
     return contract_to_dict(base_contract) != contract_to_dict(candidate_contract)
 
 
 def _build_policy_outcome(
     base_contract: OpenDataContractStandard,
     candidate_contract: OpenDataContractStandard,
-) -> tuple[PolicyOutcome, ContractChangeAssessment, bool]:
-    """Evaluate lifecycle policy rules and change classification without duplicate evaluation."""
+    *,
+    raw_changes: tuple[GovernanceChange, ...],
+) -> tuple[PolicyOutcome, ContractChangeAssessment, bool, tuple[GovernanceChange, ...]]:
+    """Evaluate lifecycle policy rules and change classification using canonical changes."""
     try:
-        policy_eval: PolicyEvaluation = evaluate_merge_policy(base_contract, candidate_contract)
+        policy_eval: PolicyEvaluation = evaluate_merge_policy(
+            base_contract, candidate_contract, changes=raw_changes
+        )
     except ValidationError:
-        policy_eval = PolicyEvaluation(valid=False)
+        policy_eval = PolicyEvaluation(valid=False, annotated_changes=raw_changes)
+
+    annotated_changes = policy_eval.annotated_changes or raw_changes
 
     try:
         change_assessment: ContractChangeAssessment = classify_contract_change(
-            base_contract, candidate_contract, policy_evaluation=policy_eval
+            base_contract, candidate_contract, changes=annotated_changes, policy_evaluation=policy_eval
         )
     except ValidationError:
         change_assessment = ContractChangeAssessment(
-            has_changes=False, required_bump="none", breaking_changes=[], reasons=["Validation error"]
+            has_changes=bool(raw_changes) or _has_contract_mutation(base_contract, candidate_contract),
+            required_bump="none",
+            breaking_changes=[],
+            reasons=["Validation error"],
         )
 
     try:
         base_status = resolve_contract_lifecycle(base_contract)
-    except ValueError:
+    except (ValueError, TypeError):
         base_status = LifecycleStatus.DRAFT
 
     try:
         candidate_status = resolve_contract_lifecycle(candidate_contract)
-    except ValueError:
+    except (ValueError, TypeError):
         candidate_status = LifecycleStatus.DRAFT
 
-    retired_mutation = _is_retired_mutation(base_contract, candidate_contract)
+    retired_mutation = (
+        base_status is LifecycleStatus.RETIRED
+        and _has_contract_mutation(base_contract, candidate_contract)
+    )
     retired_transition = (
         base_status is not LifecycleStatus.RETIRED
         and candidate_status is LifecycleStatus.RETIRED
@@ -235,7 +296,7 @@ def _build_policy_outcome(
         breaking_changes=tuple(policy_eval.breaking_changes),
     )
 
-    return policy_outcome, change_assessment, retired_transition
+    return policy_outcome, change_assessment, retired_transition, annotated_changes
 
 
 def _aggregate_reasons(

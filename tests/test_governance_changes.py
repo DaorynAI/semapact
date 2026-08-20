@@ -1,0 +1,748 @@
+"""Unit tests for canonical ODCS-aware GovernanceChange analyzer and models."""
+
+from __future__ import annotations
+
+from typing import Any
+from open_data_contract_standard.model import (
+    AuthoritativeDefinition,
+    CustomProperty,
+    DataQuality,
+    OpenDataContractStandard,
+    Pricing,
+    Relationship,
+    SchemaObject,
+    SchemaProperty,
+    Server,
+)
+
+from semapact.lifecycle.changes import (
+    ODCS_PROPERTY_HANDLED_FIELDS,
+    ODCS_PROPERTY_IGNORED_FIELDS,
+    ODCS_ROOT_HANDLED_FIELDS,
+    ODCS_ROOT_IGNORED_FIELDS,
+    ODCS_SCHEMA_HANDLED_FIELDS,
+    ODCS_SCHEMA_IGNORED_FIELDS,
+    GovernanceChange,
+    GovernanceChangeDomain,
+    GovernanceChangeType,
+    GovernanceEntityType,
+    analyze_governance_changes,
+    describe_governance_change,
+    governance_change_sort_key,
+)
+
+
+def _make_base_contract(**kwargs: Any) -> OpenDataContractStandard:
+    payload: dict[str, Any] = {
+        "apiVersion": "v3.1.0",
+        "kind": "DataContract",
+        "id": "urn:datacontract:orders",
+        "name": "orders_contract",
+        "version": "1.0.0",
+        "status": "active",
+        "description": {"usage": "Base orders contract"},
+        "tags": ["orders", "finance"],
+        "schema": [
+            {
+                "name": "orders",
+                "physicalName": "tbl_orders",
+                "properties": [
+                    {
+                        "name": "order_id",
+                        "logicalType": "string",
+                        "physicalType": "varchar(32)",
+                        "required": True,
+                    },
+                    {
+                        "name": "amount",
+                        "logicalType": "number",
+                        "physicalType": "decimal(10,2)",
+                        "required": False,
+                    },
+                ],
+            }
+        ],
+    }
+    payload.update(kwargs)
+    return OpenDataContractStandard.model_validate(payload)
+
+
+# ==============================================================================
+# 1. Core Analyzer Matrix
+# ==============================================================================
+
+
+class TestGovernanceChangeAnalyzer:
+    """Test core change analyzer across all ODCS entities and change types."""
+
+    def test_identical_contracts_produce_empty_changes(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        changes = analyze_governance_changes(base, cand)
+        assert changes == ()
+
+    def test_schema_addition_produces_add_schema(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        assert cand.schema_ is not None
+        cand.schema_.append(
+            SchemaObject(
+                name="customers",
+                physicalName="tbl_customers",
+                properties=[
+                    SchemaProperty(name="customer_id", logicalType="string", required=True)
+                ],
+            )
+        )
+
+        changes = analyze_governance_changes(base, cand)
+        schema_adds = [
+            c for c in changes
+            if c.change_type == GovernanceChangeType.ADD and c.entity_type == GovernanceEntityType.SCHEMA
+        ]
+        assert len(schema_adds) == 1
+        assert schema_adds[0].identity == ("customers",)
+        assert schema_adds[0].path == "schema[customers]"
+        assert schema_adds[0].domain == GovernanceChangeDomain.STRUCTURE
+        assert schema_adds[0].before is None
+        assert schema_adds[0].after is not None
+
+    def test_schema_removal_produces_remove_schema(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        cand.schema_ = []
+
+        changes = analyze_governance_changes(base, cand)
+        schema_removes = [
+            c for c in changes
+            if c.change_type == GovernanceChangeType.REMOVE and c.entity_type == GovernanceEntityType.SCHEMA
+        ]
+        assert len(schema_removes) == 1
+        assert schema_removes[0].identity == ("orders",)
+        assert schema_removes[0].path == "schema[orders]"
+        assert schema_removes[0].domain == GovernanceChangeDomain.STRUCTURE
+        assert schema_removes[0].before is not None
+        assert schema_removes[0].after is None
+
+    def test_property_addition_produces_add_property(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties.append(
+            SchemaProperty(name="currency", logicalType="string", physicalType="varchar(3)")
+        )
+
+        changes = analyze_governance_changes(base, cand)
+        prop_adds = [
+            c for c in changes
+            if c.change_type == GovernanceChangeType.ADD and c.entity_type == GovernanceEntityType.PROPERTY
+        ]
+        assert len(prop_adds) == 1
+        assert prop_adds[0].identity == ("orders", "currency")
+        assert prop_adds[0].path == "schema[orders].properties[currency]"
+        assert prop_adds[0].domain == GovernanceChangeDomain.STRUCTURE
+
+    def test_property_removal_produces_remove_property(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        # Remove amount property
+        cand.schema_[0].properties = [cand.schema_[0].properties[0]]
+
+        changes = analyze_governance_changes(base, cand)
+        prop_removes = [
+            c for c in changes
+            if c.change_type == GovernanceChangeType.REMOVE and c.entity_type == GovernanceEntityType.PROPERTY
+        ]
+        assert len(prop_removes) == 1
+        assert prop_removes[0].identity == ("orders", "amount")
+        assert prop_removes[0].path == "schema[orders].properties[amount]"
+        assert prop_removes[0].domain == GovernanceChangeDomain.STRUCTURE
+
+    def test_property_field_modifications(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        # Modify amount logicalType, physicalType, and required
+        cand.schema_[0].properties[1].logicalType = "integer"
+        cand.schema_[0].properties[1].physicalType = "bigint"
+        cand.schema_[0].properties[1].required = True
+
+        changes = analyze_governance_changes(base, cand)
+        field_map = {c.field: c for c in changes if c.entity_type == GovernanceEntityType.PROPERTY}
+
+        assert "logicalType" in field_map
+        assert field_map["logicalType"].change_type == GovernanceChangeType.MODIFY
+        assert field_map["logicalType"].before == "number"
+        assert field_map["logicalType"].after == "integer"
+        assert field_map["logicalType"].domain == GovernanceChangeDomain.STRUCTURE
+
+        assert "physicalType" in field_map
+        assert field_map["physicalType"].change_type == GovernanceChangeType.MODIFY
+        assert field_map["physicalType"].before == "decimal(10,2)"
+        assert field_map["physicalType"].after == "bigint"
+        assert field_map["physicalType"].domain == GovernanceChangeDomain.STRUCTURE
+
+        assert "required" in field_map
+        assert field_map["required"].change_type == GovernanceChangeType.MODIFY
+        assert field_map["required"].before is False
+        assert field_map["required"].after is True
+        assert field_map["required"].domain == GovernanceChangeDomain.STRUCTURE
+
+    def test_property_deprecation_coalesces_companion_metadata(self) -> None:
+        base = _make_base_contract()
+        assert base.schema_ is not None and base.schema_[0].properties is not None
+        base.schema_[0].properties[1].tags = ["orders"]
+
+        cand = _make_base_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[1].tags = ["orders"]
+        # Auto-deprecation simulates setting lifecycleStatus, deprecationDate, semapact.removed, and tag
+        cand.schema_[0].properties[1].customProperties = [
+            CustomProperty(property="lifecycleStatus", value="deprecated"),
+            CustomProperty(property="deprecationDate", value="2026-08-15"),
+            CustomProperty(property="semapact.removed", value="true"),
+        ]
+        cand.schema_[0].properties[1].tags = ["orders", "deprecated"]
+
+        changes = analyze_governance_changes(base, cand)
+        dep_changes = [
+            c for c in changes
+            if c.change_type == GovernanceChangeType.DEPRECATE and c.entity_type == GovernanceEntityType.PROPERTY
+        ]
+        assert len(dep_changes) == 1
+        assert dep_changes[0].identity == ("orders", "amount")
+        assert dep_changes[0].field == "lifecycleStatus"
+        assert dep_changes[0].after == "deprecated"
+        assert dep_changes[0].domain == GovernanceChangeDomain.LIFECYCLE
+
+        # Companion metadata changes must NOT be emitted as separate changes
+        companion_changes = [
+            c for c in changes
+            if c.field in ("customProperties.deprecationDate", "customProperties.semapact.removed", "tags")
+        ]
+        assert len(companion_changes) == 0
+
+    def test_nested_property_ancestry_identity(self) -> None:
+        base = _make_base_contract()
+        assert base.schema_ is not None and base.schema_[0].properties is not None
+        base.schema_[0].properties.append(
+            SchemaProperty(
+                name="customer",
+                logicalType="object",
+                properties=[
+                    SchemaProperty(
+                        name="address",
+                        logicalType="object",
+                        properties=[
+                            SchemaProperty(name="postcode", logicalType="string", physicalType="varchar(10)")
+                        ],
+                    )
+                ],
+            )
+        )
+
+        cand = base.model_copy(deep=True)
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        # Mutate postcode physicalType
+        cand.schema_[0].properties[2].properties[0].properties[0].physicalType = "varchar(5)"  # type: ignore[index]
+
+        changes = analyze_governance_changes(base, cand)
+        nested_mod = [c for c in changes if c.field == "physicalType"]
+        assert len(nested_mod) == 1
+        assert nested_mod[0].identity == ("orders", "customer", "address", "postcode")
+        assert nested_mod[0].before == "varchar(10)"
+        assert nested_mod[0].after == "varchar(5)"
+
+    def test_relationship_add_and_remove(self) -> None:
+        base = _make_base_contract()
+        assert base.schema_ is not None
+        base.schema_[0].relationships = [
+            Relationship(type="foreignKey", to="customers.id")
+        ]
+
+        cand = _make_base_contract()
+        assert cand.schema_ is not None
+        cand.schema_[0].relationships = [
+            Relationship(type="foreignKey", to="products.sku")
+        ]
+
+        changes = analyze_governance_changes(base, cand)
+        rel_changes = [c for c in changes if c.entity_type == GovernanceEntityType.RELATIONSHIP]
+        assert len(rel_changes) == 2
+
+        removed = [c for c in rel_changes if c.change_type == GovernanceChangeType.REMOVE]
+        added = [c for c in rel_changes if c.change_type == GovernanceChangeType.ADD]
+        assert len(removed) == 1
+        assert len(added) == 1
+        assert removed[0].domain == GovernanceChangeDomain.RELATIONSHIP
+        assert added[0].domain == GovernanceChangeDomain.RELATIONSHIP
+
+    def test_same_relationship_signature_across_schemas_remove_from_one_only(self) -> None:
+        """Schema A and B both have same relationship signature; removing from A emits one REMOVE pointing to A."""
+        base = _make_base_contract()
+        assert base.schema_ is not None
+        base.schema_[0].relationships = [
+            Relationship(type="foreignKey", to="customers.id")
+        ]
+        base.schema_.append(
+            SchemaObject(
+                name="invoices",
+                physicalName="tbl_invoices",
+                relationships=[
+                    Relationship(type="foreignKey", to="customers.id")
+                ],
+                properties=[
+                    SchemaProperty(name="invoice_id", logicalType="string", required=True)
+                ],
+            )
+        )
+
+        cand = base.model_copy(deep=True)
+        assert cand.schema_ is not None
+        # Remove relationship from schema A (orders) only, keep on schema B (invoices)
+        cand.schema_[0].relationships = []
+
+        changes = analyze_governance_changes(base, cand)
+        rel_removes = [
+            c for c in changes
+            if c.change_type == GovernanceChangeType.REMOVE and c.entity_type == GovernanceEntityType.RELATIONSHIP
+        ]
+        assert len(rel_removes) == 1
+        assert rel_removes[0].identity[0] == "orders"
+        assert rel_removes[0].path == "schema[orders].relationships"
+        assert rel_removes[0].domain == GovernanceChangeDomain.RELATIONSHIP
+
+    def test_quality_rule_add_and_remove(self) -> None:
+        base = _make_base_contract()
+        assert base.schema_ is not None
+        base.schema_[0].quality = [
+            DataQuality(type="sql", query="SELECT COUNT(*) FROM tbl_orders", name="row_count")
+        ]
+
+        cand = _make_base_contract()
+        assert cand.schema_ is not None
+        cand.schema_[0].quality = [
+            DataQuality(type="sql", query="SELECT COUNT(*) FROM tbl_orders WHERE amount > 0", name="positive_amounts")
+        ]
+
+        changes = analyze_governance_changes(base, cand)
+        qual_changes = [c for c in changes if c.entity_type == GovernanceEntityType.QUALITY]
+        assert len(qual_changes) == 2
+        removed = [c for c in qual_changes if c.change_type == GovernanceChangeType.REMOVE]
+        added = [c for c in qual_changes if c.change_type == GovernanceChangeType.ADD]
+        assert len(removed) == 1
+        assert len(added) == 1
+        assert removed[0].domain == GovernanceChangeDomain.QUALITY
+        assert added[0].domain == GovernanceChangeDomain.QUALITY
+
+
+# ==============================================================================
+# 2. Determinism and Serialization Matrix
+# ==============================================================================
+
+
+class TestGovernanceChangeDeterminism:
+    """Test deterministic ordering, human explanation, and serialization roundtrips."""
+
+    def test_deterministic_sort_order(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].physicalType = "varchar(128)"
+        cand.schema_[0].properties[1].required = True
+        cand.schema_[0].properties.append(
+            SchemaProperty(name="z_field", logicalType="string")
+        )
+        cand.schema_[0].properties.insert(
+            0, SchemaProperty(name="a_field", logicalType="string")
+        )
+
+        changes1 = analyze_governance_changes(base, cand)
+        changes2 = analyze_governance_changes(base, cand)
+
+        assert changes1 == changes2
+        assert changes1 == tuple(sorted(changes1, key=governance_change_sort_key))
+
+    def test_serialization_roundtrip(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].physicalType = "varchar(64)"
+        cand.schema_[0].properties[1].required = True
+
+        changes = analyze_governance_changes(base, cand)
+        dumped = [c.model_dump(mode="json") for c in changes]
+        restored = tuple(GovernanceChange.model_validate(item) for item in dumped)
+
+        assert restored == changes
+
+    def test_describe_governance_change_human_output(self) -> None:
+        change = GovernanceChange(
+            change_type=GovernanceChangeType.MODIFY,
+            entity_type=GovernanceEntityType.PROPERTY,
+            identity=("orders", "amount"),
+            path="schema[orders].properties[amount].physicalType",
+            field="physicalType",
+            before="decimal(10,2)",
+            after="decimal(8,2)",
+            domain=GovernanceChangeDomain.STRUCTURE,
+        )
+
+        description = describe_governance_change(change)
+        assert "orders.amount" in description
+        assert "physicalType" in description
+        assert "'decimal(10,2)'" in description
+        assert "'decimal(8,2)'" in description
+
+
+# ==============================================================================
+# 3. Explicit ODCS Field Coverage Contract & Exhaustive Field Tests
+# ==============================================================================
+
+
+class TestODCSFieldCoverageContract:
+    """Validate 100% field coverage of ODCS models in the governance change analyzer."""
+
+    def test_odcs_root_field_coverage(self) -> None:
+        actual_fields = set(OpenDataContractStandard.model_fields)
+        expected_fields = ODCS_ROOT_HANDLED_FIELDS | ODCS_ROOT_IGNORED_FIELDS
+        assert actual_fields == expected_fields, (
+            f"ODCS root fields mismatch! Missing: {actual_fields - expected_fields}, "
+            f"Unexpected: {expected_fields - actual_fields}"
+        )
+
+    def test_odcs_schema_field_coverage(self) -> None:
+        actual_fields = set(SchemaObject.model_fields)
+        expected_fields = ODCS_SCHEMA_HANDLED_FIELDS | ODCS_SCHEMA_IGNORED_FIELDS
+        assert actual_fields == expected_fields, (
+            f"ODCS schema fields mismatch! Missing: {actual_fields - expected_fields}, "
+            f"Unexpected: {expected_fields - actual_fields}"
+        )
+
+    def test_odcs_property_field_coverage(self) -> None:
+        actual_fields = set(SchemaProperty.model_fields)
+        expected_fields = ODCS_PROPERTY_HANDLED_FIELDS | ODCS_PROPERTY_IGNORED_FIELDS
+        assert actual_fields == expected_fields, (
+            f"ODCS property fields mismatch! Missing: {actual_fields - expected_fields}, "
+            f"Unexpected: {expected_fields - actual_fields}"
+        )
+
+
+class TestExhaustiveFieldChanges:
+    """Verify that mutations on all ODCS fields emit expected GovernanceChange records."""
+
+    def test_root_metadata_fields_modification(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        cand.servers = [Server(type="spark", host="spark-cluster-1")]
+        cand.authoritativeDefinitions = [AuthoritativeDefinition(type="business", url="https://wiki.example.com")]
+        cand.contractCreatedTs = "2026-08-16T10:00:00Z"
+        cand.price = Pricing(priceAmount=100.0, priceCurrency="USD")
+
+        changes = analyze_governance_changes(base, cand)
+        fields = {c.field for c in changes if c.entity_type == GovernanceEntityType.CONTRACT}
+
+        assert "servers" in fields
+        assert "authoritativeDefinitions" in fields
+        assert "contractCreatedTs" in fields
+        assert "price" in fields
+
+    def test_schema_metadata_and_structural_fields_modification(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        assert cand.schema_ is not None
+        cand.schema_[0].id = "schema-orders-v1"
+        cand.schema_[0].dataGranularityDescription = "One row per order line item"
+        cand.schema_[0].logicalType = "table"
+
+        changes = analyze_governance_changes(base, cand)
+        fields = {c.field for c in changes if c.entity_type == GovernanceEntityType.SCHEMA}
+
+        assert "id" in fields
+        assert "dataGranularityDescription" in fields
+        assert "logicalType" in fields
+
+    def test_property_structural_and_metadata_fields_modification(self) -> None:
+        base = _make_base_contract()
+        cand = _make_base_contract()
+        assert cand.schema_ is not None and cand.schema_[0].properties is not None
+        cand.schema_[0].properties[0].id = "prop-order-id"
+        cand.schema_[0].properties[0].partitioned = True
+        cand.schema_[0].properties[0].criticalDataElement = True
+        cand.schema_[0].properties[0].encryptedName = "enc_order_id"
+        cand.schema_[0].properties[0].transformLogic = "sha256(raw_order_id)"
+
+        changes = analyze_governance_changes(base, cand)
+        fields = {c.field for c in changes if c.entity_type == GovernanceEntityType.PROPERTY}
+
+        assert "id" in fields
+        assert "partitioned" in fields
+        assert "criticalDataElement" in fields
+        assert "encryptedName" in fields
+        assert "transformLogic" in fields
+
+
+class TestNestedQualityAndRelationshipsCoverage:
+    """Validate full recursive coverage for nested struct properties and array items."""
+
+    def test_deep_nested_property_quality_mutation(self) -> None:
+        """Deeply nested property quality mutation emits QUALITY GovernanceChange."""
+        base = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "customer",
+                            "logicalType": "object",
+                            "properties": [
+                                {
+                                    "name": "address",
+                                    "logicalType": "object",
+                                    "properties": [
+                                        {
+                                            "name": "postcode",
+                                            "logicalType": "string",
+                                            "quality": [
+                                                {
+                                                    "name": "valid_postcode",
+                                                    "type": "custom",
+                                                    "rule": "length == 4",
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+        cand = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "customer",
+                            "logicalType": "object",
+                            "properties": [
+                                {
+                                    "name": "address",
+                                    "logicalType": "object",
+                                    "properties": [
+                                        {
+                                            "name": "postcode",
+                                            "logicalType": "string",
+                                            "quality": [
+                                                {
+                                                    "name": "valid_postcode",
+                                                    "type": "custom",
+                                                    "rule": "length == 5",
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+
+        changes = analyze_governance_changes(base, cand)
+        quality_changes = [c for c in changes if c.entity_type == GovernanceEntityType.QUALITY]
+
+        assert len(quality_changes) == 1
+        qc = quality_changes[0]
+        assert qc.change_type == GovernanceChangeType.MODIFY
+        assert qc.identity == ("orders", "customer", "address", "postcode", "valid_postcode")
+        assert qc.path == "schema[orders].properties[customer].properties[address].properties[postcode].quality[valid_postcode]"
+        assert qc.domain == GovernanceChangeDomain.QUALITY
+
+    def test_deep_nested_property_relationship_mutation(self) -> None:
+        """Deeply nested property relationship removal emits RELATIONSHIP GovernanceChange."""
+        base = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "customer",
+                            "logicalType": "object",
+                            "properties": [
+                                {
+                                    "name": "address",
+                                    "logicalType": "object",
+                                    "properties": [
+                                        {
+                                            "name": "postcode",
+                                            "logicalType": "string",
+                                            "relationships": [
+                                                {
+                                                    "type": "foreignKey",
+                                                    "to": "locations.postcode",
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+        cand = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "customer",
+                            "logicalType": "object",
+                            "properties": [
+                                {
+                                    "name": "address",
+                                    "logicalType": "object",
+                                    "properties": [
+                                        {
+                                            "name": "postcode",
+                                            "logicalType": "string",
+                                            "relationships": [],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+
+        changes = analyze_governance_changes(base, cand)
+        rel_changes = [c for c in changes if c.entity_type == GovernanceEntityType.RELATIONSHIP]
+
+        assert len(rel_changes) == 1
+        rc = rel_changes[0]
+        assert rc.change_type == GovernanceChangeType.REMOVE
+        assert rc.identity[:4] == ("orders", "customer", "address", "postcode")
+        assert rc.path == "schema[orders].properties[customer].properties[address].properties[postcode].relationships"
+        assert rc.domain == GovernanceChangeDomain.RELATIONSHIP
+
+    def test_array_items_quality_and_relationship(self) -> None:
+        """Array items quality and relationship modifications are fully captured."""
+        base = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "lines",
+                            "logicalType": "array",
+                            "items": {
+                                "logicalType": "string",
+                                "quality": [
+                                    {"name": "non_empty", "type": "custom", "rule": "len > 0"}
+                                ],
+                                "relationships": [
+                                    {"type": "foreignKey", "to": "items.item_id"}
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+        cand = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "lines",
+                            "logicalType": "array",
+                            "items": {
+                                "logicalType": "string",
+                                "quality": [
+                                    {"name": "non_empty", "type": "custom", "rule": "len > 5"}
+                                ],
+                                "relationships": [],
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+
+        changes = analyze_governance_changes(base, cand)
+        quality_changes = [c for c in changes if c.entity_type == GovernanceEntityType.QUALITY]
+        rel_changes = [c for c in changes if c.entity_type == GovernanceEntityType.RELATIONSHIP]
+
+        assert len(quality_changes) == 1
+        assert quality_changes[0].identity == ("orders", "lines", "items", "non_empty")
+        assert quality_changes[0].path == "schema[orders].properties[lines].items.quality[non_empty]"
+
+        assert len(rel_changes) == 1
+        assert rel_changes[0].identity[:3] == ("orders", "lines", "items")
+        assert rel_changes[0].path == "schema[orders].properties[lines].items.relationships"
+
+
+class TestItemsNoDuplicateRepresentation:
+    """Ensure array item mutations produce exactly one canonical change representation."""
+
+    def test_array_item_field_mutation_produces_single_change(self) -> None:
+        """Modifying array item physicalType produces exactly ONE GovernanceChange."""
+        base = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "lines",
+                            "logicalType": "array",
+                            "items": {
+                                "logicalType": "string",
+                                "physicalType": "varchar(100)",
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+        cand = _make_base_contract(
+            schema=[
+                {
+                    "name": "orders",
+                    "properties": [
+                        {
+                            "name": "lines",
+                            "logicalType": "array",
+                            "items": {
+                                "logicalType": "string",
+                                "physicalType": "varchar(20)",
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+
+        changes = analyze_governance_changes(base, cand)
+
+        # Must produce exactly ONE change, NOT duplicate parent.items + child.physicalType
+        assert len(changes) == 1
+        ch = changes[0]
+        assert ch.change_type == GovernanceChangeType.MODIFY
+        assert ch.entity_type == GovernanceEntityType.PROPERTY
+        assert ch.identity == ("orders", "lines", "items")
+        assert ch.path == "schema[orders].properties[lines].items.physicalType"
+        assert ch.field == "physicalType"
+        assert ch.before == "varchar(100)"
+        assert ch.after == "varchar(20)"
+        assert ch.domain == GovernanceChangeDomain.STRUCTURE
+
+
