@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --group dev --frozen
 
+      - name: Run static checks
+        run: uvx ruff check . --select E9,F63,F7,F82
+
       - name: Run tests
         run: uv run pytest
 
