@@ -292,6 +292,16 @@ def test_public_literals_strict_validation():
             "changes": [],
         })
 
+    # Reject speculative "SERVER" entity type not yet in canonical v1 protocol
+    with pytest.raises(PydanticValidationError):
+        PublicGovernanceChangeV1(
+            change_type="MODIFY",
+            entity_type="SERVER",  # type: ignore[arg-type]
+            identity=("orders",),
+            path="servers[0]",
+            domain="STRUCTURE",
+        )
+
 
 def test_public_decision_immutability_and_extra_forbid():
     """Public governance models are frozen and reject extra fields."""

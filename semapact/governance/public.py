@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, JsonValue
 
 from semapact.governance.models import (
@@ -36,7 +36,6 @@ PublicEntityType = Literal[
     "PROPERTY",
     "RELATIONSHIP",
     "QUALITY",
-    "SERVER",
 ]
 PublicChangeDomain = Literal[
     "IDENTITY",
@@ -48,6 +47,119 @@ PublicChangeDomain = Literal[
     "METADATA",
 ]
 PublicEvidenceSource = Literal["MERGE_CONFLICT"]
+
+
+# ==============================================================================
+# Protocol Mappers (Internal Domain Enum -> Public Protocol Literal)
+# ==============================================================================
+
+_DECISION_MAP: dict[DecisionResult, PublicDecisionResult] = {
+    DecisionResult.ALLOW: "ALLOW",
+    DecisionResult.REVIEW: "REVIEW",
+    DecisionResult.BLOCK: "BLOCK",
+}
+
+_SEVERITY_MAP: dict[GovernanceSeverity, PublicSeverity] = {
+    GovernanceSeverity.ERROR: "ERROR",
+    GovernanceSeverity.WARNING: "WARNING",
+    GovernanceSeverity.INFO: "INFO",
+}
+
+_CHANGE_TYPE_MAP: dict[GovernanceChangeType, PublicChangeType] = {
+    GovernanceChangeType.ADD: "ADD",
+    GovernanceChangeType.REMOVE: "REMOVE",
+    GovernanceChangeType.MODIFY: "MODIFY",
+    GovernanceChangeType.DEPRECATE: "DEPRECATE",
+}
+
+_ENTITY_TYPE_MAP: dict[GovernanceEntityType, PublicEntityType] = {
+    GovernanceEntityType.CONTRACT: "CONTRACT",
+    GovernanceEntityType.SCHEMA: "SCHEMA",
+    GovernanceEntityType.PROPERTY: "PROPERTY",
+    GovernanceEntityType.RELATIONSHIP: "RELATIONSHIP",
+    GovernanceEntityType.QUALITY: "QUALITY",
+}
+
+_DOMAIN_MAP: dict[GovernanceChangeDomain, PublicChangeDomain] = {
+    GovernanceChangeDomain.IDENTITY: "IDENTITY",
+    GovernanceChangeDomain.VERSION: "VERSION",
+    GovernanceChangeDomain.LIFECYCLE: "LIFECYCLE",
+    GovernanceChangeDomain.STRUCTURE: "STRUCTURE",
+    GovernanceChangeDomain.RELATIONSHIP: "RELATIONSHIP",
+    GovernanceChangeDomain.QUALITY: "QUALITY",
+    GovernanceChangeDomain.METADATA: "METADATA",
+}
+
+_EVIDENCE_SOURCE_MAP: dict[GovernanceChangeEvidenceSource, PublicEvidenceSource] = {
+    GovernanceChangeEvidenceSource.MERGE_CONFLICT: "MERGE_CONFLICT",
+}
+
+_REQUIRED_BUMP_MAP: dict[str, PublicRequiredVersionBump] = {
+    "none": "none",
+    "patch": "patch",
+    "minor": "minor",
+    "major": "major",
+}
+
+
+def _map_decision(decision: DecisionResult | str) -> PublicDecisionResult:
+    if isinstance(decision, DecisionResult):
+        return _DECISION_MAP[decision]
+    val = str(decision)
+    if val in {"ALLOW", "REVIEW", "BLOCK"}:
+        return cast(PublicDecisionResult, val)
+    raise ValueError(f"Invalid decision for public contract: {decision}")
+
+
+def _map_severity(severity: GovernanceSeverity | str) -> PublicSeverity:
+    if isinstance(severity, GovernanceSeverity):
+        return _SEVERITY_MAP[severity]
+    val = str(severity)
+    if val in {"ERROR", "WARNING", "INFO"}:
+        return cast(PublicSeverity, val)
+    raise ValueError(f"Invalid severity for public contract: {severity}")
+
+
+def _map_change_type(change_type: GovernanceChangeType | str) -> PublicChangeType:
+    if isinstance(change_type, GovernanceChangeType):
+        return _CHANGE_TYPE_MAP[change_type]
+    val = str(change_type)
+    if val in {"ADD", "REMOVE", "MODIFY", "DEPRECATE"}:
+        return cast(PublicChangeType, val)
+    raise ValueError(f"Invalid change_type for public contract: {change_type}")
+
+
+def _map_entity_type(entity_type: GovernanceEntityType | str) -> PublicEntityType:
+    if isinstance(entity_type, GovernanceEntityType):
+        return _ENTITY_TYPE_MAP[entity_type]
+    val = str(entity_type)
+    if val in {"CONTRACT", "SCHEMA", "PROPERTY", "RELATIONSHIP", "QUALITY"}:
+        return cast(PublicEntityType, val)
+    raise ValueError(f"Invalid entity_type for public contract: {entity_type}")
+
+
+def _map_domain(domain: GovernanceChangeDomain | str) -> PublicChangeDomain:
+    if isinstance(domain, GovernanceChangeDomain):
+        return _DOMAIN_MAP[domain]
+    val = str(domain)
+    if val in {"IDENTITY", "VERSION", "LIFECYCLE", "STRUCTURE", "RELATIONSHIP", "QUALITY", "METADATA"}:
+        return cast(PublicChangeDomain, val)
+    raise ValueError(f"Invalid domain for public contract: {domain}")
+
+
+def _map_evidence_source(source: GovernanceChangeEvidenceSource | str) -> PublicEvidenceSource:
+    if isinstance(source, GovernanceChangeEvidenceSource):
+        return _EVIDENCE_SOURCE_MAP[source]
+    val = str(source)
+    if val in {"MERGE_CONFLICT"}:
+        return cast(PublicEvidenceSource, val)
+    raise ValueError(f"Invalid evidence source for public contract: {source}")
+
+
+def _map_required_bump(bump: str) -> PublicRequiredVersionBump:
+    if bump in _REQUIRED_BUMP_MAP:
+        return _REQUIRED_BUMP_MAP[bump]
+    raise ValueError(f"Invalid required_version_bump for public contract: {bump}")
 
 
 # ==============================================================================
@@ -219,15 +331,11 @@ class PublicGovernanceDecisionV1(PublicGovernanceModel):
 def _project_reason(reason: GovernanceReason) -> PublicGovernanceReasonV1:
     """Project internal GovernanceReason to PublicGovernanceReasonV1."""
     code_val = reason.code.value if isinstance(reason.code, GovernanceReasonCode) else str(reason.code)
-    severity_val = (
-        reason.severity.value
-        if isinstance(reason.severity, GovernanceSeverity)
-        else str(reason.severity)
-    )
+    severity_val = _map_severity(reason.severity)
     details_copy = {k: reason.details[k] for k in sorted(reason.details)} if reason.details else {}
     return PublicGovernanceReasonV1(
         code=code_val,
-        severity=severity_val,  # type: ignore[arg-type]
+        severity=severity_val,
         message=reason.message,
         path=reason.path,
         details=details_copy,
@@ -236,34 +344,18 @@ def _project_reason(reason: GovernanceReason) -> PublicGovernanceReasonV1:
 
 def _project_change_evidence(evidence: GovernanceChangeEvidence) -> PublicGovernanceChangeEvidenceV1:
     """Project internal GovernanceChangeEvidence to PublicGovernanceChangeEvidenceV1."""
-    source_val = (
-        evidence.source.value
-        if isinstance(evidence.source, GovernanceChangeEvidenceSource)
-        else str(evidence.source)
-    )
+    source_val = _map_evidence_source(evidence.source)
     return PublicGovernanceChangeEvidenceV1(
-        source=source_val,  # type: ignore[arg-type]
+        source=source_val,
         code=evidence.code,
     )
 
 
 def _project_change(change: GovernanceChange) -> PublicGovernanceChangeV1:
     """Project internal GovernanceChange to PublicGovernanceChangeV1 with deterministic sorting."""
-    change_type_val = (
-        change.change_type.value
-        if isinstance(change.change_type, GovernanceChangeType)
-        else str(change.change_type)
-    )
-    entity_type_val = (
-        change.entity_type.value
-        if isinstance(change.entity_type, GovernanceEntityType)
-        else str(change.entity_type)
-    )
-    domain_val = (
-        change.domain.value
-        if isinstance(change.domain, GovernanceChangeDomain)
-        else str(change.domain)
-    )
+    change_type_val = _map_change_type(change.change_type)
+    entity_type_val = _map_entity_type(change.entity_type)
+    domain_val = _map_domain(change.domain)
     projected_evidence = tuple(
         sorted(
             (_project_change_evidence(ev) for ev in change.evidence),
@@ -277,14 +369,14 @@ def _project_change(change: GovernanceChange) -> PublicGovernanceChangeV1:
         })
     )
     return PublicGovernanceChangeV1(
-        change_type=change_type_val,  # type: ignore[arg-type]
-        entity_type=entity_type_val,  # type: ignore[arg-type]
+        change_type=change_type_val,
+        entity_type=entity_type_val,
         identity=tuple(change.identity),
         path=change.path,
         field=change.field,
         before=change.before,
         after=change.after,
-        domain=domain_val,  # type: ignore[arg-type]
+        domain=domain_val,
         breaking=change.breaking,
         reason_codes=reason_codes_val,
         evidence=projected_evidence,
@@ -339,20 +431,17 @@ def to_public_governance_decision(decision: GovernanceDecision) -> PublicGoverna
     for c in projected_changes:
         all_reason_codes.update(c.reason_codes)
 
-    decision_val = (
-        decision.decision.value
-        if isinstance(decision.decision, DecisionResult)
-        else str(decision.decision)
-    )
+    decision_val = _map_decision(decision.decision)
+    bump_val = _map_required_bump(str(decision.required_version_bump))
 
     return PublicGovernanceDecisionV1(
         schema_version="1",
         decision_id=decision.decision_id,
-        decision=decision_val,  # type: ignore[arg-type]
+        decision=decision_val,
         contract_id=decision.contract_id,
         context=context,
         breaking=decision.breaking,
-        required_version_bump=str(decision.required_version_bump),  # type: ignore[arg-type]
+        required_version_bump=bump_val,
         reason_codes=tuple(sorted(all_reason_codes)),
         reasons=projected_reasons,
         validation=validation,
