@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import BaseModel, Field
+
 
 from semapact.change_context import ChangeContext
 from semapact.core.release import RequiredBump
@@ -104,15 +104,12 @@ def test_outcome_from_exception_and_exit_code():
     assert outcome_from_exception(val_exc) == ProcessOutcome.VALIDATION_FAILED
     assert exit_code_from_exception(val_exc) == 2
 
-    # Pydantic validation error
-    class DummyModel(BaseModel):
-        num: int = Field(strict=True)
+    from semapact.exceptions import ReleaseValidationError
 
-    try:
-        DummyModel.model_validate({"num": "not_an_int"})
-    except Exception as pydantic_exc:
-        assert outcome_from_exception(pydantic_exc) == ProcessOutcome.VALIDATION_FAILED
-        assert exit_code_from_exception(pydantic_exc) == 2
+    release_val_exc = ReleaseValidationError("No version bump required")
+    assert outcome_from_exception(release_val_exc) == ProcessOutcome.VALIDATION_FAILED
+    assert exit_code_from_exception(release_val_exc) == 2
+
 
     # Runtime and infrastructure exceptions
     runtime_exc = RuntimeError("Database unreachable")

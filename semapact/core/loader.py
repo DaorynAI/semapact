@@ -16,7 +16,8 @@ import yaml
 from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.core.config import config_manager
-from semapact.exceptions import StorageError
+from semapact.exceptions import StorageError, ValidationError
+
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SPARKUTILS_MAX_BYTES = int(
@@ -71,13 +72,21 @@ def load_contract(
     )
     payload = yaml.safe_load(contract_text)
     if not isinstance(payload, dict):
-        raise ValueError("Contract YAML must deserialize into a mapping object")
+        raise ValidationError("Contract YAML must deserialize into a mapping object")
         
     spec_version = payload.get("dataContractSpecification") or payload.get("apiVersion", "")
     if not (str(spec_version).startswith("3.") or str(spec_version).startswith("v3.")):
-        raise ValueError(f"SemaPact requires ODCS version 3.x, found: {spec_version}")
+        raise ValidationError(f"SemaPact requires ODCS version 3.x, found: {spec_version}")
         
-    return OpenDataContractStandard.model_validate(payload)
+    try:
+        return OpenDataContractStandard.model_validate(payload)
+    except Exception as exc:
+        from pydantic import ValidationError as PydanticValidationError
+
+        if isinstance(exc, PydanticValidationError):
+            raise ValidationError(f"ODCS contract validation failed: {exc}") from exc
+        raise
+
 
 
 def read_contract_text(

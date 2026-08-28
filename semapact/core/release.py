@@ -217,15 +217,20 @@ def apply_release_candidate(
     )
 
     if required_bump == "none":
-        raise ValueError("Contract changes do not require a release version bump")
+        from semapact.exceptions import ReleaseValidationError
+
+        raise ReleaseValidationError("Contract changes do not require a release version bump")
 
     target_version = parse_release_tag_version(release_tag)
     actual_bump = classify_version_bump(str(base_model.version or ""), target_version)
     if VERSION_RANK[actual_bump] < VERSION_RANK[required_bump]:
-        raise ValueError(
+        from semapact.exceptions import ReleaseValidationError
+
+        raise ReleaseValidationError(
             f"Release tag '{release_tag}' applies a {actual_bump} bump, but contract requires at least a "
             f"{required_bump} bump"
         )
+
 
     promoted = candidate_model.model_copy(deep=True)
     promoted.version = target_version

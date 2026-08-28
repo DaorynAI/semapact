@@ -80,15 +80,8 @@ def outcome_from_exception(exc: BaseException) -> ProcessOutcome:
     if isinstance(exc, ValidationError):
         return ProcessOutcome.VALIDATION_FAILED
 
-    # Check for Pydantic / jsonschema validation errors
-    try:
-        from pydantic import ValidationError as PydanticValidationError
-        if isinstance(exc, PydanticValidationError):
-            return ProcessOutcome.VALIDATION_FAILED
-    except ImportError:
-        pass
-
     return ProcessOutcome.RUNTIME_ERROR
+
 
 
 def exit_code_from_exception(exc: BaseException) -> int:

@@ -222,7 +222,7 @@ def test_subprocess_propose_release_prepare_review(
     assert "exitCode" not in payload
 
 
-def test_subprocess_propose_release_prepare_no_bump_runtime_error(
+def test_subprocess_propose_release_prepare_no_bump_validation_failed(
     active_contract_yaml: Path, tmp_path: Path
 ):
     out_yaml = tmp_path / "prepared.yaml"
@@ -240,9 +240,10 @@ def test_subprocess_propose_release_prepare_no_bump_runtime_error(
         "--effective-date",
         "2026-08-29",
     )
-    # Attempting to prepare a release candidate when no bump is required returns RUNTIME_ERROR (5)
-    assert res.returncode == 5
+    # Attempting to prepare a release candidate when no bump is required returns VALIDATION_FAILED (2)
+    assert res.returncode == 2
     assert "Contract changes do not require a release version bump" in res.stderr
+
 
 
 def test_subprocess_propose_release_prepare_block(
@@ -385,4 +386,5 @@ def test_subprocess_runtime_error_on_missing_file(active_contract_yaml: Path):
         "2026-08-29",
     )
     # File not found error is a runtime execution failure
-    assert res.returncode in (2, 5)
+    assert res.returncode == 5
+
