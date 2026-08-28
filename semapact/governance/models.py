@@ -110,3 +110,4 @@ class GovernanceDecision(GovernanceModel):
                     f"ALLOW decision invariant violation: evidence.merge_conflicts_count must be 0, got {self.evidence.merge_conflicts_count}"
                 )
         return self
+
