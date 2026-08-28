@@ -1,4 +1,5 @@
 import argparse
+from urllib.parse import urlparse
 from typing import Any
 from semapact.governance import (
     GovernanceOperation,
@@ -22,9 +23,16 @@ def run_plan(args: argparse.Namespace) -> None:
     import_args: dict[str, Any] = {}
     if args.type in {"delta", "delta-table"}:
         oauth_token = None
-        if args.source.startswith("abfss://") or "dfs.core.windows.net" in args.source:
+        source_is_abfss = args.source.startswith("abfss://")
+        parsed_source = urlparse(args.source)
+        source_host = parsed_source.hostname or ""
+        source_is_adls_host = (
+            source_host == "dfs.core.windows.net"
+            or source_host.endswith(".dfs.core.windows.net")
+        )
+        if source_is_abfss or source_is_adls_host:
             oauth_token = _resolve_adls_oauth_token_from_config()
-            
+
         table_uris = _parse_table_uris(args.tables)
         if not table_uris:
             from semapact.utils.storage_adapter import StorageAdapterFactory
