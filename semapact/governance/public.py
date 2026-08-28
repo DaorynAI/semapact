@@ -22,6 +22,38 @@ from semapact.lifecycle.changes import (
 )
 
 
+# ==============================================================================
+# Public Protocol Vocabulary Literals
+# ==============================================================================
+
+PublicDecisionResult = Literal["ALLOW", "REVIEW", "BLOCK"]
+PublicRequiredVersionBump = Literal["none", "patch", "minor", "major"]
+PublicSeverity = Literal["ERROR", "WARNING", "INFO"]
+PublicChangeType = Literal["ADD", "REMOVE", "MODIFY", "DEPRECATE"]
+PublicEntityType = Literal[
+    "CONTRACT",
+    "SCHEMA",
+    "PROPERTY",
+    "RELATIONSHIP",
+    "QUALITY",
+    "SERVER",
+]
+PublicChangeDomain = Literal[
+    "IDENTITY",
+    "VERSION",
+    "LIFECYCLE",
+    "STRUCTURE",
+    "RELATIONSHIP",
+    "QUALITY",
+    "METADATA",
+]
+PublicEvidenceSource = Literal["MERGE_CONFLICT"]
+
+
+# ==============================================================================
+# Public Models
+# ==============================================================================
+
 class PublicGovernanceModel(BaseModel):
     """Shared base model for all public governance models.
 
@@ -49,7 +81,7 @@ class PublicGovernanceReasonV1(PublicGovernanceModel):
     """Public structured reason for a governance outcome or violation."""
 
     code: str
-    severity: str
+    severity: PublicSeverity
     message: str
     path: str | None = None
     details: dict[str, Any] = Field(default_factory=dict)
@@ -102,18 +134,18 @@ class PublicChangeEvidenceV1(PublicGovernanceModel):
 class PublicGovernanceChangeEvidenceV1(PublicGovernanceModel):
     """Public evidence source supporting a semantic change."""
 
-    source: str
+    source: PublicEvidenceSource
     code: str
 
 
 class PublicGovernanceChangeV1(PublicGovernanceModel):
     """Public canonical representation of a single semantic contract change."""
 
-    change_type: str = Field(
+    change_type: PublicChangeType = Field(
         validation_alias=AliasChoices("change_type", "changeType"),
         serialization_alias="changeType",
     )
-    entity_type: str = Field(
+    entity_type: PublicEntityType = Field(
         validation_alias=AliasChoices("entity_type", "entityType"),
         serialization_alias="entityType",
     )
@@ -122,7 +154,7 @@ class PublicGovernanceChangeV1(PublicGovernanceModel):
     field: str | None = None
     before: JsonValue | None = None
     after: JsonValue | None = None
-    domain: str
+    domain: PublicChangeDomain
     breaking: bool = False
     reason_codes: tuple[str, ...] = Field(
         default=(),
@@ -144,14 +176,14 @@ class PublicGovernanceDecisionV1(PublicGovernanceModel):
         validation_alias=AliasChoices("decision_id", "decisionId"),
         serialization_alias="decisionId",
     )
-    decision: str
+    decision: PublicDecisionResult
     contract_id: str = Field(
         validation_alias=AliasChoices("contract_id", "contractId"),
         serialization_alias="contractId",
     )
     context: PublicChangeContextV1
     breaking: bool
-    required_version_bump: str = Field(
+    required_version_bump: PublicRequiredVersionBump = Field(
         validation_alias=AliasChoices("required_version_bump", "requiredVersionBump"),
         serialization_alias="requiredVersionBump",
     )
@@ -172,13 +204,17 @@ class PublicGovernanceDecisionV1(PublicGovernanceModel):
         return to_public_governance_decision(decision)
 
     def to_canonical_json(self, *, indent: int | None = None) -> str:
-        """Serialize to deterministic canonical JSON."""
+        """Serialize to deterministic canonical JSON with sorted keys."""
         return serialize_public_governance_decision(self, indent=indent)
 
     def to_canonical_dict(self) -> dict[str, Any]:
         """Convert to JSON-compatible dictionary with external camelCase field names."""
         return self.model_dump(mode="json", by_alias=True)
 
+
+# ==============================================================================
+# Explicit Projection Functions
+# ==============================================================================
 
 def _project_reason(reason: GovernanceReason) -> PublicGovernanceReasonV1:
     """Project internal GovernanceReason to PublicGovernanceReasonV1."""
@@ -188,10 +224,10 @@ def _project_reason(reason: GovernanceReason) -> PublicGovernanceReasonV1:
         if isinstance(reason.severity, GovernanceSeverity)
         else str(reason.severity)
     )
-    details_copy = {k: v for k, v in sorted(reason.details.items())} if reason.details else {}
+    details_copy = {k: reason.details[k] for k in sorted(reason.details)} if reason.details else {}
     return PublicGovernanceReasonV1(
         code=code_val,
-        severity=severity_val,
+        severity=severity_val,  # type: ignore[arg-type]
         message=reason.message,
         path=reason.path,
         details=details_copy,
@@ -206,13 +242,13 @@ def _project_change_evidence(evidence: GovernanceChangeEvidence) -> PublicGovern
         else str(evidence.source)
     )
     return PublicGovernanceChangeEvidenceV1(
-        source=source_val,
+        source=source_val,  # type: ignore[arg-type]
         code=evidence.code,
     )
 
 
 def _project_change(change: GovernanceChange) -> PublicGovernanceChangeV1:
-    """Project internal GovernanceChange to PublicGovernanceChangeV1."""
+    """Project internal GovernanceChange to PublicGovernanceChangeV1 with deterministic sorting."""
     change_type_val = (
         change.change_type.value
         if isinstance(change.change_type, GovernanceChangeType)
@@ -228,20 +264,27 @@ def _project_change(change: GovernanceChange) -> PublicGovernanceChangeV1:
         if isinstance(change.domain, GovernanceChangeDomain)
         else str(change.domain)
     )
-    projected_evidence = tuple(_project_change_evidence(ev) for ev in change.evidence)
+    projected_evidence = tuple(
+        sorted(
+            (_project_change_evidence(ev) for ev in change.evidence),
+            key=lambda e: (e.source, e.code),
+        )
+    )
     reason_codes_val = tuple(
-        rc.value if isinstance(rc, GovernanceReasonCode) else str(rc)
-        for rc in change.reason_codes
+        sorted({
+            rc.value if isinstance(rc, GovernanceReasonCode) else str(rc)
+            for rc in change.reason_codes
+        })
     )
     return PublicGovernanceChangeV1(
-        change_type=change_type_val,
-        entity_type=entity_type_val,
+        change_type=change_type_val,  # type: ignore[arg-type]
+        entity_type=entity_type_val,  # type: ignore[arg-type]
         identity=tuple(change.identity),
         path=change.path,
         field=change.field,
         before=change.before,
         after=change.after,
-        domain=domain_val,
+        domain=domain_val,  # type: ignore[arg-type]
         breaking=change.breaking,
         reason_codes=reason_codes_val,
         evidence=projected_evidence,
@@ -289,20 +332,12 @@ def to_public_governance_decision(decision: GovernanceDecision) -> PublicGoverna
     # 6. Project canonical changes
     projected_changes = tuple(_project_change(c) for c in decision.changes)
 
-    # 7. Aggregate stable unique reason codes in deterministic order
-    ordered_reason_codes: list[str] = []
-    seen_codes: set[str] = set()
-
+    # 7. Aggregate stable unique reason codes in deterministic alphabetical order
+    all_reason_codes: set[str] = set()
     for r in projected_reasons:
-        if r.code not in seen_codes:
-            seen_codes.add(r.code)
-            ordered_reason_codes.append(r.code)
-
+        all_reason_codes.add(r.code)
     for c in projected_changes:
-        for rc in c.reason_codes:
-            if rc not in seen_codes:
-                seen_codes.add(rc)
-                ordered_reason_codes.append(rc)
+        all_reason_codes.update(c.reason_codes)
 
     decision_val = (
         decision.decision.value
@@ -313,12 +348,12 @@ def to_public_governance_decision(decision: GovernanceDecision) -> PublicGoverna
     return PublicGovernanceDecisionV1(
         schema_version="1",
         decision_id=decision.decision_id,
-        decision=decision_val,
+        decision=decision_val,  # type: ignore[arg-type]
         contract_id=decision.contract_id,
         context=context,
         breaking=decision.breaking,
-        required_version_bump=str(decision.required_version_bump),
-        reason_codes=tuple(ordered_reason_codes),
+        required_version_bump=str(decision.required_version_bump),  # type: ignore[arg-type]
+        reason_codes=tuple(sorted(all_reason_codes)),
         reasons=projected_reasons,
         validation=validation,
         policy=policy,
@@ -332,7 +367,7 @@ def serialize_public_governance_decision(
     *,
     indent: int | None = None,
 ) -> str:
-    """Serialize a governance decision into stable canonical JSON."""
+    """Serialize a governance decision into stable canonical JSON with sorted keys."""
     if isinstance(decision, GovernanceDecision):
         public_decision = to_public_governance_decision(decision)
     elif isinstance(decision, PublicGovernanceDecisionV1):
@@ -343,4 +378,4 @@ def serialize_public_governance_decision(
         )
 
     dumped = public_decision.model_dump(mode="json", by_alias=True)
-    return json.dumps(dumped, indent=indent, ensure_ascii=False)
+    return json.dumps(dumped, indent=indent, sort_keys=True, ensure_ascii=False)

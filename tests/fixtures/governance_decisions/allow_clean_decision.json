@@ -1,39 +1,39 @@
 {
-  "schemaVersion": "1",
-  "decisionId": "0480ed51-8b7f-57aa-93f2-b09c135004c1",
-  "decision": "ALLOW",
-  "contractId": "my-data-contract",
+  "breaking": false,
+  "changes": [],
   "context": {
     "effectiveDate": "2026-01-01"
   },
-  "breaking": false,
-  "requiredVersionBump": "none",
+  "contractId": "my-data-contract",
+  "decision": "ALLOW",
+  "decisionId": "0480ed51-8b7f-57aa-93f2-b09c135004c1",
+  "evidence": {
+    "hasChanges": false,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": true,
+    "versionViolation": false,
+    "violations": []
+  },
   "reasonCodes": [
     "CHANGE_ASSESSMENT"
   ],
   "reasons": [
     {
       "code": "CHANGE_ASSESSMENT",
-      "severity": "INFO",
+      "details": {},
       "message": "No contract changes detected",
       "path": null,
-      "details": {}
+      "severity": "INFO"
     }
   ],
+  "requiredVersionBump": "none",
+  "schemaVersion": "1",
   "validation": {
-    "valid": true,
-    "issues": []
-  },
-  "policy": {
-    "valid": true,
-    "idViolation": false,
-    "versionViolation": false,
-    "retiredViolation": false,
-    "violations": []
-  },
-  "evidence": {
-    "hasChanges": false,
-    "mergeConflictsCount": 0
-  },
-  "changes": []
+    "issues": [],
+    "valid": true
+  }
 }

@@ -1,13 +1,23 @@
 {
-  "schemaVersion": "1",
-  "decisionId": "3de328dd-f6f1-5bff-b805-c3f1ff2325c4",
-  "decision": "BLOCK",
-  "contractId": "my-data-contract",
+  "breaking": false,
+  "changes": [],
   "context": {
     "effectiveDate": "2026-01-01"
   },
-  "breaking": false,
-  "requiredVersionBump": "none",
+  "contractId": "my-data-contract",
+  "decision": "BLOCK",
+  "decisionId": "3de328dd-f6f1-5bff-b805-c3f1ff2325c4",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": false,
+    "versionViolation": false,
+    "violations": []
+  },
   "reasonCodes": [
     "CHANGE_ASSESSMENT",
     "VALIDATION_FAILED"
@@ -15,41 +25,31 @@
   "reasons": [
     {
       "code": "CHANGE_ASSESSMENT",
-      "severity": "INFO",
+      "details": {},
       "message": "No contract changes detected",
       "path": null,
-      "details": {}
+      "severity": "INFO"
     },
     {
       "code": "VALIDATION_FAILED",
-      "severity": "ERROR",
+      "details": {},
       "message": "Property name cannot be empty or whitespace-only",
       "path": "schema",
-      "details": {}
+      "severity": "ERROR"
     }
   ],
+  "requiredVersionBump": "none",
+  "schemaVersion": "1",
   "validation": {
-    "valid": false,
     "issues": [
       {
         "code": "VALIDATION_FAILED",
-        "severity": "ERROR",
+        "details": {},
         "message": "Property name cannot be empty or whitespace-only",
         "path": "schema",
-        "details": {}
+        "severity": "ERROR"
       }
-    ]
-  },
-  "policy": {
-    "valid": false,
-    "idViolation": false,
-    "versionViolation": false,
-    "retiredViolation": false,
-    "violations": []
-  },
-  "evidence": {
-    "hasChanges": true,
-    "mergeConflictsCount": 0
-  },
-  "changes": []
+    ],
+    "valid": false
+  }
 }

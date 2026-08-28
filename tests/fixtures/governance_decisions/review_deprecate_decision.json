@@ -1,56 +1,56 @@
 {
-  "schemaVersion": "1",
-  "decisionId": "43daa6d0-6925-5b00-ad33-18e871dadfa9",
-  "decision": "REVIEW",
-  "contractId": "my-data-contract",
+  "breaking": false,
+  "changes": [
+    {
+      "after": "deprecated",
+      "before": null,
+      "breaking": false,
+      "changeType": "DEPRECATE",
+      "domain": "LIFECYCLE",
+      "entityType": "PROPERTY",
+      "evidence": [],
+      "field": "lifecycleStatus",
+      "identity": [
+        "orders",
+        "amount"
+      ],
+      "path": "schema[orders].properties[amount]",
+      "reasonCodes": []
+    }
+  ],
   "context": {
     "effectiveDate": "2026-01-01"
   },
-  "breaking": false,
-  "requiredVersionBump": "minor",
+  "contractId": "my-data-contract",
+  "decision": "REVIEW",
+  "decisionId": "43daa6d0-6925-5b00-ad33-18e871dadfa9",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": true,
+    "versionViolation": false,
+    "violations": []
+  },
   "reasonCodes": [
     "CHANGE_ASSESSMENT"
   ],
   "reasons": [
     {
       "code": "CHANGE_ASSESSMENT",
-      "severity": "INFO",
+      "details": {},
       "message": "New schema/property deprecations require a minor version bump",
       "path": null,
-      "details": {}
+      "severity": "INFO"
     }
   ],
+  "requiredVersionBump": "minor",
+  "schemaVersion": "1",
   "validation": {
-    "valid": true,
-    "issues": []
-  },
-  "policy": {
-    "valid": true,
-    "idViolation": false,
-    "versionViolation": false,
-    "retiredViolation": false,
-    "violations": []
-  },
-  "evidence": {
-    "hasChanges": true,
-    "mergeConflictsCount": 0
-  },
-  "changes": [
-    {
-      "changeType": "DEPRECATE",
-      "entityType": "PROPERTY",
-      "identity": [
-        "orders",
-        "amount"
-      ],
-      "path": "schema[orders].properties[amount]",
-      "field": "lifecycleStatus",
-      "before": null,
-      "after": "deprecated",
-      "domain": "LIFECYCLE",
-      "breaking": false,
-      "reasonCodes": [],
-      "evidence": []
-    }
-  ]
+    "issues": [],
+    "valid": true
+  }
 }

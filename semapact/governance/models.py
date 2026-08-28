@@ -111,9 +111,3 @@ class GovernanceDecision(GovernanceModel):
                 )
         return self
 
-    def to_public(self) -> Any:
-        """Project this domain model into the public versioned representation."""
-        from semapact.governance.public import to_public_governance_decision
-
-        return to_public_governance_decision(self)
-

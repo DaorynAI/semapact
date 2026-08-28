@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date
-import json
 from pathlib import Path
 import pytest
 from pydantic import ValidationError as PydanticValidationError
@@ -134,7 +133,7 @@ def test_public_decision_review_scenario():
     assert public_dec.evidence.has_changes is True
     assert len(public_dec.changes) > 0
 
-    # Ensure reasonCodes contains stable code identifiers
+    # Ensure reasonCodes contains sorted unique code identifiers
     assert "CHANGE_ASSESSMENT" in public_dec.reason_codes
 
     # Ensure canonical change contains camelCase and proper fields
@@ -160,8 +159,7 @@ def test_public_decision_breaking_review_scenario():
     assert public_dec.decision == "REVIEW"
     assert public_dec.breaking is True
     assert public_dec.required_version_bump == "major"
-    assert "DECIMAL_PRECISION_REDUCED" in public_dec.reason_codes
-    assert "CHANGE_ASSESSMENT" in public_dec.reason_codes
+    assert public_dec.reason_codes == ("CHANGE_ASSESSMENT", "DECIMAL_PRECISION_REDUCED")
 
     dumped = public_dec.to_canonical_dict()
     assert dumped["decision"] == "REVIEW"
@@ -258,6 +256,43 @@ def test_public_models_direct_instantiation_and_helpers():
     assert decision.validation.issues[0].details == {"key": "val"}
 
 
+def test_public_literals_strict_validation():
+    """Verify that invalid strings for protocol literals are rejected at validation."""
+    with pytest.raises(PydanticValidationError):
+        PublicGovernanceDecisionV1.model_validate({
+            "schemaVersion": "1",
+            "decisionId": "test",
+            "decision": "BANANA",  # Invalid decision
+            "contractId": "orders",
+            "context": {"effectiveDate": "2026-01-01"},
+            "breaking": False,
+            "requiredVersionBump": "none",
+            "reasonCodes": [],
+            "reasons": [],
+            "validation": {"valid": True, "issues": []},
+            "policy": {"valid": True, "idViolation": False, "versionViolation": False, "retiredViolation": False, "violations": []},
+            "evidence": {"hasChanges": False, "mergeConflictsCount": 0},
+            "changes": [],
+        })
+
+    with pytest.raises(PydanticValidationError):
+        PublicGovernanceDecisionV1.model_validate({
+            "schemaVersion": "1",
+            "decisionId": "test",
+            "decision": "ALLOW",
+            "contractId": "orders",
+            "context": {"effectiveDate": "2026-01-01"},
+            "breaking": False,
+            "requiredVersionBump": "huge",  # Invalid bump
+            "reasonCodes": [],
+            "reasons": [],
+            "validation": {"valid": True, "issues": []},
+            "policy": {"valid": True, "idViolation": False, "versionViolation": False, "retiredViolation": False, "violations": []},
+            "evidence": {"hasChanges": False, "mergeConflictsCount": 0},
+            "changes": [],
+        })
+
+
 def test_public_decision_immutability_and_extra_forbid():
     """Public governance models are frozen and reject extra fields."""
     base = _make_contract()
@@ -289,13 +324,61 @@ def test_public_decision_immutability_and_extra_forbid():
 
 
 def test_public_decision_byte_level_determinism():
-    """Identical decisions produce byte-for-byte identical canonical JSON."""
-    base = _make_contract()
-    cand = _make_contract()
-    _get_schemas(cand)[0].properties[1].physicalType = "decimal(8,2)"
+    """Semantically equivalent states with differing incidental ordering produce byte-for-byte identical canonical JSON."""
+    # Decision 1
+    reason1 = PublicGovernanceReasonV1(
+        code="RULE_VIOLATION",
+        severity="WARNING",
+        message="Message",
+        details={"zebra": 1, "apple": 2, "mango": 3},
+    )
+    change1 = PublicGovernanceChangeV1(
+        change_type="MODIFY",
+        entity_type="PROPERTY",
+        identity=("orders", "amount"),
+        path="schema[orders].properties[amount]",
+        domain="STRUCTURE",
+        breaking=True,
+        reason_codes=("Z_CODE", "A_CODE"),
+    )
+    dec1 = PublicGovernanceDecisionV1(
+        schema_version="1",
+        decision_id="11111111-1111-1111-1111-111111111111",
+        decision="REVIEW",
+        contract_id="orders",
+        context=PublicChangeContextV1(effective_date="2026-01-01"),
+        breaking=True,
+        required_version_bump="major",
+        reason_codes=("Z_CODE", "A_CODE"),
+        reasons=(reason1,),
+        validation=PublicValidationOutcomeV1(valid=True),
+        policy=PublicPolicyOutcomeV1(valid=True),
+        evidence=PublicChangeEvidenceV1(has_changes=True),
+        changes=(change1,),
+    )
 
-    dec1 = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
-    dec2 = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    # Decision 2 with different key insertion order in details
+    reason2 = PublicGovernanceReasonV1(
+        code="RULE_VIOLATION",
+        severity="WARNING",
+        message="Message",
+        details={"mango": 3, "apple": 2, "zebra": 1},
+    )
+    dec2 = PublicGovernanceDecisionV1(
+        schema_version="1",
+        decision_id="11111111-1111-1111-1111-111111111111",
+        decision="REVIEW",
+        contract_id="orders",
+        context=PublicChangeContextV1(effective_date="2026-01-01"),
+        breaking=True,
+        required_version_bump="major",
+        reason_codes=("Z_CODE", "A_CODE"),
+        reasons=(reason2,),
+        validation=PublicValidationOutcomeV1(valid=True),
+        policy=PublicPolicyOutcomeV1(valid=True),
+        evidence=PublicChangeEvidenceV1(has_changes=True),
+        changes=(change1,),
+    )
 
     json1 = serialize_public_governance_decision(dec1, indent=2)
     json2 = serialize_public_governance_decision(dec2, indent=2)
@@ -323,31 +406,23 @@ def test_public_decision_roundtrip_deserialization():
 
 
 def test_golden_fixtures_match():
-    """Verify golden JSON fixtures match projected decisions."""
-    FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
-
+    """Verify golden JSON fixtures match projected decisions with exact string equality (read-only assertion)."""
     # 1. ALLOW clean
     base = _make_contract()
     allow_dec = evaluate_governance_decision(base, base, context=TEST_CONTEXT)
     allow_pub = to_public_governance_decision(allow_dec)
-    allow_json_str = serialize_public_governance_decision(allow_pub, indent=2)
-
-    allow_fixture_path = FIXTURES_DIR / "allow_clean_decision.json"
-    allow_fixture_path.write_text(allow_json_str, encoding="utf-8")
-    expected_allow = allow_fixture_path.read_text(encoding="utf-8").strip()
-    assert json.loads(allow_json_str) == json.loads(expected_allow)
+    allow_json_str = serialize_public_governance_decision(allow_pub, indent=2) + "\n"
+    expected_allow = (FIXTURES_DIR / "allow_clean_decision.json").read_text(encoding="utf-8")
+    assert allow_json_str == expected_allow
 
     # 2. BREAKING review decimal
     cand_breaking = _make_contract()
     _get_schemas(cand_breaking)[0].properties[1].physicalType = "decimal(8,2)"
     breaking_dec = evaluate_governance_decision(base, cand_breaking, context=TEST_CONTEXT)
     breaking_pub = to_public_governance_decision(breaking_dec)
-    breaking_json_str = serialize_public_governance_decision(breaking_pub, indent=2)
-
-    breaking_fixture_path = FIXTURES_DIR / "breaking_review_decision.json"
-    breaking_fixture_path.write_text(breaking_json_str, encoding="utf-8")
-    expected_breaking = breaking_fixture_path.read_text(encoding="utf-8").strip()
-    assert json.loads(breaking_json_str) == json.loads(expected_breaking)
+    breaking_json_str = serialize_public_governance_decision(breaking_pub, indent=2) + "\n"
+    expected_breaking = (FIXTURES_DIR / "breaking_review_decision.json").read_text(encoding="utf-8")
+    assert breaking_json_str == expected_breaking
 
     # 3. REVIEW deprecate property
     cand_deprecate = _make_contract()
@@ -356,12 +431,9 @@ def test_golden_fixtures_match():
     ]
     review_dec = evaluate_governance_decision(base, cand_deprecate, context=TEST_CONTEXT)
     review_pub = to_public_governance_decision(review_dec)
-    review_json_str = serialize_public_governance_decision(review_pub, indent=2)
-
-    review_fixture_path = FIXTURES_DIR / "review_deprecate_decision.json"
-    review_fixture_path.write_text(review_json_str, encoding="utf-8")
-    expected_review = review_fixture_path.read_text(encoding="utf-8").strip()
-    assert json.loads(review_json_str) == json.loads(expected_review)
+    review_json_str = serialize_public_governance_decision(review_pub, indent=2) + "\n"
+    expected_review = (FIXTURES_DIR / "review_deprecate_decision.json").read_text(encoding="utf-8")
+    assert review_json_str == expected_review
 
     # 4. BLOCK retired contract
     base_retired = _make_contract(status="retired")
@@ -369,12 +441,9 @@ def test_golden_fixtures_match():
     _get_schemas(cand_retired)[0].properties[1].description = "Retired update"
     retired_dec = evaluate_governance_decision(base_retired, cand_retired, context=TEST_CONTEXT)
     retired_pub = to_public_governance_decision(retired_dec)
-    retired_json_str = serialize_public_governance_decision(retired_pub, indent=2)
-
-    retired_fixture_path = FIXTURES_DIR / "block_retired_decision.json"
-    retired_fixture_path.write_text(retired_json_str, encoding="utf-8")
-    expected_retired = retired_fixture_path.read_text(encoding="utf-8").strip()
-    assert json.loads(retired_json_str) == json.loads(expected_retired)
+    retired_json_str = serialize_public_governance_decision(retired_pub, indent=2) + "\n"
+    expected_retired = (FIXTURES_DIR / "block_retired_decision.json").read_text(encoding="utf-8")
+    assert retired_json_str == expected_retired
 
     # 5. BLOCK invalid validation
     cand_invalid = _make_contract()
@@ -383,9 +452,6 @@ def test_golden_fixtures_match():
     )
     invalid_dec = evaluate_governance_decision(base, cand_invalid, context=TEST_CONTEXT)
     invalid_pub = to_public_governance_decision(invalid_dec)
-    invalid_json_str = serialize_public_governance_decision(invalid_pub, indent=2)
-
-    invalid_fixture_path = FIXTURES_DIR / "block_validation_decision.json"
-    invalid_fixture_path.write_text(invalid_json_str, encoding="utf-8")
-    expected_invalid = invalid_fixture_path.read_text(encoding="utf-8").strip()
-    assert json.loads(invalid_json_str) == json.loads(expected_invalid)
+    invalid_json_str = serialize_public_governance_decision(invalid_pub, indent=2) + "\n"
+    expected_invalid = (FIXTURES_DIR / "block_validation_decision.json").read_text(encoding="utf-8")
+    assert invalid_json_str == expected_invalid
