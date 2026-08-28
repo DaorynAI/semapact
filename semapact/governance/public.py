@@ -28,7 +28,7 @@ from semapact.lifecycle.changes import (
 # ==============================================================================
 
 PublicDecisionResult = Literal["ALLOW", "REVIEW", "BLOCK"]
-PublicRequiredVersionBump = Literal["none", "patch", "minor", "major"]
+PublicRequiredVersionBump = Literal["none", "minor", "major"]
 PublicSeverity = Literal["ERROR", "WARNING", "INFO"]
 PublicChangeType = Literal["ADD", "REMOVE", "MODIFY", "DEPRECATE"]
 PublicEntityType = Literal[

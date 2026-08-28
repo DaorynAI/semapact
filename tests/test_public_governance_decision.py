@@ -302,6 +302,24 @@ def test_public_literals_strict_validation():
             domain="STRUCTURE",
         )
 
+    # Reject "patch" for requiredVersionBump as lifecycle policy only specifies none/minor/major
+    with pytest.raises(PydanticValidationError):
+        PublicGovernanceDecisionV1.model_validate({
+            "schemaVersion": "1",
+            "decisionId": "test",
+            "decision": "ALLOW",
+            "contractId": "orders",
+            "context": {"effectiveDate": "2026-01-01"},
+            "breaking": False,
+            "requiredVersionBump": "patch",  # Invalid bump for v1
+            "reasonCodes": [],
+            "reasons": [],
+            "validation": {"valid": True, "issues": []},
+            "policy": {"valid": True, "idViolation": False, "versionViolation": False, "retiredViolation": False, "violations": []},
+            "evidence": {"hasChanges": False, "mergeConflictsCount": 0},
+            "changes": [],
+        })
+
 
 def test_public_decision_immutability_and_extra_forbid():
     """Public governance models are frozen and reject extra fields."""
