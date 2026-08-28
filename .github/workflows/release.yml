@@ -33,7 +33,7 @@ jobs:
           python-version: "3.11"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       # Install python-semantic-release in the runner environment
       - name: Install python-semantic-release
