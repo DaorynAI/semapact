@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "1",
+  "decisionId": "e8296105-5b21-5c7b-b5f1-99004a632224",
+  "decision": "BLOCK",
+  "contractId": "my-data-contract",
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "breaking": false,
+  "requiredVersionBump": "none",
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "RETIRED_CONTRACT_MODIFIED"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "severity": "INFO",
+      "message": "Only descriptive metadata changed; no required version bump",
+      "path": null,
+      "details": {}
+    },
+    {
+      "code": "RETIRED_CONTRACT_MODIFIED",
+      "severity": "ERROR",
+      "message": "Cannot modify a retired contract.",
+      "path": "status",
+      "details": {}
+    }
+  ],
+  "validation": {
+    "valid": true,
+    "issues": []
+  },
+  "policy": {
+    "valid": false,
+    "idViolation": false,
+    "versionViolation": false,
+    "retiredViolation": true,
+    "violations": [
+      {
+        "code": "RETIRED_CONTRACT_MODIFIED",
+        "severity": "ERROR",
+        "message": "Cannot modify a retired contract.",
+        "path": "status",
+        "details": {}
+      }
+    ]
+  },
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "changes": [
+    {
+      "changeType": "MODIFY",
+      "entityType": "PROPERTY",
+      "identity": [
+        "orders",
+        "amount"
+      ],
+      "path": "schema[orders].properties[amount].description",
+      "field": "description",
+      "before": null,
+      "after": "Retired update",
+      "domain": "METADATA",
+      "breaking": false,
+      "reasonCodes": [],
+      "evidence": []
+    }
+  ]
+}

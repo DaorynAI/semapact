@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1",
+  "decisionId": "0480ed51-8b7f-57aa-93f2-b09c135004c1",
+  "decision": "ALLOW",
+  "contractId": "my-data-contract",
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "breaking": false,
+  "requiredVersionBump": "none",
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "severity": "INFO",
+      "message": "No contract changes detected",
+      "path": null,
+      "details": {}
+    }
+  ],
+  "validation": {
+    "valid": true,
+    "issues": []
+  },
+  "policy": {
+    "valid": true,
+    "idViolation": false,
+    "versionViolation": false,
+    "retiredViolation": false,
+    "violations": []
+  },
+  "evidence": {
+    "hasChanges": false,
+    "mergeConflictsCount": 0
+  },
+  "changes": []
+}

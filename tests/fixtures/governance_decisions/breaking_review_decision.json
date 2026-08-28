@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "1",
+  "decisionId": "dc341a61-b19f-5c01-a250-0fda5ea7d061",
+  "decision": "REVIEW",
+  "contractId": "my-data-contract",
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "breaking": true,
+  "requiredVersionBump": "major",
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "DECIMAL_PRECISION_REDUCED"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "severity": "INFO",
+      "message": "Breaking lifecycle changes require a major version bump",
+      "path": null,
+      "details": {}
+    },
+    {
+      "code": "DECIMAL_PRECISION_REDUCED",
+      "severity": "WARNING",
+      "message": "Decimal precision reduced from 'decimal(10,2)' to 'decimal(8,2)'",
+      "path": "schema[orders].properties[amount].physicalType",
+      "details": {}
+    }
+  ],
+  "validation": {
+    "valid": true,
+    "issues": []
+  },
+  "policy": {
+    "valid": false,
+    "idViolation": false,
+    "versionViolation": false,
+    "retiredViolation": false,
+    "violations": [
+      {
+        "code": "DECIMAL_PRECISION_REDUCED",
+        "severity": "WARNING",
+        "message": "Decimal precision reduced from 'decimal(10,2)' to 'decimal(8,2)'",
+        "path": "schema[orders].properties[amount].physicalType",
+        "details": {}
+      }
+    ]
+  },
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "changes": [
+    {
+      "changeType": "MODIFY",
+      "entityType": "PROPERTY",
+      "identity": [
+        "orders",
+        "amount"
+      ],
+      "path": "schema[orders].properties[amount].physicalType",
+      "field": "physicalType",
+      "before": "decimal(10,2)",
+      "after": "decimal(8,2)",
+      "domain": "STRUCTURE",
+      "breaking": true,
+      "reasonCodes": [
+        "DECIMAL_PRECISION_REDUCED"
+      ],
+      "evidence": []
+    }
+  ]
+}

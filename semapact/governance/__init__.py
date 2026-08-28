@@ -23,6 +23,19 @@ from semapact.governance.gate import (
     enforce_governance_gate,
     evaluate_governance_gate,
 )
+from semapact.governance.public import (
+    PublicChangeContextV1,
+    PublicChangeEvidenceV1,
+    PublicGovernanceChangeEvidenceV1,
+    PublicGovernanceChangeV1,
+    PublicGovernanceDecisionV1,
+    PublicGovernanceModel,
+    PublicGovernanceReasonV1,
+    PublicPolicyOutcomeV1,
+    PublicValidationOutcomeV1,
+    serialize_public_governance_decision,
+    to_public_governance_decision,
+)
 
 __all__ = [
     "ChangeContext",
@@ -42,4 +55,15 @@ __all__ = [
     "evaluate_governance_decision",
     "evaluate_governance_gate",
     "enforce_governance_gate",
+    "PublicGovernanceModel",
+    "PublicChangeContextV1",
+    "PublicGovernanceReasonV1",
+    "PublicValidationOutcomeV1",
+    "PublicPolicyOutcomeV1",
+    "PublicChangeEvidenceV1",
+    "PublicGovernanceChangeEvidenceV1",
+    "PublicGovernanceChangeV1",
+    "PublicGovernanceDecisionV1",
+    "to_public_governance_decision",
+    "serialize_public_governance_decision",
 ]

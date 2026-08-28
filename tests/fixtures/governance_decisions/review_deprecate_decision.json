@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "1",
+  "decisionId": "43daa6d0-6925-5b00-ad33-18e871dadfa9",
+  "decision": "REVIEW",
+  "contractId": "my-data-contract",
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "breaking": false,
+  "requiredVersionBump": "minor",
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "severity": "INFO",
+      "message": "New schema/property deprecations require a minor version bump",
+      "path": null,
+      "details": {}
+    }
+  ],
+  "validation": {
+    "valid": true,
+    "issues": []
+  },
+  "policy": {
+    "valid": true,
+    "idViolation": false,
+    "versionViolation": false,
+    "retiredViolation": false,
+    "violations": []
+  },
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "changes": [
+    {
+      "changeType": "DEPRECATE",
+      "entityType": "PROPERTY",
+      "identity": [
+        "orders",
+        "amount"
+      ],
+      "path": "schema[orders].properties[amount]",
+      "field": "lifecycleStatus",
+      "before": null,
+      "after": "deprecated",
+      "domain": "LIFECYCLE",
+      "breaking": false,
+      "reasonCodes": [],
+      "evidence": []
+    }
+  ]
+}
