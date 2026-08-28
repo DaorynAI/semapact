@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal, cast
+from typing import Any, Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, JsonValue
 
+from semapact.core.release import RequiredBump
 from semapact.governance.models import (
     DecisionResult,
     GovernanceDecision,
@@ -94,72 +95,60 @@ _EVIDENCE_SOURCE_MAP: dict[GovernanceChangeEvidenceSource, PublicEvidenceSource]
     GovernanceChangeEvidenceSource.MERGE_CONFLICT: "MERGE_CONFLICT",
 }
 
-_REQUIRED_BUMP_MAP: dict[str, PublicRequiredVersionBump] = {
+_REQUIRED_BUMP_MAP: dict[RequiredBump, PublicRequiredVersionBump] = {
     "none": "none",
-    "patch": "patch",
     "minor": "minor",
     "major": "major",
 }
 
 
-def _map_decision(decision: DecisionResult | str) -> PublicDecisionResult:
-    if isinstance(decision, DecisionResult):
+def _map_decision(decision: DecisionResult) -> PublicDecisionResult:
+    try:
         return _DECISION_MAP[decision]
-    val = str(decision)
-    if val in {"ALLOW", "REVIEW", "BLOCK"}:
-        return cast(PublicDecisionResult, val)
-    raise ValueError(f"Invalid decision for public contract: {decision}")
+    except KeyError:
+        raise ValueError(f"Unsupported internal DecisionResult: {decision!r}") from None
 
 
-def _map_severity(severity: GovernanceSeverity | str) -> PublicSeverity:
-    if isinstance(severity, GovernanceSeverity):
+def _map_severity(severity: GovernanceSeverity) -> PublicSeverity:
+    try:
         return _SEVERITY_MAP[severity]
-    val = str(severity)
-    if val in {"ERROR", "WARNING", "INFO"}:
-        return cast(PublicSeverity, val)
-    raise ValueError(f"Invalid severity for public contract: {severity}")
+    except KeyError:
+        raise ValueError(f"Unsupported internal GovernanceSeverity: {severity!r}") from None
 
 
-def _map_change_type(change_type: GovernanceChangeType | str) -> PublicChangeType:
-    if isinstance(change_type, GovernanceChangeType):
+def _map_change_type(change_type: GovernanceChangeType) -> PublicChangeType:
+    try:
         return _CHANGE_TYPE_MAP[change_type]
-    val = str(change_type)
-    if val in {"ADD", "REMOVE", "MODIFY", "DEPRECATE"}:
-        return cast(PublicChangeType, val)
-    raise ValueError(f"Invalid change_type for public contract: {change_type}")
+    except KeyError:
+        raise ValueError(f"Unsupported internal GovernanceChangeType: {change_type!r}") from None
 
 
-def _map_entity_type(entity_type: GovernanceEntityType | str) -> PublicEntityType:
-    if isinstance(entity_type, GovernanceEntityType):
+def _map_entity_type(entity_type: GovernanceEntityType) -> PublicEntityType:
+    try:
         return _ENTITY_TYPE_MAP[entity_type]
-    val = str(entity_type)
-    if val in {"CONTRACT", "SCHEMA", "PROPERTY", "RELATIONSHIP", "QUALITY"}:
-        return cast(PublicEntityType, val)
-    raise ValueError(f"Invalid entity_type for public contract: {entity_type}")
+    except KeyError:
+        raise ValueError(f"Unsupported internal GovernanceEntityType: {entity_type!r}") from None
 
 
-def _map_domain(domain: GovernanceChangeDomain | str) -> PublicChangeDomain:
-    if isinstance(domain, GovernanceChangeDomain):
+def _map_domain(domain: GovernanceChangeDomain) -> PublicChangeDomain:
+    try:
         return _DOMAIN_MAP[domain]
-    val = str(domain)
-    if val in {"IDENTITY", "VERSION", "LIFECYCLE", "STRUCTURE", "RELATIONSHIP", "QUALITY", "METADATA"}:
-        return cast(PublicChangeDomain, val)
-    raise ValueError(f"Invalid domain for public contract: {domain}")
+    except KeyError:
+        raise ValueError(f"Unsupported internal GovernanceChangeDomain: {domain!r}") from None
 
 
-def _map_evidence_source(source: GovernanceChangeEvidenceSource | str) -> PublicEvidenceSource:
-    if isinstance(source, GovernanceChangeEvidenceSource):
+def _map_evidence_source(source: GovernanceChangeEvidenceSource) -> PublicEvidenceSource:
+    try:
         return _EVIDENCE_SOURCE_MAP[source]
-    val = str(source)
-    if val in {"MERGE_CONFLICT"}:
-        return cast(PublicEvidenceSource, val)
-    raise ValueError(f"Invalid evidence source for public contract: {source}")
+    except KeyError:
+        raise ValueError(f"Unsupported internal GovernanceChangeEvidenceSource: {source!r}") from None
 
 
-def _map_required_bump(bump: str) -> PublicRequiredVersionBump:
-    if bump in _REQUIRED_BUMP_MAP:
+def _map_required_bump(bump: RequiredBump) -> PublicRequiredVersionBump:
+    try:
         return _REQUIRED_BUMP_MAP[bump]
-    raise ValueError(f"Invalid required_version_bump for public contract: {bump}")
+    except KeyError:
+        raise ValueError(f"Unsupported internal RequiredBump: {bump!r}") from None
 
 
 # ==============================================================================
@@ -432,7 +421,7 @@ def to_public_governance_decision(decision: GovernanceDecision) -> PublicGoverna
         all_reason_codes.update(c.reason_codes)
 
     decision_val = _map_decision(decision.decision)
-    bump_val = _map_required_bump(str(decision.required_version_bump))
+    bump_val = _map_required_bump(decision.required_version_bump)
 
     return PublicGovernanceDecisionV1(
         schema_version="1",
