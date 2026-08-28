@@ -221,7 +221,7 @@ def test_public_models_direct_instantiation_and_helpers():
     validation = PublicValidationOutcomeV1(valid=True, issues=(reason,))
     policy = PublicPolicyOutcomeV1(valid=True, violations=())
     evidence = PublicChangeEvidenceV1(has_changes=True, merge_conflicts_count=1)
-    ev_source = PublicGovernanceChangeEvidenceV1(source="MERGE_CONFLICT", description="conflict")
+    ev_source = PublicGovernanceChangeEvidenceV1(source="MERGE_CONFLICT", code="conflict")
     change = PublicGovernanceChangeV1(
         change_type="MODIFY",
         entity_type="PROPERTY",

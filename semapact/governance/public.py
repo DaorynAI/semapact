@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, JsonValue
 
 from semapact.governance.models import (
     DecisionResult,
@@ -39,7 +39,10 @@ class PublicGovernanceModel(BaseModel):
 class PublicChangeContextV1(PublicGovernanceModel):
     """Public representation of contextual evaluation parameters."""
 
-    effective_date: str = Field(alias="effectiveDate")
+    effective_date: str = Field(
+        validation_alias=AliasChoices("effective_date", "effectiveDate"),
+        serialization_alias="effectiveDate",
+    )
 
 
 class PublicGovernanceReasonV1(PublicGovernanceModel):
@@ -63,31 +66,57 @@ class PublicPolicyOutcomeV1(PublicGovernanceModel):
     """Public lifecycle policy outcome."""
 
     valid: bool
-    id_violation: bool = Field(default=False, alias="idViolation")
-    version_violation: bool = Field(default=False, alias="versionViolation")
-    retired_violation: bool = Field(default=False, alias="retiredViolation")
+    id_violation: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("id_violation", "idViolation"),
+        serialization_alias="idViolation",
+    )
+    version_violation: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("version_violation", "versionViolation"),
+        serialization_alias="versionViolation",
+    )
+    retired_violation: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("retired_violation", "retiredViolation"),
+        serialization_alias="retiredViolation",
+    )
     violations: tuple[PublicGovernanceReasonV1, ...] = ()
 
 
 class PublicChangeEvidenceV1(PublicGovernanceModel):
     """Public summarized evidence for contract mutations."""
 
-    has_changes: bool = Field(default=False, alias="hasChanges")
-    merge_conflicts_count: int = Field(default=0, alias="mergeConflictsCount")
+    has_changes: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("has_changes", "hasChanges"),
+        serialization_alias="hasChanges",
+    )
+    merge_conflicts_count: int = Field(
+        default=0,
+        validation_alias=AliasChoices("merge_conflicts_count", "mergeConflictsCount"),
+        serialization_alias="mergeConflictsCount",
+    )
 
 
 class PublicGovernanceChangeEvidenceV1(PublicGovernanceModel):
     """Public evidence source supporting a semantic change."""
 
     source: str
-    description: str
+    code: str
 
 
 class PublicGovernanceChangeV1(PublicGovernanceModel):
     """Public canonical representation of a single semantic contract change."""
 
-    change_type: str = Field(alias="changeType")
-    entity_type: str = Field(alias="entityType")
+    change_type: str = Field(
+        validation_alias=AliasChoices("change_type", "changeType"),
+        serialization_alias="changeType",
+    )
+    entity_type: str = Field(
+        validation_alias=AliasChoices("entity_type", "entityType"),
+        serialization_alias="entityType",
+    )
     identity: tuple[str, ...]
     path: str
     field: str | None = None
@@ -95,21 +124,42 @@ class PublicGovernanceChangeV1(PublicGovernanceModel):
     after: JsonValue | None = None
     domain: str
     breaking: bool = False
-    reason_codes: tuple[str, ...] = Field(default=(), alias="reasonCodes")
+    reason_codes: tuple[str, ...] = Field(
+        default=(),
+        validation_alias=AliasChoices("reason_codes", "reasonCodes"),
+        serialization_alias="reasonCodes",
+    )
     evidence: tuple[PublicGovernanceChangeEvidenceV1, ...] = ()
 
 
 class PublicGovernanceDecisionV1(PublicGovernanceModel):
     """Authoritative, versioned public contract for a SemaPact governance decision."""
 
-    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
-    decision_id: str = Field(alias="decisionId")
+    schema_version: Literal["1"] = Field(
+        default="1",
+        validation_alias=AliasChoices("schema_version", "schemaVersion"),
+        serialization_alias="schemaVersion",
+    )
+    decision_id: str = Field(
+        validation_alias=AliasChoices("decision_id", "decisionId"),
+        serialization_alias="decisionId",
+    )
     decision: str
-    contract_id: str = Field(alias="contractId")
+    contract_id: str = Field(
+        validation_alias=AliasChoices("contract_id", "contractId"),
+        serialization_alias="contractId",
+    )
     context: PublicChangeContextV1
     breaking: bool
-    required_version_bump: str = Field(alias="requiredVersionBump")
-    reason_codes: tuple[str, ...] = Field(default=(), alias="reasonCodes")
+    required_version_bump: str = Field(
+        validation_alias=AliasChoices("required_version_bump", "requiredVersionBump"),
+        serialization_alias="requiredVersionBump",
+    )
+    reason_codes: tuple[str, ...] = Field(
+        default=(),
+        validation_alias=AliasChoices("reason_codes", "reasonCodes"),
+        serialization_alias="reasonCodes",
+    )
     reasons: tuple[PublicGovernanceReasonV1, ...] = ()
     validation: PublicValidationOutcomeV1
     policy: PublicPolicyOutcomeV1
@@ -157,7 +207,7 @@ def _project_change_evidence(evidence: GovernanceChangeEvidence) -> PublicGovern
     )
     return PublicGovernanceChangeEvidenceV1(
         source=source_val,
-        description=evidence.description,
+        code=evidence.code,
     )
 
 
