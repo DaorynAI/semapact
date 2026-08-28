@@ -23,9 +23,10 @@ def test_export_ge_handles_missing_pyspark_gracefully(monkeypatch):
         "out.json",
     ]
     with patch("sys.argv", test_args):
-        # The new CLI top-level error handler catches RuntimeErrors and returns 1
+        # The standardized CLI top-level error handler catches RuntimeErrors and returns 5 (RUNTIME_ERROR)
         exit_code = main()
-        assert exit_code == 1
+        assert exit_code == 5
+
 
 
 def test_cli_export_sql_databricks_location(tmp_path):
