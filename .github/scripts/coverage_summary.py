@@ -7,12 +7,12 @@ from pathlib import Path
 
 
 def _top_level_module(package_name: str) -> str:
-    parts = package_name.split(".")
-    if len(parts) >= 2 and parts[0] == "semapact":
-        return parts[1]
-    if package_name == "semapact":
+    normalized = package_name.strip(".")
+    if normalized in {"", "semapact"}:
         return "root"
-    return package_name or "root"
+    if normalized.startswith("semapact."):
+        normalized = normalized.removeprefix("semapact.")
+    return normalized.split(".", 1)[0]
 
 
 def build_summary(xml_path: Path) -> str:
