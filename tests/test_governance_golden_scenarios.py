@@ -379,8 +379,8 @@ def test_governance_golden_scenarios(scenario: GovernanceGoldenScenario) -> None
     )
 
     actual_reason_codes = frozenset(r.code for r in decision.reasons)
-    assert scenario.expected_reason_codes.issubset(actual_reason_codes), (
-        f"[{scenario.name}] missing expected reason codes: "
+    assert actual_reason_codes == scenario.expected_reason_codes, (
+        f"[{scenario.name}] reason codes mismatch: "
         f"expected {scenario.expected_reason_codes}, got {actual_reason_codes}"
     )
 
@@ -491,8 +491,10 @@ def test_physical_name_identity_stability() -> None:
     property_changes = [c for c in decision.changes if c.entity_type.value == "PROPERTY"]
 
     # Canonical identity must remain lowercase schema and property names
-    assert all(c.identity == ("orders",) for c in schema_changes)
-    assert all(c.identity == ("orders", "id") for c in property_changes)
+    assert schema_changes
+    assert property_changes
+    assert {c.identity for c in schema_changes} == {("orders",)}
+    assert {c.identity for c in property_changes} == {("orders", "id")}
 
 
 # ==============================================================================
@@ -648,7 +650,7 @@ def test_merge_conflict_ordering_determinism() -> None:
 # ==============================================================================
 
 
-def test_fixtures_are_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fixtures_are_read_only() -> None:
     """Confirm fixtures directory contents are strictly unchanged after running test suite."""
     hashes_before: dict[str, str] = {}
     for f in FIXTURES_DIR.rglob("*"):
