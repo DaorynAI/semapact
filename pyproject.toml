@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "semapact"
 version = "0.8.1"
-description = "Lifecycle governance for data contracts and enterprise semantics"
+description = "Lifecycle governance for ODCS data contracts, schema evolution, and breaking changes"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
 license = { file = "LICENSE" }
@@ -13,11 +13,16 @@ authors = [
   { name = "Elliot Sun" },
 ]
 keywords = [
+  "data-contract",
   "data-contracts",
   "data-governance",
+  "data-products",
   "odcs",
+  "schema-evolution",
+  "breaking-changes",
   "gitops",
   "databricks",
+  "unity-catalog",
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
