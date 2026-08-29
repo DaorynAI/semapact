@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import logging
 import re
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Literal, Sequence
 
@@ -117,8 +117,7 @@ def classify_contract_change(
         for c in canonical_changes
     )
     has_structural = any(
-        c.domain
-        in (
+        c.domain in (
             GovernanceChangeDomain.STRUCTURE,
             GovernanceChangeDomain.RELATIONSHIP,
             GovernanceChangeDomain.QUALITY,
@@ -138,9 +137,7 @@ def classify_contract_change(
 
     if reasons:
         return ContractChangeAssessment(
-            has_changes=True,
-            required_bump="minor",
-            reasons=_dedupe(reasons),
+            has_changes=True, required_bump="minor", reasons=_dedupe(reasons)
         )
 
     return ContractChangeAssessment(
@@ -157,20 +154,18 @@ def apply_release_candidate(
     *,
     required_bump: RequiredBump,
 ) -> PromotionResult:
-    """Apply a release candidate using a pre-calculated required bump.
+    """Apply a release candidate transformation using a pre-calculated required_bump.
 
     Avoids duplicate policy evaluation and classification when an authoritative
     GovernanceDecision is already available.
     """
     if not isinstance(base_contract, OpenDataContractStandard):
         raise TypeError(
-            "base_contract must be OpenDataContractStandard, "
-            f"got {type(base_contract).__name__}"
+            f"base_contract must be OpenDataContractStandard, got {type(base_contract).__name__}"
         )
     if not isinstance(candidate_contract, OpenDataContractStandard):
         raise TypeError(
-            "candidate_contract must be OpenDataContractStandard, "
-            f"got {type(candidate_contract).__name__}"
+            f"candidate_contract must be OpenDataContractStandard, got {type(candidate_contract).__name__}"
         )
 
     base_model = base_contract
@@ -189,9 +184,7 @@ def apply_release_candidate(
     if required_bump == "none":
         from semapact.exceptions import ReleaseValidationError
 
-        raise ReleaseValidationError(
-            "Contract changes do not require a release version bump"
-        )
+        raise ReleaseValidationError("Contract changes do not require a release version bump")
 
     target_version = parse_release_tag_version(release_tag)
     actual_bump = classify_version_bump(str(base_model.version or ""), target_version)
@@ -199,9 +192,10 @@ def apply_release_candidate(
         from semapact.exceptions import ReleaseValidationError
 
         raise ReleaseValidationError(
-            f"Release tag '{release_tag}' applies a {actual_bump} bump, "
-            f"but contract requires at least a {required_bump} bump"
+            f"Release tag '{release_tag}' applies a {actual_bump} bump, but contract requires at least a "
+            f"{required_bump} bump"
         )
+
 
     promoted = candidate_model.model_copy(deep=True)
     promoted.version = target_version
@@ -235,19 +229,19 @@ def prepare_release_candidate(
         LOGGER.error("Preparation failed: contract %s has no changes", base_model.id)
         raise ValueError("Cannot promote a contract with no changes")
 
-    result = apply_release_candidate(
+    res = apply_release_candidate(
         base_model,
         candidate_model,
         release_tag,
         required_bump=assessment.required_bump,
     )
     return PromotionResult(
-        contract=result.contract,
-        required_bump=result.required_bump,
-        current_version=result.current_version,
-        target_version=result.target_version,
-        actual_bump=result.actual_bump,
-        release_tag=result.release_tag,
+        contract=res.contract,
+        required_bump=res.required_bump,
+        current_version=res.current_version,
+        target_version=res.target_version,
+        actual_bump=res.actual_bump,
+        release_tag=res.release_tag,
         reasons=assessment.reasons,
         breaking_changes=assessment.breaking_changes,
     )
@@ -265,16 +259,14 @@ def parse_release_tag_version(release_tag: str) -> str:
 
 
 def classify_version_bump(
-    current_version: str,
-    target_version: str,
+    current_version: str, target_version: str
 ) -> ActualVersionBump:
     """Classify actual semantic version bump between current and target versions."""
     current = _parse_semver(current_version)
     target = _parse_semver(target_version)
     if target <= current:
         raise ValueError(
-            f"Target version '{target_version}' must be greater than current version "
-            f"'{current_version}'"
+            f"Target version '{target_version}' must be greater than current version '{current_version}'"
         )
     if target[0] > current[0]:
         return "major"
@@ -309,9 +301,7 @@ def suggest_release_version(
 def _parse_semver(version: str) -> tuple[int, int, int]:
     match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", str(version or "").strip())
     if not match:
-        raise ValueError(
-            f"Version '{version}' must be a semantic version like 1.2.3"
-        )
+        raise ValueError(f"Version '{version}' must be a semantic version like 1.2.3")
     return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
 
 
