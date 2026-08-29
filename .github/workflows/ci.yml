@@ -72,6 +72,18 @@ jobs:
           --cov-report=xml:coverage.xml
           --cov-report=html:htmlcov
 
+      - name: Publish coverage summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## Test Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f .coverage ]; then
+            uv run --with coverage coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "_Coverage data was not generated._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v6
