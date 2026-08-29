@@ -1,0 +1,71 @@
+{
+  "breaking": false,
+  "changes": [
+    {
+      "after": {
+        "description": "Foreign reference to customer",
+        "id": "customer_id",
+        "logicalType": "string",
+        "name": "customer_id",
+        "physicalName": "col_customer_id",
+        "physicalType": "varchar(64)",
+        "required": false
+      },
+      "before": null,
+      "breaking": false,
+      "changeType": "ADD",
+      "domain": "STRUCTURE",
+      "entityType": "PROPERTY",
+      "evidence": [],
+      "field": null,
+      "identity": [
+        "orders",
+        "customer_id"
+      ],
+      "path": "schema[orders].properties[customer_id]",
+      "reasonCodes": []
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "6aca9196-551a-52f4-a814-e1a86f6ba3f3",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": true,
+    "versionViolation": false,
+    "violations": []
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Non-breaking structural or quality changes require a minor version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Schema or property additions require a minor version bump",
+      "path": null,
+      "severity": "INFO"
+    }
+  ],
+  "requiredVersionBump": "minor",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

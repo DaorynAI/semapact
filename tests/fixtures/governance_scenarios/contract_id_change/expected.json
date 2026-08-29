@@ -1,0 +1,73 @@
+{
+  "breaking": true,
+  "changes": [
+    {
+      "after": "renamed-orders-contract",
+      "before": "orders-contract",
+      "breaking": true,
+      "changeType": "MODIFY",
+      "domain": "IDENTITY",
+      "entityType": "CONTRACT",
+      "evidence": [],
+      "field": "id",
+      "identity": [
+        "orders-contract"
+      ],
+      "path": "id",
+      "reasonCodes": [
+        "CONTRACT_ID_CHANGED"
+      ]
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "BLOCK",
+  "decisionId": "750bd41f-1b63-5de6-a47c-47d9515c4d10",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": true,
+    "retiredViolation": false,
+    "valid": false,
+    "versionViolation": false,
+    "violations": [
+      {
+        "code": "CONTRACT_ID_CHANGED",
+        "details": {},
+        "message": "Contract ID mismatch. You changed the root ID of the contract, which is immutable. If you want to create a new contract, use 'semapact import --new' or change the ID back.",
+        "path": "id",
+        "severity": "ERROR"
+      }
+    ]
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "CONTRACT_ID_CHANGED"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Breaking lifecycle changes require a major version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "CONTRACT_ID_CHANGED",
+      "details": {},
+      "message": "Contract ID mismatch. You changed the root ID of the contract, which is immutable. If you want to create a new contract, use 'semapact import --new' or change the ID back.",
+      "path": "id",
+      "severity": "ERROR"
+    }
+  ],
+  "requiredVersionBump": "major",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "breaking": false,
+  "changes": [
+    {
+      "after": "retired",
+      "before": "active",
+      "breaking": false,
+      "changeType": "DEPRECATE",
+      "domain": "LIFECYCLE",
+      "entityType": "CONTRACT",
+      "evidence": [],
+      "field": "status",
+      "identity": [
+        "orders-contract"
+      ],
+      "path": "status",
+      "reasonCodes": []
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "b18506a1-f428-510f-9c5b-848054f2b03f",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": true,
+    "versionViolation": false,
+    "violations": [
+      {
+        "code": "CONTRACT_RETIRED_TRANSITION",
+        "details": {},
+        "message": "Contract transition to retired status requires governance review.",
+        "path": "status",
+        "severity": "WARNING"
+      }
+    ]
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "CONTRACT_RETIRED_TRANSITION"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Only descriptive metadata changed; no required version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "CONTRACT_RETIRED_TRANSITION",
+      "details": {},
+      "message": "Contract transition to retired status requires governance review.",
+      "path": "status",
+      "severity": "WARNING"
+    }
+  ],
+  "requiredVersionBump": "none",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

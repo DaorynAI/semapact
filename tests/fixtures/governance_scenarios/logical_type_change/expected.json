@@ -1,0 +1,90 @@
+{
+  "breaking": true,
+  "changes": [
+    {
+      "after": "string",
+      "before": "number",
+      "breaking": true,
+      "changeType": "MODIFY",
+      "domain": "STRUCTURE",
+      "entityType": "PROPERTY",
+      "evidence": [],
+      "field": "logicalType",
+      "identity": [
+        "orders",
+        "amount"
+      ],
+      "path": "schema[orders].properties[amount].logicalType",
+      "reasonCodes": [
+        "LOGICAL_TYPE_CHANGED"
+      ]
+    },
+    {
+      "after": "varchar(64)",
+      "before": "decimal(10,2)",
+      "breaking": false,
+      "changeType": "MODIFY",
+      "domain": "STRUCTURE",
+      "entityType": "PROPERTY",
+      "evidence": [],
+      "field": "physicalType",
+      "identity": [
+        "orders",
+        "amount"
+      ],
+      "path": "schema[orders].properties[amount].physicalType",
+      "reasonCodes": []
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "106e6a6f-aee7-500e-bc67-1da9acba847b",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": false,
+    "versionViolation": false,
+    "violations": [
+      {
+        "code": "LOGICAL_TYPE_CHANGED",
+        "details": {},
+        "message": "Logical type changed from 'number' to 'string'",
+        "path": "schema[orders].properties[amount].logicalType",
+        "severity": "WARNING"
+      }
+    ]
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "LOGICAL_TYPE_CHANGED"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Breaking lifecycle changes require a major version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "LOGICAL_TYPE_CHANGED",
+      "details": {},
+      "message": "Logical type changed from 'number' to 'string'",
+      "path": "schema[orders].properties[amount].logicalType",
+      "severity": "WARNING"
+    }
+  ],
+  "requiredVersionBump": "major",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

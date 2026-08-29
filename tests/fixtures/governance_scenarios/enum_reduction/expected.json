@@ -1,0 +1,39 @@
+{
+  "breaking": false,
+  "changes": [],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "ALLOW",
+  "decisionId": "59d98075-e496-52c7-9a72-6045ccb21b0d",
+  "evidence": {
+    "hasChanges": false,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": true,
+    "versionViolation": false,
+    "violations": []
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "No contract changes detected",
+      "path": null,
+      "severity": "INFO"
+    }
+  ],
+  "requiredVersionBump": "none",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

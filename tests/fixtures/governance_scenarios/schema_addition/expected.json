@@ -1,0 +1,78 @@
+{
+  "breaking": false,
+  "changes": [
+    {
+      "after": {
+        "description": "Line items table",
+        "id": "line_items",
+        "name": "line_items",
+        "physicalName": "tbl_line_items",
+        "properties": [
+          {
+            "description": "Line item identifier",
+            "id": "item_id",
+            "logicalType": "string",
+            "name": "item_id",
+            "physicalName": "col_item_id",
+            "physicalType": "varchar(64)",
+            "required": true
+          }
+        ]
+      },
+      "before": null,
+      "breaking": false,
+      "changeType": "ADD",
+      "domain": "STRUCTURE",
+      "entityType": "SCHEMA",
+      "evidence": [],
+      "field": null,
+      "identity": [
+        "line_items"
+      ],
+      "path": "schema[line_items]",
+      "reasonCodes": []
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "54299462-9f11-563c-a152-f70551d6c5ea",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": true,
+    "versionViolation": false,
+    "violations": []
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Non-breaking structural or quality changes require a minor version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Schema or property additions require a minor version bump",
+      "path": null,
+      "severity": "INFO"
+    }
+  ],
+  "requiredVersionBump": "minor",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

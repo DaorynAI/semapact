@@ -1,0 +1,51 @@
+{
+  "breaking": false,
+  "changes": [],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "1678a050-8f17-5739-bfb2-83ab7aea05ad",
+  "evidence": {
+    "hasChanges": false,
+    "mergeConflictsCount": 1
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": true,
+    "versionViolation": false,
+    "violations": []
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "MERGE_CONFLICT"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "No contract changes detected",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "MERGE_CONFLICT",
+      "details": {
+        "property_name": "amount",
+        "rule": "description_conflict",
+        "schema_id": "orders"
+      },
+      "message": "Conflicting description updates from upstream branches",
+      "path": "schema[orders].properties[amount]",
+      "severity": "WARNING"
+    }
+  ],
+  "requiredVersionBump": "none",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

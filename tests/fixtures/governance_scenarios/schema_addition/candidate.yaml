@@ -1,0 +1,41 @@
+apiVersion: v3.1.0
+kind: DataContract
+id: orders-contract
+name: orders-contract
+version: 1.0.0
+status: active
+domain: commerce
+description:
+  purpose: Authoritative orders contract
+schema:
+  - id: orders
+    name: orders
+    physicalName: tbl_orders
+    description: Orders table description
+    properties:
+      - id: id
+        name: id
+        physicalName: col_id
+        logicalType: string
+        physicalType: varchar(64)
+        required: true
+        description: Primary identifier
+      - id: amount
+        name: amount
+        physicalName: col_amount
+        logicalType: number
+        physicalType: decimal(10,2)
+        required: false
+        description: Order total amount
+  - id: line_items
+    name: line_items
+    physicalName: tbl_line_items
+    description: Line items table
+    properties:
+      - id: item_id
+        name: item_id
+        physicalName: col_item_id
+        logicalType: string
+        physicalType: varchar(64)
+        required: true
+        description: Line item identifier

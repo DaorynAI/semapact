@@ -1,0 +1,88 @@
+{
+  "breaking": false,
+  "changes": [
+    {
+      "after": "integer",
+      "before": "string",
+      "breaking": false,
+      "changeType": "MODIFY",
+      "domain": "STRUCTURE",
+      "entityType": "PROPERTY",
+      "evidence": [],
+      "field": "logicalType",
+      "identity": [
+        "orders",
+        "legacy_code"
+      ],
+      "path": "schema[orders].properties[legacy_code].logicalType",
+      "reasonCodes": []
+    },
+    {
+      "after": "bigint",
+      "before": "varchar(255)",
+      "breaking": false,
+      "changeType": "MODIFY",
+      "domain": "STRUCTURE",
+      "entityType": "PROPERTY",
+      "evidence": [],
+      "field": "physicalType",
+      "identity": [
+        "orders",
+        "legacy_code"
+      ],
+      "path": "schema[orders].properties[legacy_code].physicalType",
+      "reasonCodes": []
+    },
+    {
+      "after": true,
+      "before": false,
+      "breaking": false,
+      "changeType": "MODIFY",
+      "domain": "STRUCTURE",
+      "entityType": "PROPERTY",
+      "evidence": [],
+      "field": "required",
+      "identity": [
+        "orders",
+        "legacy_code"
+      ],
+      "path": "schema[orders].properties[legacy_code].required",
+      "reasonCodes": []
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "17fec941-afae-54ce-9764-4d2efab07418",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": true,
+    "versionViolation": false,
+    "violations": []
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Non-breaking structural or quality changes require a minor version bump",
+      "path": null,
+      "severity": "INFO"
+    }
+  ],
+  "requiredVersionBump": "minor",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}
