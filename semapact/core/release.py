@@ -14,13 +14,8 @@ from semapact.lifecycle.changes import (
     GovernanceEntityType,
     analyze_governance_changes,
 )
-from semapact.lifecycle.identity import (
-    build_schema_index,
-    build_property_index,
-)
 from semapact.lifecycle.policy import BreakingChange, PolicyEvaluation, evaluate_merge_policy
-from semapact.lifecycle.status import is_explicitly_deprecated
-from semapact.utils.schema_utils import contract_to_dict, contract_to_model
+from semapact.utils.schema_utils import contract_to_model
 
 
 LOGGER = logging.getLogger(__name__)
@@ -28,36 +23,6 @@ LOGGER = logging.getLogger(__name__)
 RequiredBump = Literal["none", "minor", "major"]
 ActualVersionBump = Literal["patch", "minor", "major"]
 
-ROOT_DESCRIPTIVE_KEYS = {
-    "apiVersion",
-    "authoritativeDefinitions",
-    "contractCreatedTs",
-    "dataProduct",
-    "description",
-    "domain",
-    "id",
-    "kind",
-    "name",
-    "price",
-    "roles",
-    "slaDefaultElement",
-    "slaProperties",
-    "status",
-    "support",
-    "tags",
-    "team",
-    "tenant",
-    "version",
-}
-NESTED_DESCRIPTIVE_KEYS = {
-    "authoritativeDefinitions",
-    "businessName",
-    "classification",
-    "description",
-    "examples",
-    "tags",
-    "transformDescription",
-}
 SEMVER_TAG_RE = re.compile(r"(?:^|[/-])v?(?P<version>\d+\.\d+\.\d+)$")
 VERSION_RANK = {"none": 0, "patch": 1, "minor": 2, "major": 3}
 
@@ -338,106 +303,6 @@ def _parse_semver(version: str) -> tuple[int, int, int]:
     if not match:
         raise ValueError(f"Version '{version}' must be a semantic version like 1.2.3")
     return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-
-
-def _has_schema_or_property_additions(
-    base: OpenDataContractStandard, candidate: OpenDataContractStandard
-) -> bool:
-    base_schema = build_schema_index(base)
-    candidate_schema = build_schema_index(candidate)
-    if set(candidate_schema) - set(base_schema):
-        return True
-
-    for schema_key, candidate_obj in candidate_schema.items():
-        base_obj = base_schema.get(schema_key)
-        if base_obj is None:
-            continue
-        base_prop_keys = set(build_property_index(schema_key, base_obj.properties or []))
-        candidate_prop_keys = set(build_property_index(schema_key, candidate_obj.properties or []))
-        if candidate_prop_keys - base_prop_keys:
-            return True
-    return False
-
-
-def _has_new_deprecations(
-    base: OpenDataContractStandard, candidate: OpenDataContractStandard
-) -> bool:
-    base_schema = build_schema_index(base)
-    candidate_schema = build_schema_index(candidate)
-
-    for schema_key, base_obj in base_schema.items():
-        candidate_obj = candidate_schema.get(schema_key)
-        if candidate_obj is None:
-            continue
-        if not is_explicitly_deprecated(base_obj) and is_explicitly_deprecated(candidate_obj):
-            return True
-
-        base_props = build_property_index(schema_key, base_obj.properties or [])
-        candidate_props = build_property_index(schema_key, candidate_obj.properties or [])
-        for prop_key, base_prop in base_props.items():
-            candidate_prop = candidate_props.get(prop_key)
-            if candidate_prop is None:
-                continue
-            if not is_explicitly_deprecated(base_prop) and is_explicitly_deprecated(candidate_prop):
-                return True
-    return False
-
-
-
-def _has_non_breaking_structural_changes(
-    base: OpenDataContractStandard, candidate: OpenDataContractStandard
-) -> bool:
-    return _canonicalize(_strip_descriptive_contract(base)) != _canonicalize(
-        _strip_descriptive_contract(candidate)
-    )
-
-
-def _strip_descriptive_contract(contract: OpenDataContractStandard) -> dict[str, Any]:
-    payload = contract_to_dict(contract)
-    return _strip_descriptive_keys(payload, level=0)
-
-
-def _strip_descriptive_keys(value: Any, *, level: int) -> Any:
-    if isinstance(value, dict):
-        ignored = ROOT_DESCRIPTIVE_KEYS if level == 0 else NESTED_DESCRIPTIVE_KEYS
-        cleaned: dict[str, Any] = {}
-        for key, item in value.items():
-            if key in ignored:
-                continue
-            cleaned[key] = _strip_descriptive_keys(item, level=level + 1)
-        return cleaned
-    if isinstance(value, list):
-        cleaned_items = [
-            _strip_descriptive_keys(item, level=level + 1) for item in value
-        ]
-        return _sort_identity_list(cleaned_items)
-    return value
-
-
-def _sort_identity_list(items: list[Any]) -> list[Any]:
-    if not items:
-        return items
-    if all(isinstance(item, dict) and "name" in item for item in items):
-        return sorted(items, key=lambda item: str(item.get("name") or "").strip().lower())
-    if all(isinstance(item, dict) and "property" in item for item in items):
-        return sorted(
-            items,
-            key=lambda item: (
-                str(item.get("property") or ""),
-                str(item.get("value") or ""),
-            ),
-        )
-    return items
-
-
-def _canonicalize(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key: _canonicalize(value[key]) for key in sorted(value)}
-    if isinstance(value, list):
-        return [_canonicalize(item) for item in value]
-    return value
-
-
 
 
 def _dedupe(values: list[str]) -> list[str]:

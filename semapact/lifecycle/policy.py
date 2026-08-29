@@ -5,11 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
-from open_data_contract_standard.model import (
-    OpenDataContractStandard,
-    SchemaObject,
-    SchemaProperty,
-)
+from open_data_contract_standard.model import OpenDataContractStandard
 from semapact.governance_codes import GovernanceReasonCode
 from semapact.lifecycle.changes import (
     GovernanceChange,
@@ -22,12 +18,10 @@ from semapact.lifecycle.helpers import (
     decimal_scale_reduction,
 )
 from semapact.lifecycle.identity import (
-    PropertyIdentity,
     build_schema_index,
     build_property_index,
     validate_contract_identities,
 )
-from semapact.lifecycle.relationships import normalize_endpoint_value
 from semapact.lifecycle.status import (
     is_active_contract,
     participates_in_breaking_checks,
@@ -260,104 +254,6 @@ def evaluate_merge_policy(
     )
 
 
-def _root_id_changed(
-    base_contract: OpenDataContractStandard,
-    merged_contract: OpenDataContractStandard,
-) -> bool:
-    base_id = str(base_contract.id or "").strip()
-    merged_id = str(merged_contract.id or "").strip()
-    if not base_id and not merged_id:
-        return False
-    return base_id != merged_id
-
-
-def _root_version_changed(
-    base_contract: OpenDataContractStandard,
-    merged_contract: OpenDataContractStandard,
-) -> bool:
-    base_version = str(base_contract.version or "").strip()
-    merged_version = str(merged_contract.version or "").strip()
-    if not base_version and not merged_version:
-        return False
-    return base_version != merged_version
-
-
-
-def _property_breaking_changes(
-    base_prop: SchemaProperty,
-    target_prop: SchemaProperty,
-    path: str,
-) -> list[BreakingChange]:
-    breaks: list[BreakingChange] = []
-
-    base_logical = base_prop.logicalType
-    target_logical = target_prop.logicalType
-    if (
-        base_logical is not None
-        and target_logical is not None
-        and str(base_logical) != str(target_logical)
-    ):
-        breaks.append(
-            BreakingChange(
-                code=GovernanceReasonCode.LOGICAL_TYPE_CHANGED,
-                path=f"{path}.logicalType",
-                message=f"Logical type changed from {base_logical!r} to {target_logical!r}",
-            )
-        )
-
-    base_physical = base_prop.physicalType
-    target_physical = target_prop.physicalType
-
-    if _is_physical_type_narrowing(base_physical, target_physical):
-        breaks.append(
-            BreakingChange(
-                code=GovernanceReasonCode.PHYSICAL_TYPE_NARROWED,
-                path=f"{path}.physicalType",
-                message=f"Physical type narrowed from {base_physical!r} to {target_physical!r}",
-            )
-        )
-
-    if decimal_precision_reduction(target_physical, base_physical):
-        breaks.append(
-            BreakingChange(
-                code=GovernanceReasonCode.DECIMAL_PRECISION_REDUCED,
-                path=f"{path}.physicalType",
-                message=f"Decimal precision reduced from {base_physical!r} to {target_physical!r}",
-            )
-        )
-
-    if decimal_scale_reduction(target_physical, base_physical):
-        breaks.append(
-            BreakingChange(
-                code=GovernanceReasonCode.DECIMAL_SCALE_REDUCED,
-                path=f"{path}.physicalType",
-                message=f"Decimal scale reduced from {base_physical!r} to {target_physical!r}",
-            )
-        )
-
-    base_required = base_prop.required
-    target_required = target_prop.required
-    if base_required is False and target_required is True:
-        breaks.append(
-            BreakingChange(
-                code=GovernanceReasonCode.REQUIRED_TIGHTENED,
-                path=f"{path}.required",
-                message="Required flag tightened from False to True",
-            )
-        )
-
-    if _is_enum_value_reduction(base_prop, target_prop):
-        breaks.append(
-            BreakingChange(
-                code=GovernanceReasonCode.ENUM_VALUES_REMOVED,
-                path=f"{path}.enum",
-                message="Enum values reduced",
-            )
-        )
-
-    return breaks
-
-
 def _is_physical_type_narrowing(base_physical: Any, target_physical: Any) -> bool:
     if not isinstance(base_physical, str) or not isinstance(target_physical, str):
         return False
@@ -409,55 +305,3 @@ def _type_width(physical_type: str) -> int | None:
         return int(binary_match.group(1))
 
     return None
-
-
-def _is_enum_value_reduction(
-    base_prop: SchemaProperty,
-    target_prop: SchemaProperty,
-) -> bool:
-    base_values = _enum_values(base_prop)
-    target_values = _enum_values(target_prop)
-    if not base_values or not target_values:
-        return False
-    return not base_values.issubset(target_values)
-
-
-def _enum_values(prop: SchemaProperty) -> set[str]:
-    for key in ("enum", "enumValues"):
-        values = getattr(prop, key, None)
-        if not isinstance(values, list):
-            continue
-        return {str(item) for item in values}
-    return set()
-
-
-def _extract_relationship_hashes(
-    schema: SchemaObject, schema_properties: dict[PropertyIdentity, SchemaProperty]
-) -> set[str]:
-    hashes = set()
-
-    # 1. Schema-level relationships
-    rels = getattr(schema, "relationships", None)
-    if rels:
-        for rel in rels:
-            rel_type = getattr(rel, "type", "") or "foreignKey"
-            from_val = getattr(rel, "from_", None) or getattr(rel, "from", None) or ""
-            to_val = getattr(rel, "to", None) or ""
-
-            from_str = normalize_endpoint_value(from_val)
-            to_str = normalize_endpoint_value(to_val)
-
-            hashes.add(f"{rel_type}:{from_str}->{to_str}")
-
-    # 2. Property-level relationships: from_str derived from PropertyIdentity
-    for prop_key, prop in schema_properties.items():
-        prop_rels = getattr(prop, "relationships", None)
-        if prop_rels:
-            for rel in prop_rels:
-                rel_type = getattr(rel, "type", "") or "foreignKey"
-                to_val = getattr(rel, "to", None) or ""
-                from_str = f"{prop_key[0]}.{prop_key[1]}"
-                to_str = normalize_endpoint_value(to_val)
-                hashes.add(f"{rel_type}:{from_str}->{to_str}")
-
-    return hashes

@@ -52,23 +52,21 @@ def _build_manifest_payload(
     artifacts: dict[str, str] | None = None,
     audit_metadata: AuditMetadata | None = None,
 ) -> dict[str, Any]:
-    """Build the canonical CI/CD manifest payload dict from a GovernanceDecision.
+    """Build the canonical CI/CD manifest payload from a GovernanceDecision.
 
-    Both write_decision_manifest and prepare_ci_cd_artifacts call this to ensure
-    a single source of truth for manifest field names and serialization.
+    Legacy top-level fields remain compatibility projections only. Their values
+    must be derived from the authoritative decision payload rather than from a
+    parallel reason-code interpretation.
     """
+    decision_payload = decision.model_dump(mode="json")
     return {
-        "governanceDecision": decision.model_dump(mode="json"),
+        "governanceDecision": decision_payload,
         "valid": decision.validation.valid,
         "policyValid": decision.policy.valid,
         "idViolation": decision.policy.id_violation,
         "versionViolation": decision.policy.version_violation,
         "issues": [issue.model_dump(mode="json") for issue in decision.validation.issues],
-        "breakingChanges": [
-            v.model_dump(mode="json")
-            for v in decision.policy.violations
-            if v.code == "POLICY_BREAKING_CHANGE"
-        ],
+        "breakingChanges": decision_payload["policy"]["breaking_changes"],
         "conflicts": [asdict(conflict) for conflict in merge_conflicts],
         "artifacts": artifacts or {},
         "audit": asdict(audit_metadata) if audit_metadata is not None else None,
@@ -212,9 +210,13 @@ class ContractPipeline:
     ) -> PipelineArtifacts:
         """Write the merged contract and downstream CI/CD artifacts to disk."""
         if not isinstance(decision, GovernanceDecision):
-            raise TypeError(f"prepare_ci_cd_artifacts requires GovernanceDecision, got {type(decision).__name__}")
+            raise TypeError(
+                "prepare_ci_cd_artifacts requires GovernanceDecision, "
+                f"got {type(decision).__name__}"
+            )
 
-        # Enforce CI gate before writing any side-effect artifacts
+        # This side-effect boundary owns CI gate enforcement. REVIEW and BLOCK
+        # stop here before any merged-contract or exporter artifact is written.
         enforce_governance_gate(
             decision,
             GovernanceOperation.CI,
@@ -277,7 +279,8 @@ class ContractPipeline:
         )
         business_contract = self.loader.load(business_contract_path)
 
-        # Merge updates with fail_on_conflict=False so governance decision evaluates all conflicts and changes
+        # Merge with fail_on_conflict=False so the decision evaluates all
+        # conflicts and canonical changes before any protected side effect.
         merge_result = self.merge_contract_updates(
             imported_contract,
             business_contract,
@@ -290,7 +293,8 @@ class ContractPipeline:
         if merged_contract is None:
             raise ValueError("Merge did not produce a contract")
 
-        # Single-pass governance decision evaluation using the same explicit context as merge.
+        # Single-pass governance decision evaluation using the same explicit
+        # context as merge.
         decision = evaluate_governance_decision(
             business_contract,
             merged_contract,
@@ -298,19 +302,18 @@ class ContractPipeline:
             merge_conflicts=conflicts,
         )
 
-        # Write decision-only manifest FIRST as audit output before gate enforcement
-        manifest_path = write_decision_manifest(
+        # Persist decision evidence before the side-effect boundary so BLOCK
+        # and REVIEW outcomes still leave an inspectable CI audit manifest.
+        write_decision_manifest(
             decision,
             ci_manifest_output_path,
             audit_metadata=audit_metadata,
             merge_conflicts=merge_result.conflicts,
         )
 
-        # Centralized gate enforcement for CI operation (raises GovernanceBlockedError or GovernanceReviewRequiredError)
-        enforce_governance_gate(decision, GovernanceOperation.CI, manifest_path=manifest_path)
-
-        # ALLOW or REVIEW: Write artifacts and manifest
-        artifacts = self.prepare_ci_cd_artifacts(
+        # prepare_ci_cd_artifacts is the single CI side-effect boundary. It
+        # enforces the CI gate exactly once; only ALLOW proceeds to artifacts.
+        return self.prepare_ci_cd_artifacts(
             merge_result.contract,
             merge_result,
             decision,
@@ -321,8 +324,6 @@ class ContractPipeline:
             ge_suite_name=ge_suite_name,
             audit_metadata=audit_metadata,
         )
-
-        return artifacts
 
     def _resolve_lifecycle(self, contract: OpenDataContractStandard) -> str:
         """Resolve lifecycle status using centralized lifecycle resolution."""
