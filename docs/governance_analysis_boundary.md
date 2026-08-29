@@ -58,6 +58,32 @@ For the same normalized inputs and the same `ChangeContext`, repeated analysis m
 
 Analysis may compute evidence such as validation results, canonical `GovernanceChange` values, policy findings, breaking status, and the minimum required version bump. Computing a required version bump is analysis; applying a version is not.
 
+## Policy Findings, Decisions, and Gate Results
+
+These three concepts have different meanings and must not be treated as interchangeable:
+
+```text
+policy.valid
+= no policy-breaking findings were detected
+
+decision
+= authoritative governance disposition
+
+gate result
+= authoritative permission for a specific operation
+```
+
+A breaking change can therefore legitimately produce:
+
+```text
+policy.valid = false
+decision = REVIEW
+```
+
+This means the lifecycle policy found breaking evidence, not that every operation is prohibited. For example, analysis remains readable while a CI or publish operation may require review before side effects are allowed.
+
+External consumers must use `GovernanceDecision` and the operation-specific governance gate for authorization. They must not use `policy.valid`, `breaking`, or individual reason codes as independent permission checks.
+
 ## Side-Effecting Operations
 
 Mutation-capable workflows are downstream consumers of governance analysis. They must consume an already-produced `GovernanceDecision` (or an application result containing that decision) and enforce the appropriate `GovernanceOperation` gate before performing protected side effects.
@@ -83,3 +109,9 @@ A client or adapter must not independently reinterpret breaking changes, validat
 - input contracts remain unchanged;
 - repeated evaluation is deterministic;
 - the `GovernanceService.evaluate(...)` application boundary preserves the same purity guarantees.
+
+`tests/test_pipeline_manifest.py` additionally protects the CI boundary by checking that:
+
+- legacy manifest breaking-change fields are projections of the authoritative decision rather than a parallel reason-code interpretation;
+- reviewable non-breaking changes do not invent breaking evidence;
+- the automation pipeline enforces the CI gate once at the artifact side-effect boundary.
