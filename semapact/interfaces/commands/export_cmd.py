@@ -109,28 +109,22 @@ def run_export(args: argparse.Namespace) -> str:
 
 
 def run_export_ge(args: argparse.Namespace) -> str:
-    import sys
-
     try:
         from semapact.quality.ge_exporter import GreatExpectationsExporter
     except ImportError as exc:
         if "great_expectations" in str(exc) or "great-expectations" in str(exc):
-            sys.exit(
-                "Error: The 'great_expectations' library is required to export GE suites.\n"
+            raise ImportError(
+                "The 'great_expectations' library is required to export GE suites.\n"
                 "Please install it using: pip install \"semapact[quality]\" or pip install great_expectations"
-            )
+            ) from exc
         raise
 
-    try:
-        output_path = GreatExpectationsExporter().export_to_path(
-            args.contract,
-            args.output,
-            schema_name=args.schema_name,
-            suite_name=args.suite_name,
-            engine=args.engine,
-        )
-        return str(output_path)
-    except (RuntimeError, ImportError) as exc:
-        if "requires pyspark to be installed" in str(exc) or "pyspark" in str(exc):
-            sys.exit(str(exc))
-        raise
+    output_path = GreatExpectationsExporter().export_to_path(
+        args.contract,
+        args.output,
+        schema_name=args.schema_name,
+        suite_name=args.suite_name,
+        engine=args.engine,
+    )
+    return str(output_path)
+

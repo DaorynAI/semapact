@@ -342,7 +342,8 @@ def main() -> int:
             except ImportError:
                 import sys
                 print("❌ TUI requires the 'tui' extra. Install it via: pip install \"semapact[tui]\"", file=sys.stderr)
-                return 1
+                from semapact.interfaces.outcomes import CliExitCode
+                return int(CliExitCode.RUNTIME_ERROR)
             from semapact.tui.app import SemaPactTUI
             app = SemaPactTUI()
             app.run()
@@ -435,25 +436,34 @@ def main() -> int:
                 print(json.dumps(payload, indent=2, sort_keys=True))
                 return 0
 
+        from semapact.interfaces.outcomes import CliExitCode
         parser.error(f"Unknown command: {args.command}")
-        return 2
+        return int(CliExitCode.VALIDATION_FAILED)
 
     except KeyboardInterrupt:
         return 130
     except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) else 1
+        from semapact.interfaces.outcomes import CliExitCode
+        return exc.code if isinstance(exc.code, int) else int(CliExitCode.RUNTIME_ERROR)
     except Exception as exc:
-        from semapact.exceptions import SemaPactError
         import logging
+        from semapact.exceptions import (
+            GovernanceBlockedError,
+            GovernanceReviewRequiredError,
+            SemaPactError,
+        )
+        from semapact.interfaces.outcomes import exit_code_from_exception
 
-        if isinstance(exc, SemaPactError):
+        if isinstance(exc, (GovernanceBlockedError, GovernanceReviewRequiredError)):
+            logging.getLogger("semapact").info("Governance decision: %s", exc)
+        elif isinstance(exc, SemaPactError):
             logging.getLogger("semapact").error("Fatal error: %s", exc)
         else:
             logging.getLogger("semapact").error(
                 "Fatal error: %s", exc, exc_info=True
             )
         print(f"❌ {exc}", file=__import__("sys").stderr)
-        return 1
+        return exit_code_from_exception(exc)
 
 
 if __name__ == "__main__":

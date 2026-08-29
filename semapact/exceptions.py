@@ -20,10 +20,18 @@ class SemaPactError(Exception):
     pass
 
 
-class ValidationError(SemaPactError):
+class ValidationError(SemaPactError, ValueError):
     """Raised when a contract fails governance or structure validation."""
 
     pass
+
+
+
+class ReleaseValidationError(ValidationError):
+    """Raised when release candidate validation fails (e.g. insufficient version bump or no changes to release)."""
+
+    pass
+
 
 
 class MergeConflictError(SemaPactError):
