@@ -1,0 +1,74 @@
+{
+  "breaking": true,
+  "changes": [
+    {
+      "after": "varchar(32)",
+      "before": "varchar(64)",
+      "breaking": true,
+      "changeType": "MODIFY",
+      "domain": "STRUCTURE",
+      "entityType": "PROPERTY",
+      "evidence": [],
+      "field": "physicalType",
+      "identity": [
+        "orders",
+        "id"
+      ],
+      "path": "schema[orders].properties[id].physicalType",
+      "reasonCodes": [
+        "PHYSICAL_TYPE_NARROWED"
+      ]
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "4f94025b-d059-5dd6-a97f-80a2f124761b",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": false,
+    "versionViolation": false,
+    "violations": [
+      {
+        "code": "PHYSICAL_TYPE_NARROWED",
+        "details": {},
+        "message": "Physical type narrowed from 'varchar(64)' to 'varchar(32)'",
+        "path": "schema[orders].properties[id].physicalType",
+        "severity": "WARNING"
+      }
+    ]
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "PHYSICAL_TYPE_NARROWED"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Breaking lifecycle changes require a major version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "PHYSICAL_TYPE_NARROWED",
+      "details": {},
+      "message": "Physical type narrowed from 'varchar(64)' to 'varchar(32)'",
+      "path": "schema[orders].properties[id].physicalType",
+      "severity": "WARNING"
+    }
+  ],
+  "requiredVersionBump": "major",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

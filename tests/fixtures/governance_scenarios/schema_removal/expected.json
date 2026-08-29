@@ -1,0 +1,87 @@
+{
+  "breaking": true,
+  "changes": [
+    {
+      "after": null,
+      "before": {
+        "id": "audit_log",
+        "name": "audit_log",
+        "physicalName": "tbl_audit_log",
+        "properties": [
+          {
+            "id": "log_id",
+            "logicalType": "string",
+            "name": "log_id",
+            "physicalName": "col_log_id",
+            "physicalType": "varchar(64)",
+            "required": true
+          }
+        ]
+      },
+      "breaking": true,
+      "changeType": "REMOVE",
+      "domain": "STRUCTURE",
+      "entityType": "SCHEMA",
+      "evidence": [],
+      "field": null,
+      "identity": [
+        "audit_log"
+      ],
+      "path": "schema[audit_log]",
+      "reasonCodes": [
+        "SCHEMA_REMOVED"
+      ]
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "e3aeba92-dbbf-5ea6-8f3f-5cbbf0bf2449",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": false,
+    "versionViolation": false,
+    "violations": [
+      {
+        "code": "SCHEMA_REMOVED",
+        "details": {},
+        "message": "Schema removed from active contract",
+        "path": "schema[audit_log]",
+        "severity": "WARNING"
+      }
+    ]
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "SCHEMA_REMOVED"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Breaking lifecycle changes require a major version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "SCHEMA_REMOVED",
+      "details": {},
+      "message": "Schema removed from active contract",
+      "path": "schema[audit_log]",
+      "severity": "WARNING"
+    }
+  ],
+  "requiredVersionBump": "major",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

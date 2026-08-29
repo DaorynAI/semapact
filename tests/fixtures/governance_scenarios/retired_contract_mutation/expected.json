@@ -1,0 +1,75 @@
+{
+  "breaking": false,
+  "changes": [
+    {
+      "after": {
+        "purpose": "Retired orders contract - forbidden modification"
+      },
+      "before": {
+        "purpose": "Retired orders contract"
+      },
+      "breaking": false,
+      "changeType": "MODIFY",
+      "domain": "METADATA",
+      "entityType": "CONTRACT",
+      "evidence": [],
+      "field": "description",
+      "identity": [
+        "orders-contract"
+      ],
+      "path": "description",
+      "reasonCodes": []
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "BLOCK",
+  "decisionId": "cbc08d31-312b-548a-9619-51dddd337642",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": true,
+    "valid": false,
+    "versionViolation": false,
+    "violations": [
+      {
+        "code": "RETIRED_CONTRACT_MODIFIED",
+        "details": {},
+        "message": "Cannot modify a retired contract.",
+        "path": "status",
+        "severity": "ERROR"
+      }
+    ]
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "RETIRED_CONTRACT_MODIFIED"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Only descriptive metadata changed; no required version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "RETIRED_CONTRACT_MODIFIED",
+      "details": {},
+      "message": "Cannot modify a retired contract.",
+      "path": "status",
+      "severity": "ERROR"
+    }
+  ],
+  "requiredVersionBump": "none",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

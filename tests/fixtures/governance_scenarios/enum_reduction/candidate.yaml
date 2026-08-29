@@ -1,0 +1,30 @@
+apiVersion: v3.1.0
+kind: DataContract
+id: orders-contract
+name: orders-contract
+version: 1.0.0
+status: active
+domain: commerce
+description:
+  purpose: Contract with enum status
+schema:
+  - id: orders
+    name: orders
+    physicalName: tbl_orders
+    properties:
+      - id: id
+        name: id
+        physicalName: col_id
+        logicalType: string
+        physicalType: varchar(64)
+        required: true
+      - id: status
+        name: status
+        physicalName: col_status
+        logicalType: string
+        physicalType: varchar(32)
+        required: true
+        enum:
+          - PENDING
+          - PROCESSING
+          - COMPLETED

@@ -1,0 +1,26 @@
+apiVersion: v3.1.0
+kind: DataContract
+id: orders-contract
+name: orders-contract
+version: 1.0.0
+status: retired
+domain: commerce
+description:
+  purpose: Retired orders contract - forbidden modification
+schema:
+  - id: orders
+    name: orders
+    physicalName: tbl_orders
+    properties:
+      - id: id
+        name: id
+        physicalName: col_id
+        logicalType: string
+        physicalType: varchar(64)
+        required: true
+      - id: amount
+        name: amount
+        physicalName: col_amount
+        logicalType: number
+        physicalType: decimal(10,2)
+        required: false

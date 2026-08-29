@@ -1,0 +1,29 @@
+apiVersion: v3.1.0
+kind: DataContract
+id: orders-contract
+name: orders-contract
+version: 1.0.0
+status: active
+domain: commerce
+description:
+  purpose: Contract with deprecated property
+schema:
+  - id: orders
+    name: orders
+    physicalName: tbl_orders
+    properties:
+      - id: id
+        name: id
+        physicalName: col_id
+        logicalType: string
+        physicalType: varchar(64)
+        required: true
+      - id: legacy_code
+        name: legacy_code
+        physicalName: col_legacy
+        logicalType: string
+        physicalType: varchar(255)
+        required: false
+        customProperties:
+          - property: lifecycleStatus
+            value: deprecated

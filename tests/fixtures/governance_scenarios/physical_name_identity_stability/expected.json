@@ -1,0 +1,71 @@
+{
+  "breaking": false,
+  "changes": [
+    {
+      "after": "tbl_orders_renamed_in_db",
+      "before": "tbl_orders",
+      "breaking": false,
+      "changeType": "MODIFY",
+      "domain": "STRUCTURE",
+      "entityType": "SCHEMA",
+      "evidence": [],
+      "field": "physicalName",
+      "identity": [
+        "orders"
+      ],
+      "path": "schema[orders].physicalName",
+      "reasonCodes": []
+    },
+    {
+      "after": "col_id_renamed_in_db",
+      "before": "col_id",
+      "breaking": false,
+      "changeType": "MODIFY",
+      "domain": "STRUCTURE",
+      "entityType": "PROPERTY",
+      "evidence": [],
+      "field": "physicalName",
+      "identity": [
+        "orders",
+        "id"
+      ],
+      "path": "schema[orders].properties[id].physicalName",
+      "reasonCodes": []
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "a9b4d271-2c80-56db-a119-c87110dc40f4",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": true,
+    "versionViolation": false,
+    "violations": []
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Non-breaking structural or quality changes require a minor version bump",
+      "path": null,
+      "severity": "INFO"
+    }
+  ],
+  "requiredVersionBump": "minor",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

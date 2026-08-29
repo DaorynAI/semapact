@@ -1,0 +1,26 @@
+apiVersion: v3.1.0
+kind: DataContract
+id: orders-contract
+name: orders-contract
+version: 1.0.0
+status: active
+domain: commerce
+description:
+  purpose: Contract with relationship
+schema:
+  - id: orders
+    name: orders
+    physicalName: tbl_orders
+    properties:
+      - id: id
+        name: id
+        physicalName: col_id
+        logicalType: string
+        physicalType: varchar(64)
+        required: true
+      - id: customer_id
+        name: customer_id
+        physicalName: col_customer_id
+        logicalType: string
+        physicalType: varchar(64)
+        required: true

@@ -1,0 +1,77 @@
+{
+  "breaking": true,
+  "changes": [
+    {
+      "after": null,
+      "before": {
+        "to": "customers.id",
+        "type": "foreignKey"
+      },
+      "breaking": true,
+      "changeType": "REMOVE",
+      "domain": "RELATIONSHIP",
+      "entityType": "RELATIONSHIP",
+      "evidence": [],
+      "field": null,
+      "identity": [
+        "orders",
+        "foreignKey:->customers.id"
+      ],
+      "path": "schema[orders].relationships",
+      "reasonCodes": [
+        "RELATIONSHIP_REMOVED"
+      ]
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "1c53c03d-c05c-5416-9406-63703c8d5594",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": false,
+    "versionViolation": false,
+    "violations": [
+      {
+        "code": "RELATIONSHIP_REMOVED",
+        "details": {},
+        "message": "Relationship 'foreignKey:->customers.id' removed from active lifecycle scope. Downstream joins may fail.",
+        "path": "schema[orders].relationships",
+        "severity": "WARNING"
+      }
+    ]
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "RELATIONSHIP_REMOVED"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Breaking lifecycle changes require a major version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "RELATIONSHIP_REMOVED",
+      "details": {},
+      "message": "Relationship 'foreignKey:->customers.id' removed from active lifecycle scope. Downstream joins may fail.",
+      "path": "schema[orders].relationships",
+      "severity": "WARNING"
+    }
+  ],
+  "requiredVersionBump": "major",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

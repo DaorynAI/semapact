@@ -1,0 +1,73 @@
+{
+  "breaking": true,
+  "changes": [
+    {
+      "after": "2.0.0",
+      "before": "1.0.0",
+      "breaking": true,
+      "changeType": "MODIFY",
+      "domain": "VERSION",
+      "entityType": "CONTRACT",
+      "evidence": [],
+      "field": "version",
+      "identity": [
+        "orders-contract"
+      ],
+      "path": "version",
+      "reasonCodes": [
+        "CONTRACT_VERSION_MANUALLY_CHANGED"
+      ]
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "BLOCK",
+  "decisionId": "642819bc-96eb-551c-abd0-ed2ba0187d27",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": false,
+    "versionViolation": true,
+    "violations": [
+      {
+        "code": "CONTRACT_VERSION_MANUALLY_CHANGED",
+        "details": {},
+        "message": "Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change and use 'semapact release prepare'.",
+        "path": "version",
+        "severity": "ERROR"
+      }
+    ]
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "CONTRACT_VERSION_MANUALLY_CHANGED"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Breaking lifecycle changes require a major version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "CONTRACT_VERSION_MANUALLY_CHANGED",
+      "details": {},
+      "message": "Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change and use 'semapact release prepare'.",
+      "path": "version",
+      "severity": "ERROR"
+    }
+  ],
+  "requiredVersionBump": "major",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}

@@ -1,0 +1,23 @@
+apiVersion: v3.1.0
+kind: DataContract
+id: orders-contract
+name: orders-contract
+version: 1.0.0
+status: active
+domain: commerce
+description:
+  purpose: Authoritative orders contract
+schema:
+  - id: orders
+    name: orders
+    properties:
+      - id: id
+        name: ''
+        logicalType: string
+        physicalType: varchar(64)
+        required: true
+      - id: amount
+        name: amount
+        logicalType: number
+        physicalType: decimal(10,2)
+        required: false

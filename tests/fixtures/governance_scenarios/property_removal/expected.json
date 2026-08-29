@@ -1,0 +1,82 @@
+{
+  "breaking": true,
+  "changes": [
+    {
+      "after": null,
+      "before": {
+        "description": "Order total amount",
+        "id": "amount",
+        "logicalType": "number",
+        "name": "amount",
+        "physicalName": "col_amount",
+        "physicalType": "decimal(10,2)",
+        "required": false
+      },
+      "breaking": true,
+      "changeType": "REMOVE",
+      "domain": "STRUCTURE",
+      "entityType": "PROPERTY",
+      "evidence": [],
+      "field": null,
+      "identity": [
+        "orders",
+        "amount"
+      ],
+      "path": "schema[orders].properties[amount]",
+      "reasonCodes": [
+        "PROPERTY_REMOVED"
+      ]
+    }
+  ],
+  "context": {
+    "effectiveDate": "2026-01-01"
+  },
+  "contractId": "orders-contract",
+  "decision": "REVIEW",
+  "decisionId": "2ac271d9-2c86-578a-aafb-394ce63f3a4b",
+  "evidence": {
+    "hasChanges": true,
+    "mergeConflictsCount": 0
+  },
+  "policy": {
+    "idViolation": false,
+    "retiredViolation": false,
+    "valid": false,
+    "versionViolation": false,
+    "violations": [
+      {
+        "code": "PROPERTY_REMOVED",
+        "details": {},
+        "message": "Property removed from active lifecycle scope",
+        "path": "schema[orders].properties[amount]",
+        "severity": "WARNING"
+      }
+    ]
+  },
+  "reasonCodes": [
+    "CHANGE_ASSESSMENT",
+    "PROPERTY_REMOVED"
+  ],
+  "reasons": [
+    {
+      "code": "CHANGE_ASSESSMENT",
+      "details": {},
+      "message": "Breaking lifecycle changes require a major version bump",
+      "path": null,
+      "severity": "INFO"
+    },
+    {
+      "code": "PROPERTY_REMOVED",
+      "details": {},
+      "message": "Property removed from active lifecycle scope",
+      "path": "schema[orders].properties[amount]",
+      "severity": "WARNING"
+    }
+  ],
+  "requiredVersionBump": "major",
+  "schemaVersion": "1",
+  "validation": {
+    "issues": [],
+    "valid": true
+  }
+}
