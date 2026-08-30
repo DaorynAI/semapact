@@ -76,6 +76,7 @@ jobs:
           .venv/bin/python -m pytest
           tests/test_databricks_client.py
           tests/test_databricks_discovery.py
+          tests/test_databricks_workflow_separation.py
           tests/test_observation_databricks.py
 
   coverage:
