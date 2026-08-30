@@ -1,0 +1,30 @@
+{
+  "name": "orders",
+  "catalog_name": "main",
+  "schema_name": "silver",
+  "full_name": "main.silver.orders",
+  "table_type": "MANAGED",
+  "columns": [
+    {
+      "name": "customer_id",
+      "type_name": "STRING",
+      "type_text": "string",
+      "position": 1,
+      "nullable": false
+    },
+    {
+      "name": "note",
+      "type_name": "STRING",
+      "type_text": "string",
+      "position": 2,
+      "nullable": true
+    },
+    {
+      "name": "order_id",
+      "type_name": "BIGINT",
+      "type_text": "bigint",
+      "position": 0,
+      "nullable": false
+    }
+  ]
+}

@@ -18,31 +18,44 @@ SemaPact is an enterprise data contract control plane and governance platform. I
 ## 2. Layered Architecture Boundaries (CRITICAL)
 
 ### A. Ingestion / Import Layer
-- **Role:** Converts external data structures (Delta Tables, Spark DDL, Unity Catalog) into Open Data Contract Standard (ODCS) models.
+- **Role:** Converts external data structures into Open Data Contract Standard (ODCS) models when a contract import is explicitly requested.
 - **Rules:**
   - Must remain strictly stateless and idempotent.
   - **NEVER** place merge, governance, or GitOps logic inside importers.
+  - Contract import is distinct from platform observation; observing a platform must not implicitly create or mutate an ODCS contract.
 
-### B. Core Contract Model
-- **Role:** Single canonical representation of the schema and metadata.
+### B. Governed Contract Model
+- **Role:** Single canonical representation of governed desired contract state.
 - **Rules:**
-  - The ODCS YAML/Pydantic model is the single source of truth across the architecture. No alternative models are allowed.
+  - The ODCS YAML/Pydantic model is the single source of truth for governed contract state.
+  - External platform state must not become governed truth merely because it was observed.
 
-### C. Lifecycle Governance Layer
+### C. Platform Observation Model
+- **Role:** Represents point-in-time external platform state for assurance and reconciliation workflows.
+- **Rules:**
+  - `ObservedPlatformState` is a read-side model, not an alternative canonical contract format.
+  - Core observation models must remain platform-neutral; provider hierarchy belongs in adapter-local mapping into a generic ordered `namespace`.
+  - Platform-local identity must remain distinct from ODCS contract identity.
+  - Provider adapters may reuse official platform SDK access, but must not route observation through ODCS import/projection.
+  - Observation must not invoke lifecycle merge, governance evaluation, release mutation, or platform writeback.
+  - Rich metadata, constraints, relationships, and lineage are evidence enrichments, not prerequisites for the minimal observed-state model.
+  - Converting observed state into an ODCS contract is an explicit import workflow, never an implicit observation side effect.
+
+### D. Lifecycle Governance Layer
 - **Role:** Handles breaking change checks, deprecation rules, merge policies, and version bump calculations.
 - **Rules:**
   - This is the **ONLY** place where contract lifecycle logic is allowed.
-  - It must remain fully decoupled from the UI and ingestion layers.
+  - It must remain fully decoupled from the UI, ingestion, and platform observation layers.
 
-### D. Export Layer
+### E. Export Layer
 - **Role:** Converts contracts to downstream assets (Great Expectations suites, Spark DDL, Graph cypher).
 - **Rules:**
   - Exporters must be read-only and **NEVER** modify the original contracts.
 
-### E. Orchestration Layer
+### F. Orchestration Layer
 - **Role:** Coordinates multi-step workflows (e.g. import → merge → export → PR).
 - **Rules:**
   - Coordinates execution paths but must NOT contain custom business logic.
 
-### F. DevOps Layer
+### G. DevOps Layer
 - **Role:** Automates PR creation, version bumps, release manifest building, and metadata auditing.

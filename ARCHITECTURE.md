@@ -97,7 +97,36 @@ Important boundary:
 - `GovernanceService` creates `ChangeContext`
 - lifecycle/governance lower layers consume that context and must not regenerate it
 
-### 5. Exporters
+### 5. Platform Observation
+
+Location:
+
+- `semapact/observation/`
+
+Responsibilities:
+
+- represent point-in-time external platform state independently from governed contracts
+- keep the core observed-state domain platform-neutral
+- map provider-local identity into `platform + ordered namespace + asset`
+- observe physical asset/property state without creating or mutating ODCS contracts
+
+Key modules:
+
+- `semapact/observation/models.py`
+- `semapact/observation/databricks.py`
+
+Important boundary:
+
+- `ObservedPlatformState` is read-side state, not governed truth
+- observed asset identity is platform-local and distinct from ODCS contract identity
+- provider-specific hierarchy such as Databricks `catalog/schema` belongs in the adapter, not the core model
+- Databricks observation consumes the official SDK `WorkspaceClient.tables.get(...) -> TableInfo` boundary instead of reimplementing the Unity Catalog REST transport
+- observation projects `TableInfo` directly into observed state; it must not route through datacontract-cli's ODCS projection
+- rich metadata, constraints, relationships, and lineage are follow-up evidence enrichments rather than prerequisites for the minimal observation model
+- observation must not invoke lifecycle merge, governance evaluation, release mutation, or platform writeback
+- explicit contract import remains a separate workflow
+
+### 6. Exporters
 
 Location:
 
@@ -115,7 +144,7 @@ Key modules:
 - `semapact/quality/ge_exporter.py`
 - `semapact/exporters/sql_exporter.py`
 
-### 6. Orchestration
+### 7. Orchestration
 
 Location:
 
@@ -130,7 +159,7 @@ Key module:
 
 - `semapact/orchestrator/pipeline.py`
 
-### 7. Interfaces
+### 8. Interfaces
 
 Location:
 
@@ -148,14 +177,28 @@ Current interface:
 - CLI in `semapact/interfaces/cli.py`
 - command adapters in `semapact/interfaces/commands/`
 
-## Current Contract Model
+## Governed Contract Model
 
-SemaPact currently assumes:
+SemaPact assumes:
 
-- Open Data Contract Standard (ODCS) is the single canonical contract representation
-- `open_data_contract_standard.model.OpenDataContractStandard` is the canonical runtime model
+- Open Data Contract Standard (ODCS) is the single canonical representation of governed desired contract state
+- `open_data_contract_standard.model.OpenDataContractStandard` is the canonical governed contract domain model
 
-The system may temporarily work with Python `dict` objects at boundaries, but normalization should converge back to ODCS objects or ODCS-shaped mappings.
+The system may temporarily work with Python `dict` objects at contract boundaries, but contract normalization should converge back to ODCS objects or ODCS-shaped mappings.
+
+Platform observations are intentionally different. `ObservedPlatformState` is a non-canonical read-side model describing what an external platform reports at a point in time. It must not replace or mutate the governed ODCS contract.
+
+Conceptually:
+
+```text
+Approved ODCS Contract
+= desired governed state
+
+ObservedPlatformState
+= observed external platform state
+```
+
+Converting external metadata into a new ODCS contract is an explicit import workflow. Observing platform state does not implicitly perform that conversion.
 
 ## Root Contract Governance
 
@@ -367,10 +410,13 @@ Precedence:
 
 ## Current Design Principles
 
-- main contract is canonical and immutable from presentation paths
+- main governed contract is canonical and immutable from presentation paths
+- ODCS is the canonical model for governed desired contract state
+- platform observation is separate read-side state and cannot become governed truth implicitly
+- core observation models are platform-neutral; provider-specific hierarchy belongs in adapters
+- reuse official platform access/SDK layers where practical, while keeping ODCS import projection separate from observation
 - service layer is the application boundary between interfaces and system logic
 - lifecycle logic belongs in the lifecycle layer
-- ODCS is the canonical contract model
 - datacontract-cli is reused where possible instead of reimplemented
 
 ## Authoritative Governance Invariants
@@ -396,6 +442,10 @@ Precedence:
 
 ## Known Next Steps
 
+- separate platform discovery, observation, and contract import application workflows, starting with Databricks Unity Catalog
+- add stable observed-state fingerprints and reconciliation semantics
+- add governance-relevant metadata/constraint/relationship evidence independently from the minimal observation model
+- add lineage as optional runtime evidence rather than a core observation dependency
 - formalize draft promotion flow
 - continue reducing interface-specific logic that still lives near command/editor helpers
-- keep converging helper logic toward ODCS model-driven behavior
+- keep converging governed contract helper logic toward ODCS model-driven behavior
