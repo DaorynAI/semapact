@@ -5,7 +5,7 @@ Downstream platform capabilities such as observation consume the resulting
 client and remain independent from the authentication mechanism used to create
 it.
 
-The initial supported path is explicit workspace URL + token. Additional
+The initial supported path is explicit workspace URL + PAT token. Additional
 Databricks SDK authentication modes can be added here without changing
 observation models or platform-operation signatures.
 """
@@ -23,11 +23,12 @@ def create_databricks_workspace_client(
     workspace_url: str,
     token: str,
 ) -> WorkspaceClient:
-    """Create an authenticated Databricks SDK client from explicit credentials.
+    """Create a Databricks SDK client using explicit PAT authentication.
 
     Credential resolution belongs to the caller/application boundary. This
     function intentionally performs no logging and never includes the token in
-    validation errors.
+    validation errors. ``auth_type='pat'`` prevents the SDK from selecting a
+    different authentication provider based on ambient machine configuration.
     """
     host = workspace_url.strip() if workspace_url else ""
     if not host:
@@ -36,7 +37,11 @@ def create_databricks_workspace_client(
         raise ValueError("token is required")
 
     workspace_client_cls = _load_workspace_client_class()
-    return workspace_client_cls(host=host.rstrip("/"), token=token)
+    return workspace_client_cls(
+        host=host.rstrip("/"),
+        token=token,
+        auth_type="pat",
+    )
 
 
 def _load_workspace_client_class() -> Any:
