@@ -10,6 +10,7 @@ from semapact.platforms.databricks.discovery import discover_databricks_tables
 @dataclass
 class _FakeTable:
     full_name: str | None
+    name: str | None = None
 
 
 class _FakeTablesApi:
@@ -38,7 +39,7 @@ def test_discover_databricks_tables_lists_without_observing_or_importing() -> No
             _FakeTable("main.sales.Z_orders"),
             _FakeTable("main.sales.accounts"),
             _FakeTable("main.sales.accounts"),
-            _FakeTable(None),
+            _FakeTable(None, name="customers"),
         ]
     )
 
@@ -50,6 +51,7 @@ def test_discover_databricks_tables_lists_without_observing_or_importing() -> No
 
     assert discovered == (
         "main.sales.accounts",
+        "main.sales.customers",
         "main.sales.Z_orders",
     )
     assert client.tables.calls == [
@@ -58,6 +60,20 @@ def test_discover_databricks_tables_lists_without_observing_or_importing() -> No
             "schema_name": "sales",
         }
     ]
+
+
+def test_discover_databricks_tables_fails_on_missing_table_identity() -> None:
+    client = _FakeWorkspaceClient([_FakeTable(None)])
+
+    with pytest.raises(
+        ValueError,
+        match="Databricks discovery returned a table without an identity",
+    ):
+        discover_databricks_tables(
+            client=client,
+            catalog_name="main",
+            schema_name="sales",
+        )
 
 
 @pytest.mark.parametrize(
