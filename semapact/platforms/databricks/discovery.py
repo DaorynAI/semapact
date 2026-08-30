@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 class _TableInfoLike(Protocol):
     full_name: str | None
+    name: str | None
 
 
 class _TablesApiLike(Protocol):
@@ -44,8 +45,12 @@ def discover_databricks_tables(
     discovered: set[str] = set()
     for table in client.tables.list(catalog_name=catalog, schema_name=schema):
         full_name = _text(table.full_name)
-        if full_name:
-            discovered.add(full_name)
+        if not full_name:
+            name = _text(table.name)
+            if not name:
+                raise ValueError("Databricks discovery returned a table without an identity")
+            full_name = f"{catalog}.{schema}.{name}"
+        discovered.add(full_name)
 
     return tuple(sorted(discovered, key=lambda value: (value.casefold(), value)))
 
