@@ -66,10 +66,10 @@ jobs:
       - name: Install SemaPact Databricks extra from project metadata
         run: uv pip install --python .venv/bin/python -e ".[databricks]" pytest
 
-      - name: Verify Databricks SDK boundary
+      - name: Verify Databricks SDK and existing Unity import boundaries
         run: >-
           .venv/bin/python -c
-          "from databricks.sdk import WorkspaceClient; from databricks.sdk.service.catalog import TableInfo; print(WorkspaceClient.__name__, TableInfo.__name__)"
+          "from databricks.sdk import WorkspaceClient; from databricks.sdk.service.catalog import TableInfo; from semapact.importers.unity_importer import import_unity_contract; print(WorkspaceClient.__name__, TableInfo.__name__, import_unity_contract.__name__)"
 
       - name: Run Databricks observation tests with official SDK installed
         run: .venv/bin/python -m pytest tests/test_observation_databricks.py
