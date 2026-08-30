@@ -69,7 +69,7 @@ jobs:
       - name: Verify Databricks SDK and platform workflow boundaries
         run: >-
           .venv/bin/python -c
-          "import inspect; from databricks.sdk import WorkspaceClient; from databricks.sdk.service.catalog import TableInfo; from semapact.importers.unity_importer import import_unity_contract; from semapact.platforms.databricks import create_databricks_workspace_client, discover_databricks_tables; client_params = inspect.signature(WorkspaceClient).parameters; list_params = inspect.signature(WorkspaceClient.tables.fget).parameters if False else None; assert {'host', 'token', 'profile'} <= set(client_params); print(WorkspaceClient.__name__, TableInfo.__name__, import_unity_contract.__name__, create_databricks_workspace_client.__name__, discover_databricks_tables.__name__)"
+          "import inspect; from databricks.sdk import WorkspaceClient; from databricks.sdk.service.catalog import TableInfo, TablesAPI; from semapact.importers.unity_importer import import_unity_contract; from semapact.platforms.databricks import create_databricks_workspace_client, discover_databricks_tables; client_params = inspect.signature(WorkspaceClient).parameters; list_params = inspect.signature(TablesAPI.list).parameters; assert {'host', 'token', 'profile'} <= set(client_params); assert {'catalog_name', 'schema_name'} <= set(list_params); print(WorkspaceClient.__name__, TableInfo.__name__, import_unity_contract.__name__, create_databricks_workspace_client.__name__, discover_databricks_tables.__name__)"
 
       - name: Run Databricks platform-boundary tests with official SDK installed
         run: >-
