@@ -72,9 +72,10 @@ class ObservedAsset(ObservationModel):
 class ObservedPlatformState(ObservationModel):
     """Point-in-time platform observation independent from governed ODCS state.
 
-    ``fingerprint`` is intentionally optional. Stable normalization and hashing
-    belong to the dedicated observed-state fingerprint capability; this model
-    only reserves the field used by that later capability.
+    ``fingerprint`` is the optional versioned semantic content hash for this
+    observed state. Provider adapters may populate it through the shared
+    fingerprint capability; manually constructed observations may leave it
+    unset until fingerprinting is requested.
     """
 
     platform: str
