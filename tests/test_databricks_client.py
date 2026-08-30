@@ -11,7 +11,7 @@ class _FakeWorkspaceClient:
         self.kwargs = kwargs
 
 
-def test_create_databricks_workspace_client_uses_explicit_host_and_token(
+def test_create_databricks_workspace_client_uses_explicit_pat_auth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -29,6 +29,7 @@ def test_create_databricks_workspace_client_uses_explicit_host_and_token(
     assert client.kwargs == {
         "host": "https://adb.example",
         "token": "secret-token",
+        "auth_type": "pat",
     }
 
 
