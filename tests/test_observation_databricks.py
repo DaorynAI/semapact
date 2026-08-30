@@ -63,7 +63,10 @@ def test_databricks_table_info_maps_to_platform_neutral_observation() -> None:
     assert state.platform == "databricks"
     assert state.source_identifier == "https://adb.example"
     assert state.captured_at == CAPTURED_AT
-    assert state.fingerprint is None
+    assert state.fingerprint == (
+        "obs-v1:sha256:"
+        "cc72fb5e20b673784b0847f6f903c05178b88c3d88ffb25f830da0a373457287"
+    )
 
     assert len(state.assets) == 1
     asset = state.assets[0]
@@ -119,6 +122,7 @@ def test_serialization_is_stable_when_databricks_column_order_changes() -> None:
     )
 
     assert left == right
+    assert left.fingerprint == right.fingerprint
     assert serialize_observed_state(left) == serialize_observed_state(right)
 
 
@@ -134,6 +138,7 @@ def test_observe_databricks_table_uses_workspace_client_tables_get() -> None:
 
     assert client.tables.calls == ["main.silver.orders"]
     assert state.assets[0].identity.asset == "orders"
+    assert state.fingerprint is not None
 
 
 def test_mapper_accepts_official_databricks_sdk_table_info_when_extra_is_installed() -> None:
@@ -148,6 +153,7 @@ def test_mapper_accepts_official_databricks_sdk_table_info_when_extra_is_install
 
     assert state.assets[0].identity.namespace == ("main", "silver")
     assert state.assets[0].properties[0].identity.property == "order_id"
+    assert state.fingerprint is not None
 
 
 def test_observation_models_are_immutable() -> None:
