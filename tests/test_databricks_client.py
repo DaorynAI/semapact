@@ -11,65 +11,65 @@ class _FakeWorkspaceClient:
         self.kwargs = kwargs
 
 
-def test_create_databricks_workspace_client_uses_explicit_pat_auth(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _use_fake_workspace_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         databricks_client,
         "_load_workspace_client_class",
         lambda: _FakeWorkspaceClient,
     )
 
+
+def test_create_databricks_workspace_client_forwards_available_hints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _use_fake_workspace_client(monkeypatch)
+
     client = create_databricks_workspace_client(
         workspace_url=" https://adb.example/ ",
         token="secret-token",
+        profile=" prod ",
     )
 
     assert isinstance(client, _FakeWorkspaceClient)
     assert client.kwargs == {
         "host": "https://adb.example",
         "token": "secret-token",
-        "auth_type": "pat",
+        "profile": "prod",
     }
 
 
 @pytest.mark.parametrize(
-    ("workspace_url", "token", "message"),
+    ("kwargs", "expected"),
     [
-        ("", "secret-token", "workspace_url is required"),
-        ("   ", "secret-token", "workspace_url is required"),
-        ("https://adb.example", "", "token is required"),
-        ("https://adb.example", "   ", "token is required"),
+        ({}, {}),
+        ({"workspace_url": "https://adb.example/"}, {"host": "https://adb.example"}),
+        ({"token": "secret-token"}, {"token": "secret-token"}),
+        ({"profile": "prod"}, {"profile": "prod"}),
     ],
 )
-def test_missing_credentials_fail_without_echoing_secret_values(
-    workspace_url: str,
-    token: str,
-    message: str,
+def test_create_databricks_workspace_client_leaves_missing_auth_to_sdk(
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict[str, str],
+    expected: dict[str, str],
 ) -> None:
-    with pytest.raises(ValueError) as exc_info:
-        create_databricks_workspace_client(
-            workspace_url=workspace_url,
-            token=token,
-        )
+    _use_fake_workspace_client(monkeypatch)
 
-    assert str(exc_info.value) == message
-    assert "secret-token" not in str(exc_info.value)
+    client = create_databricks_workspace_client(**kwargs)
+
+    assert isinstance(client, _FakeWorkspaceClient)
+    assert client.kwargs == expected
 
 
-def test_workspace_client_factory_is_loaded_only_after_validation(
+def test_create_databricks_workspace_client_omits_blank_hints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    loaded = False
+    _use_fake_workspace_client(monkeypatch)
 
-    def _load() -> type[_FakeWorkspaceClient]:
-        nonlocal loaded
-        loaded = True
-        return _FakeWorkspaceClient
+    client = create_databricks_workspace_client(
+        workspace_url="   ",
+        token="   ",
+        profile="   ",
+    )
 
-    monkeypatch.setattr(databricks_client, "_load_workspace_client_class", _load)
-
-    with pytest.raises(ValueError, match="workspace_url is required"):
-        create_databricks_workspace_client(workspace_url="", token="secret-token")
-
-    assert loaded is False
+    assert isinstance(client, _FakeWorkspaceClient)
+    assert client.kwargs == {}
