@@ -43,6 +43,37 @@ jobs:
       - name: Verify package build
         run: uv build
 
+  databricks-extra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UV_NO_PROGRESS: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Create isolated environment
+        run: uv venv
+
+      - name: Install SemaPact Databricks extra from project metadata
+        run: uv pip install --python .venv/bin/python -e ".[databricks]" pytest
+
+      - name: Verify Databricks SDK boundary
+        run: >-
+          .venv/bin/python -c
+          "from databricks.sdk import WorkspaceClient; from databricks.sdk.service.catalog import TableInfo; print(WorkspaceClient.__name__, TableInfo.__name__)"
+
+      - name: Run Databricks observation tests with official SDK installed
+        run: .venv/bin/python -m pytest tests/test_observation_databricks.py
+
   coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 30
