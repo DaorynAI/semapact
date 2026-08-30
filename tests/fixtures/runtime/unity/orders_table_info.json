@@ -1,0 +1,89 @@
+{
+  "name": "orders",
+  "catalog_name": "main",
+  "schema_name": "silver",
+  "full_name": "main.silver.orders",
+  "table_id": "5d3dc5ba-9070-4f24-b21f-4a153fe2a31d",
+  "table_type": "MANAGED",
+  "data_source_format": "DELTA",
+  "owner": "data-platform@example.com",
+  "comment": "Current production orders table",
+  "storage_location": "abfss://silver@example.dfs.core.windows.net/orders",
+  "created_at": 1788057600000,
+  "updated_at": 1788144000000,
+  "properties": {
+    "delta.enableChangeDataFeed": "true",
+    "delta.minReaderVersion": "2"
+  },
+  "tags": {
+    "domain": "sales",
+    "tier": "silver"
+  },
+  "columns": [
+    {
+      "name": "customer_id",
+      "type_name": "STRING",
+      "type_text": "string",
+      "type_json": "{\"type\":\"string\"}",
+      "position": 1,
+      "nullable": false,
+      "comment": "Customer identifier",
+      "tags": {
+        "classification": "identifier"
+      }
+    },
+    {
+      "name": "note",
+      "type_name": "STRING",
+      "type_text": "string",
+      "position": 2,
+      "nullable": true,
+      "comment": "Optional order note"
+    },
+    {
+      "name": "order_id",
+      "type_name": "BIGINT",
+      "type_text": "bigint",
+      "type_json": "{\"type\":\"long\"}",
+      "position": 0,
+      "nullable": false,
+      "comment": "Order identifier"
+    }
+  ],
+  "table_constraints": [
+    {
+      "foreign_key_constraint": {
+        "name": "fk_orders_customer",
+        "child_columns": ["customer_id"],
+        "parent_table": "main.silver.customers",
+        "parent_columns": ["customer_id"],
+        "rely": true
+      }
+    },
+    {
+      "primary_key_constraint": {
+        "name": "pk_orders",
+        "child_columns": ["order_id"],
+        "rely": true
+      }
+    }
+  ],
+  "view_dependencies": {
+    "dependencies": [
+      {
+        "table": {
+          "table_full_name": "main.bronze.orders_raw"
+        }
+      },
+      {
+        "function": {
+          "function_full_name": "main.shared.normalize_order"
+        }
+      }
+    ]
+  },
+  "runtime_extension": {
+    "source": "fixture",
+    "revision": 7
+  }
+}
