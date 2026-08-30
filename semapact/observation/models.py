@@ -73,8 +73,8 @@ class ObservedPlatformState(ObservationModel):
     """Point-in-time platform observation independent from governed ODCS state.
 
     ``fingerprint`` is intentionally optional. Stable normalization and hashing
-    belong to the dedicated runtime fingerprint capability; this model only
-    reserves the field used by that later capability.
+    belong to the dedicated observed-state fingerprint capability; this model
+    only reserves the field used by that later capability.
     """
 
     platform: str
