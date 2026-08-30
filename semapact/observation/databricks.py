@@ -3,6 +3,11 @@
 The adapter consumes the same ``WorkspaceClient.tables.get(...) -> TableInfo``
 boundary used by datacontract-cli, but projects that source metadata into
 SemaPact's platform-neutral observation model instead of into ODCS.
+
+Authentication and credential resolution are caller concerns. This module
+accepts an already initialized/authenticated ``WorkspaceClient`` and must not
+resolve PATs, OAuth credentials, Azure identity, profiles, service principals,
+or other authentication mechanisms itself.
 """
 
 from __future__ import annotations
@@ -46,8 +51,10 @@ def observe_databricks_table(
 ) -> ObservedPlatformState:
     """Observe one Databricks table without generating or mutating an ODCS contract.
 
-    ``client`` is expected to be an official ``databricks.sdk.WorkspaceClient``
-    in production. It is injectable so core observation tests require no live
+    ``client`` is expected to be an already initialized/authenticated official
+    ``databricks.sdk.WorkspaceClient`` in production. Authentication method and
+    credential resolution are intentionally outside this adapter's scope.
+    The client is injectable so core observation tests require no live
     Databricks workspace.
     """
     if not table_fqn:
