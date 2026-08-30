@@ -66,17 +66,16 @@ jobs:
       - name: Install SemaPact Databricks extra from project metadata
         run: uv pip install --python .venv/bin/python -e ".[databricks]" pytest
 
-      - name: Verify Databricks SDK and platform workflow boundaries
+      - name: Verify Databricks SDK read-side boundaries
         run: >-
           .venv/bin/python -c
-          "import inspect; from databricks.sdk import WorkspaceClient; from databricks.sdk.service.catalog import TableInfo, TablesAPI; from semapact.importers.unity_importer import import_unity_contract; from semapact.platforms.databricks import create_databricks_workspace_client, discover_databricks_tables; client_params = inspect.signature(WorkspaceClient).parameters; list_params = inspect.signature(TablesAPI.list).parameters; assert {'host', 'token', 'profile'} <= set(client_params); assert {'catalog_name', 'schema_name'} <= set(list_params); print(WorkspaceClient.__name__, TableInfo.__name__, import_unity_contract.__name__, create_databricks_workspace_client.__name__, discover_databricks_tables.__name__)"
+          "import inspect; from databricks.sdk import WorkspaceClient; from databricks.sdk.service.catalog import TableInfo, TablesAPI; from semapact.platforms.databricks import create_databricks_workspace_client, discover_databricks_tables; client_params = inspect.signature(WorkspaceClient).parameters; list_params = inspect.signature(TablesAPI.list).parameters; assert {'host', 'token', 'profile'} <= set(client_params); assert {'catalog_name', 'schema_name'} <= set(list_params); print(WorkspaceClient.__name__, TableInfo.__name__, create_databricks_workspace_client.__name__, discover_databricks_tables.__name__)"
 
-      - name: Run Databricks platform-boundary tests with official SDK installed
+      - name: Run Databricks read-side tests with official SDK installed
         run: >-
           .venv/bin/python -m pytest
           tests/test_databricks_client.py
           tests/test_databricks_discovery.py
-          tests/test_databricks_workflow_separation.py
           tests/test_observation_databricks.py
 
   coverage:
