@@ -96,7 +96,7 @@ def test_observation_model_identity_does_not_encode_databricks_namespace_names()
         captured_at=CAPTURED_AT,
     )
 
-    identity_fields = set(state.assets[0].identity.model_fields)
+    identity_fields = set(type(state.assets[0].identity).model_fields)
     assert identity_fields == {"platform", "namespace", "asset"}
     assert "catalog" not in identity_fields
     assert "schema" not in identity_fields
