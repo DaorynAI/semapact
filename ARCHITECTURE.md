@@ -97,7 +97,31 @@ Important boundary:
 - `GovernanceService` creates `ChangeContext`
 - lifecycle/governance lower layers consume that context and must not regenerate it
 
-### 5. Exporters
+### 5. Runtime Observation
+
+Location:
+
+- `semapact/runtime/`
+
+Responsibilities:
+
+- represent point-in-time external runtime state independently from governed contracts
+- observe platform-local assets without creating or mutating ODCS contracts
+- preserve runtime-only metadata and evidence for later assurance/reconciliation
+
+Key modules:
+
+- `semapact/runtime/models.py`
+- `semapact/runtime/unity.py`
+
+Important boundary:
+
+- observed runtime state is read-side evidence, not governed truth
+- runtime asset identity is platform-local and distinct from ODCS contract identity
+- observation must not invoke lifecycle merge, governance evaluation, release mutation, or platform writeback
+- explicit contract import remains a separate workflow
+
+### 6. Exporters
 
 Location:
 
@@ -115,7 +139,7 @@ Key modules:
 - `semapact/quality/ge_exporter.py`
 - `semapact/exporters/sql_exporter.py`
 
-### 6. Orchestration
+### 7. Orchestration
 
 Location:
 
@@ -130,7 +154,7 @@ Key module:
 
 - `semapact/orchestrator/pipeline.py`
 
-### 7. Interfaces
+### 8. Interfaces
 
 Location:
 
@@ -148,14 +172,28 @@ Current interface:
 - CLI in `semapact/interfaces/cli.py`
 - command adapters in `semapact/interfaces/commands/`
 
-## Current Contract Model
+## Governed Contract Model
 
-SemaPact currently assumes:
+SemaPact assumes:
 
-- Open Data Contract Standard (ODCS) is the single canonical contract representation
-- `open_data_contract_standard.model.OpenDataContractStandard` is the canonical runtime model
+- Open Data Contract Standard (ODCS) is the single canonical representation of governed desired contract state
+- `open_data_contract_standard.model.OpenDataContractStandard` is the canonical governed contract domain model
 
-The system may temporarily work with Python `dict` objects at boundaries, but normalization should converge back to ODCS objects or ODCS-shaped mappings.
+The system may temporarily work with Python `dict` objects at contract boundaries, but contract normalization should converge back to ODCS objects or ODCS-shaped mappings.
+
+Runtime observations are intentionally different. `ObservedContractState` is a non-canonical read-side model describing what an external platform reports at a point in time. It must not replace or mutate the governed ODCS contract.
+
+Conceptually:
+
+```text
+Approved ODCS Contract
+= desired governed state
+
+ObservedContractState
+= observed runtime state
+```
+
+Converting external metadata into a new ODCS contract is an explicit import workflow. Observing runtime state does not implicitly perform that conversion.
 
 ## Root Contract Governance
 
@@ -367,10 +405,11 @@ Precedence:
 
 ## Current Design Principles
 
-- main contract is canonical and immutable from presentation paths
+- main governed contract is canonical and immutable from presentation paths
+- ODCS is the canonical model for governed desired contract state
+- runtime observation is separate read-side evidence and cannot become governed truth implicitly
 - service layer is the application boundary between interfaces and system logic
 - lifecycle logic belongs in the lifecycle layer
-- ODCS is the canonical contract model
 - datacontract-cli is reused where possible instead of reimplemented
 
 ## Authoritative Governance Invariants
@@ -396,6 +435,8 @@ Precedence:
 
 ## Known Next Steps
 
+- separate Unity Catalog discovery, observation, and contract import application workflows
+- add stable observed-state fingerprints and reconciliation semantics
 - formalize draft promotion flow
 - continue reducing interface-specific logic that still lives near command/editor helpers
-- keep converging helper logic toward ODCS model-driven behavior
+- keep converging governed contract helper logic toward ODCS model-driven behavior
