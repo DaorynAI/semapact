@@ -26,6 +26,32 @@ from semapact.runtime.models import (
 UNITY_CATALOG_PLATFORM = "databricks-unity-catalog"
 UnityMetadataFetcher = Callable[[str, str, str], Mapping[str, Any]]
 
+_ASSET_FIELDS = {
+    "catalog_name",
+    "schema_name",
+    "name",
+    "full_name",
+    "table_type",
+    "data_source_format",
+    "owner",
+    "comment",
+    "columns",
+    "table_constraints",
+    "tags",
+    "view_dependencies",
+}
+_COLUMN_FIELDS = {
+    "name",
+    "logical_type",
+    "type_text",
+    "type_name",
+    "nullable",
+    "required",
+    "position",
+    "comment",
+    "tags",
+}
+
 
 def observe_unity_table(
     *,
@@ -35,22 +61,21 @@ def observe_unity_table(
     captured_at: datetime | None = None,
     fetcher: UnityMetadataFetcher | None = None,
 ) -> ObservedContractState:
-    """Observe one Unity Catalog table without creating or mutating an ODCS contract."""
+    """Observe one Unity Catalog table without creating or mutating ODCS state."""
+    if not table_fqn:
+        raise ValueError("table_fqn is required for Unity Catalog observation")
     if not workspace_url:
         raise ValueError("workspace_url is required for Unity Catalog observation")
     if not token:
         raise ValueError("token is required for Unity Catalog observation")
-    if not table_fqn:
-        raise ValueError("table_fqn is required for Unity Catalog observation")
 
     observed_at = captured_at or datetime.now(timezone.utc)
-    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
-        raise ValueError("captured_at must be timezone-aware")
+    _require_aware_datetime(observed_at)
 
     metadata_fetcher = fetcher or fetch_unity_table_metadata
-    payload = metadata_fetcher(workspace_url, token, table_fqn)
+    metadata = metadata_fetcher(workspace_url, token, table_fqn)
     return map_unity_table_metadata(
-        payload,
+        metadata,
         source_identifier=workspace_url.rstrip("/"),
         table_fqn=table_fqn,
         captured_at=observed_at,
@@ -62,20 +87,14 @@ def fetch_unity_table_metadata(
     token: str,
     table_fqn: str,
 ) -> Mapping[str, Any]:
-    """Fetch the Unity Catalog TableInfo payload for one exact table."""
-    if not workspace_url or not token:
-        raise ValueError("workspace_url and token are required for Unity observation")
-
+    """Fetch one Unity Catalog ``TableInfo`` object."""
     endpoint = (
         f"{workspace_url.rstrip('/')}/api/2.1/unity-catalog/tables/"
         f"{quote(table_fqn, safe='')}"
     )
     request = Request(
         endpoint,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json",
-        },
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
         method="GET",
     )
 
@@ -104,86 +123,49 @@ def map_unity_table_metadata(
     captured_at: datetime,
     table_fqn: str | None = None,
 ) -> ObservedContractState:
-    """Map a Unity TableInfo-style payload into immutable observed runtime state."""
-    if captured_at.tzinfo is None or captured_at.utcoffset() is None:
-        raise ValueError("captured_at must be timezone-aware")
-
+    """Map a Unity Catalog ``TableInfo`` payload to observed runtime state."""
+    _require_aware_datetime(captured_at)
     identity = _asset_identity(metadata, table_fqn=table_fqn)
-    properties = _properties(metadata, identity=identity)
     constraints, relationships = _constraints_and_relationships(metadata)
-    evidence = _runtime_evidence(metadata)
 
     asset = ObservedAsset(
         identity=identity,
-        asset_type=_text(metadata.get("table_type") or metadata.get("tableType")),
-        data_source_format=_text(
-            metadata.get("data_source_format") or metadata.get("dataSourceFormat")
-        ),
+        asset_type=_text(metadata.get("table_type")),
+        data_source_format=_text(metadata.get("data_source_format")),
         owner=_text(metadata.get("owner")),
         comment=_text(metadata.get("comment")),
-        properties=properties,
+        properties=_properties(metadata.get("columns"), identity=identity),
         constraints=constraints,
         relationships=relationships,
         tags=_tags(metadata.get("tags")),
-        metadata=_metadata_entries(
-            metadata,
-            excluded={
-                "catalog_name",
-                "catalogName",
-                "schema_name",
-                "schemaName",
-                "name",
-                "full_name",
-                "fullName",
-                "table_type",
-                "tableType",
-                "data_source_format",
-                "dataSourceFormat",
-                "owner",
-                "comment",
-                "columns",
-                "table_constraints",
-                "tableConstraints",
-                "constraints",
-                "foreign_keys",
-                "foreignKeys",
-                "tags",
-                "view_dependencies",
-                "viewDependencies",
-            },
-        ),
+        metadata=_metadata_entries(metadata, excluded=_ASSET_FIELDS),
     )
-
     return ObservedContractState(
         platform=UNITY_CATALOG_PLATFORM,
         source_identifier=source_identifier.rstrip("/"),
         assets=(asset,),
         captured_at=captured_at,
         fingerprint=None,
-        evidence=evidence,
+        evidence=_runtime_evidence(metadata.get("view_dependencies")),
     )
 
 
 def _asset_identity(
     metadata: Mapping[str, Any], *, table_fqn: str | None
 ) -> ObservedAssetIdentity:
-    catalog = _text(metadata.get("catalog_name") or metadata.get("catalogName"))
-    schema = _text(metadata.get("schema_name") or metadata.get("schemaName"))
+    catalog = _text(metadata.get("catalog_name"))
+    schema = _text(metadata.get("schema_name"))
     asset = _text(metadata.get("name"))
 
-    full_name = _text(
-        metadata.get("full_name") or metadata.get("fullName") or table_fqn
-    )
+    full_name = _text(metadata.get("full_name") or table_fqn)
     fallback = _split_table_fqn(full_name) if full_name else None
-    if fallback is not None:
+    if fallback:
         catalog = catalog or fallback[0]
         schema = schema or fallback[1]
         asset = asset or fallback[2]
 
     if not catalog or not schema or not asset:
-        raise ValueError(
-            "Unity metadata must identify catalog, schema, and table name"
-        )
+        raise ValueError("Unity metadata must identify catalog, schema, and table name")
 
     return ObservedAssetIdentity(
         platform=UNITY_CATALOG_PLATFORM,
@@ -194,285 +176,153 @@ def _asset_identity(
 
 
 def _split_table_fqn(value: str) -> tuple[str, str, str] | None:
-    parts = [part.strip() for part in value.split(".")]
+    parts = tuple(part.strip() for part in value.split("."))
     if len(parts) != 3 or not all(parts):
         return None
-    return parts[0], parts[1], parts[2]
+    return parts
 
 
 def _properties(
-    metadata: Mapping[str, Any], *, identity: ObservedAssetIdentity
+    value: Any, *, identity: ObservedAssetIdentity
 ) -> tuple[ObservedProperty, ...]:
-    raw_columns = metadata.get("columns")
-    if not isinstance(raw_columns, list):
+    if not isinstance(value, list):
         return ()
 
     properties: list[ObservedProperty] = []
-    for item in raw_columns:
+    for item in value:
         if not isinstance(item, Mapping):
             continue
         name = _text(item.get("name"))
         if not name:
             continue
 
-        nullable = _bool_or_none(item.get("nullable"))
-        explicit_required = _bool_or_none(item.get("required"))
-        required = explicit_required if explicit_required is not None else (
-            None if nullable is None else not nullable
+        nullable = item.get("nullable") if isinstance(item.get("nullable"), bool) else None
+        explicit_required = (
+            item.get("required") if isinstance(item.get("required"), bool) else None
         )
+        required = (
+            explicit_required
+            if explicit_required is not None
+            else None if nullable is None else not nullable
+        )
+        position = item.get("position")
+        if isinstance(position, bool) or not isinstance(position, int):
+            position = None
 
         properties.append(
             ObservedProperty(
                 identity=ObservedPropertyIdentity(asset=identity, property=name),
-                logical_type=_text(
-                    item.get("logical_type") or item.get("logicalType")
-                ),
-                physical_type=_text(
-                    item.get("type_text")
-                    or item.get("typeText")
-                    or item.get("type_name")
-                    or item.get("typeName")
-                    or item.get("type")
-                ),
+                logical_type=_text(item.get("logical_type")),
+                physical_type=_text(item.get("type_text") or item.get("type_name")),
                 nullable=nullable,
                 required=required,
-                position=_int_or_none(item.get("position")),
+                position=position,
                 comment=_text(item.get("comment")),
                 tags=_tags(item.get("tags")),
-                metadata=_metadata_entries(
-                    item,
-                    excluded={
-                        "name",
-                        "logical_type",
-                        "logicalType",
-                        "type_text",
-                        "typeText",
-                        "type_name",
-                        "typeName",
-                        "type",
-                        "nullable",
-                        "required",
-                        "position",
-                        "comment",
-                        "tags",
-                    },
-                ),
+                metadata=_metadata_entries(item, excluded=_COLUMN_FIELDS),
             )
         )
 
-    properties.sort(key=_property_sort_key)
+    properties.sort(
+        key=lambda item: (
+            item.position is None,
+            item.position if item.position is not None else 0,
+            item.identity.property.casefold(),
+        )
+    )
     return tuple(properties)
-
-
-def _property_sort_key(item: ObservedProperty) -> tuple[int, int, str]:
-    if item.position is None:
-        return (1, 0, item.identity.property.casefold())
-    return (0, item.position, item.identity.property.casefold())
 
 
 def _constraints_and_relationships(
     metadata: Mapping[str, Any],
 ) -> tuple[tuple[ObservedConstraint, ...], tuple[ObservedRelationship, ...]]:
+    value = metadata.get("table_constraints")
+    if not isinstance(value, list):
+        return (), ()
+
     constraints: list[ObservedConstraint] = []
     relationships: list[ObservedRelationship] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
 
-    for item in _constraint_items(metadata):
-        primary = _mapping(item.get("primary_key_constraint") or item.get("primaryKeyConstraint"))
-        foreign = _mapping(item.get("foreign_key_constraint") or item.get("foreignKeyConstraint"))
-
-        if primary is not None:
+        primary = item.get("primary_key_constraint")
+        if isinstance(primary, Mapping):
             constraints.append(
                 ObservedConstraint(
                     constraint_type="PRIMARY_KEY",
                     name=_text(primary.get("name")),
-                    columns=_string_tuple(
-                        primary.get("child_columns") or primary.get("childColumns")
-                    ),
+                    columns=_string_tuple(primary.get("child_columns")),
                     metadata=_metadata_entries(
                         primary,
-                        excluded={"name", "child_columns", "childColumns"},
+                        excluded={"name", "child_columns"},
                     ),
                 )
             )
             continue
 
-        if foreign is not None:
+        foreign = item.get("foreign_key_constraint")
+        if isinstance(foreign, Mapping):
             relationships.append(
                 ObservedRelationship(
                     relationship_type="FOREIGN_KEY",
-                    source_columns=_string_tuple(
-                        foreign.get("child_columns") or foreign.get("childColumns")
-                    ),
-                    target_reference=_text(
-                        foreign.get("parent_table") or foreign.get("parentTable")
-                    ),
-                    target_columns=_string_tuple(
-                        foreign.get("parent_columns") or foreign.get("parentColumns")
-                    ),
+                    source_columns=_string_tuple(foreign.get("child_columns")),
+                    target_reference=_text(foreign.get("parent_table")),
+                    target_columns=_string_tuple(foreign.get("parent_columns")),
                     constraint_name=_text(foreign.get("name")),
                     metadata=_metadata_entries(
                         foreign,
                         excluded={
                             "name",
                             "child_columns",
-                            "childColumns",
                             "parent_table",
-                            "parentTable",
                             "parent_columns",
-                            "parentColumns",
                         },
                     ),
                 )
             )
             continue
 
-        constraint_type = _text(
-            item.get("constraint_type")
-            or item.get("constraintType")
-            or item.get("type")
-            or item.get("kind")
-        )
-        normalized_type = (constraint_type or "UNKNOWN").upper().replace(" ", "_")
-        source_columns = _string_tuple(
-            item.get("columns")
-            or item.get("column_names")
-            or item.get("columnNames")
-            or item.get("from_columns")
-            or item.get("fromColumns")
-            or item.get("child_columns")
-            or item.get("childColumns")
-            or item.get("from")
-        )
-        target_reference = _text(
-            item.get("referenced_table")
-            or item.get("referencedTable")
-            or item.get("to_table")
-            or item.get("toTable")
-            or item.get("parent_table")
-            or item.get("parentTable")
-        )
-        target_columns = _string_tuple(
-            item.get("referenced_columns")
-            or item.get("referencedColumns")
-            or item.get("to_columns")
-            or item.get("toColumns")
-            or item.get("parent_columns")
-            or item.get("parentColumns")
-            or item.get("to")
-        )
-
-        if "FOREIGN" in normalized_type or target_reference:
-            relationships.append(
-                ObservedRelationship(
-                    relationship_type=normalized_type,
-                    source_columns=source_columns,
-                    target_reference=target_reference,
-                    target_columns=target_columns,
-                    constraint_name=_text(item.get("name")),
-                    metadata=_metadata_entries(
-                        item,
-                        excluded=_FLAT_CONSTRAINT_KEYS,
-                    ),
-                )
+        constraints.append(
+            ObservedConstraint(
+                constraint_type="UNKNOWN",
+                metadata=(RuntimeMetadata(key="raw", value_json=_canonical_json(item)),),
             )
-        else:
-            constraints.append(
-                ObservedConstraint(
-                    constraint_type=normalized_type,
-                    name=_text(item.get("name")),
-                    columns=source_columns,
-                    expression=_text(
-                        item.get("expression") or item.get("check_expression")
-                    ),
-                    metadata=_metadata_entries(
-                        item,
-                        excluded=_FLAT_CONSTRAINT_KEYS | {"expression", "check_expression"},
-                    ),
-                )
-            )
+        )
 
     constraints.sort(
         key=lambda item: (
             item.constraint_type,
             (item.name or "").casefold(),
-            tuple(value.casefold() for value in item.columns),
+            tuple(column.casefold() for column in item.columns),
+            tuple(entry.value_json for entry in item.metadata),
         )
     )
     relationships.sort(
         key=lambda item: (
-            item.relationship_type,
             (item.constraint_name or "").casefold(),
             (item.target_reference or "").casefold(),
-            tuple(value.casefold() for value in item.source_columns),
+            tuple(column.casefold() for column in item.source_columns),
         )
     )
     return tuple(constraints), tuple(relationships)
 
 
-_FLAT_CONSTRAINT_KEYS = {
-    "constraint_type",
-    "constraintType",
-    "type",
-    "kind",
-    "name",
-    "columns",
-    "column_names",
-    "columnNames",
-    "from_columns",
-    "fromColumns",
-    "child_columns",
-    "childColumns",
-    "from",
-    "referenced_table",
-    "referencedTable",
-    "to_table",
-    "toTable",
-    "parent_table",
-    "parentTable",
-    "referenced_columns",
-    "referencedColumns",
-    "to_columns",
-    "toColumns",
-    "parent_columns",
-    "parentColumns",
-    "to",
-}
-
-
-def _constraint_items(metadata: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
-    items: list[Mapping[str, Any]] = []
-    for key in (
-        "table_constraints",
-        "tableConstraints",
-        "constraints",
-        "foreign_keys",
-        "foreignKeys",
-    ):
-        value = metadata.get(key)
-        if isinstance(value, list):
-            items.extend(item for item in value if isinstance(item, Mapping))
-    return tuple(items)
-
-
-def _runtime_evidence(metadata: Mapping[str, Any]) -> tuple[RuntimeEvidence, ...]:
-    raw = metadata.get("view_dependencies") or metadata.get("viewDependencies")
-    dependency_container = _mapping(raw)
-    if dependency_container is None:
+def _runtime_evidence(value: Any) -> tuple[RuntimeEvidence, ...]:
+    if not isinstance(value, Mapping):
         return ()
-    dependencies = dependency_container.get("dependencies")
+    dependencies = value.get("dependencies")
     if not isinstance(dependencies, list):
         return ()
 
     evidence: list[RuntimeEvidence] = []
-    for dependency in dependencies:
-        if not isinstance(dependency, Mapping):
+    for item in dependencies:
+        if not isinstance(item, Mapping):
             continue
-        table = _mapping(dependency.get("table"))
-        function = _mapping(dependency.get("function"))
-        if table is not None:
-            reference = _text(
-                table.get("table_full_name") or table.get("tableFullName")
-            )
+        table = item.get("table")
+        function = item.get("function")
+        if isinstance(table, Mapping):
+            reference = _text(table.get("table_full_name"))
             if reference:
                 evidence.append(
                     RuntimeEvidence(
@@ -480,15 +330,12 @@ def _runtime_evidence(metadata: Mapping[str, Any]) -> tuple[RuntimeEvidence, ...
                         reference=reference,
                         metadata=_metadata_entries(
                             table,
-                            excluded={"table_full_name", "tableFullName"},
+                            excluded={"table_full_name"},
                         ),
                     )
                 )
-        elif function is not None:
-            reference = _text(
-                function.get("function_full_name")
-                or function.get("functionFullName")
-            )
+        elif isinstance(function, Mapping):
+            reference = _text(function.get("function_full_name"))
             if reference:
                 evidence.append(
                     RuntimeEvidence(
@@ -496,7 +343,7 @@ def _runtime_evidence(metadata: Mapping[str, Any]) -> tuple[RuntimeEvidence, ...
                         reference=reference,
                         metadata=_metadata_entries(
                             function,
-                            excluded={"function_full_name", "functionFullName"},
+                            excluded={"function_full_name"},
                         ),
                     )
                 )
@@ -506,22 +353,13 @@ def _runtime_evidence(metadata: Mapping[str, Any]) -> tuple[RuntimeEvidence, ...
 
 
 def _tags(value: Any) -> tuple[RuntimeTag, ...]:
-    tags: list[RuntimeTag] = []
-    if isinstance(value, Mapping):
-        for key, item_value in value.items():
-            tags.append(RuntimeTag(key=str(key), value=str(item_value)))
-    elif isinstance(value, list):
-        for item in value:
-            if not isinstance(item, Mapping):
-                continue
-            key = _text(item.get("key") or item.get("tag_name") or item.get("tagName"))
-            item_value = _text(
-                item.get("value") or item.get("tag_value") or item.get("tagValue")
-            )
-            if key and item_value is not None:
-                tags.append(RuntimeTag(key=key, value=item_value))
-    tags.sort(key=lambda item: (item.key.casefold(), item.value))
-    return tuple(tags)
+    if not isinstance(value, Mapping):
+        return ()
+    tags = tuple(
+        RuntimeTag(key=str(key), value=str(tag_value))
+        for key, tag_value in sorted(value.items(), key=lambda pair: str(pair[0]).casefold())
+    )
+    return tags
 
 
 def _metadata_entries(
@@ -545,8 +383,12 @@ def _canonical_json(value: Any) -> str:
     )
 
 
-def _mapping(value: Any) -> Mapping[str, Any] | None:
-    return value if isinstance(value, Mapping) else None
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return tuple(text for item in value if (text := _text(item)) is not None)
+    return ()
 
 
 def _text(value: Any) -> str | None:
@@ -556,24 +398,6 @@ def _text(value: Any) -> str | None:
     return text or None
 
 
-def _string_tuple(value: Any) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        return tuple(part.strip() for part in value.split(",") if part.strip())
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        result = tuple(text for item in value if (text := _text(item)) is not None)
-        return result
-    return ()
-
-
-def _bool_or_none(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    return None
-
-
-def _int_or_none(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    return value if isinstance(value, int) else None
+def _require_aware_datetime(value: datetime) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("captured_at must be timezone-aware")
