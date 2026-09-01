@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Mapping, Protocol
 
+from semapact.observation.fingerprint import with_observed_state_fingerprint
 from semapact.observation.models import (
     ObservedAsset,
     ObservedAssetIdentity,
@@ -81,7 +82,7 @@ def map_databricks_table_info(
     captured_at: datetime,
     table_fqn: str | None = None,
 ) -> ObservedPlatformState:
-    """Project an SDK ``TableInfo`` into the platform-neutral observation model."""
+    """Project an SDK ``TableInfo`` into fingerprinted platform-neutral state."""
     _require_aware_datetime(captured_at)
     if not source_identifier:
         raise ValueError("source_identifier is required for Databricks observation")
@@ -97,13 +98,14 @@ def map_databricks_table_info(
         properties=_properties(metadata.get("columns"), identity=identity),
     )
 
-    return ObservedPlatformState(
+    state = ObservedPlatformState(
         platform=DATABRICKS_PLATFORM,
         source_identifier=source_identifier.rstrip("/"),
         assets=(asset,),
         captured_at=captured_at,
         fingerprint=None,
     )
+    return with_observed_state_fingerprint(state)
 
 
 def _asset_identity(
