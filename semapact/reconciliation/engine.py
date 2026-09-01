@@ -20,6 +20,13 @@ from semapact.reconciliation.models import (
     ReconciliationSubject,
 )
 
+_SUBJECT_ORDER = {
+    ReconciliationSubject.ASSET: 0,
+    ReconciliationSubject.PROPERTY: 1,
+    ReconciliationSubject.PHYSICAL_TYPE: 2,
+    ReconciliationSubject.NULLABILITY: 3,
+}
+
 
 def reconcile_approved_contract(
     contract: OpenDataContractStandard,
@@ -258,11 +265,11 @@ def _difference_path(
 
 def _difference_sort_key(
     difference: ReconciliationDifference,
-) -> tuple[str, str, str, str]:
+) -> tuple[str, str, int, str]:
     return (
         difference.asset_identity,
         difference.property_identity or "",
-        difference.subject.value,
+        _SUBJECT_ORDER[difference.subject],
         difference.difference_type.value,
     )
 
