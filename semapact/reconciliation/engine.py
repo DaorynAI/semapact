@@ -1,4 +1,4 @@
-"""Deterministic approved-contract to observed-state reconciliation."""
+"""Deterministic governed-desired-state to observed-state reconciliation."""
 
 from __future__ import annotations
 
@@ -28,23 +28,25 @@ _SUBJECT_ORDER = {
 }
 
 
-def reconcile_approved_contract(
+def reconcile_governed_contract(
     contract: OpenDataContractStandard,
     observation: ObservedPlatformState,
 ) -> ReconciliationResult:
-    """Compare approved ODCS desired state with platform-neutral observed state.
+    """Compare governed ODCS desired state with platform-neutral observed state.
 
-    This function reports raw differences only. It does not classify drift cause
-    or operational status and never mutates either input.
+    The caller is responsible for selecting the authoritative governed contract
+    revision. Reconciliation reports raw differences only; it does not determine
+    approval/authorization, classify drift cause or operational status, or mutate
+    either input.
     """
-    approved_assets = build_schema_index(contract)
+    governed_assets = build_schema_index(contract)
     observed_assets = _build_observed_asset_index(observation)
     differences: list[ReconciliationDifference] = []
 
-    approved_keys = set(approved_assets)
+    governed_keys = set(governed_assets)
     observed_keys = set(observed_assets)
 
-    for asset_key in sorted(approved_keys - observed_keys):
+    for asset_key in sorted(governed_keys - observed_keys):
         differences.append(
             _difference(
                 difference_type=ReconciliationDifferenceType.MISSING,
@@ -53,7 +55,7 @@ def reconcile_approved_contract(
             )
         )
 
-    for asset_key in sorted(observed_keys - approved_keys):
+    for asset_key in sorted(observed_keys - governed_keys):
         differences.append(
             _difference(
                 difference_type=ReconciliationDifferenceType.UNEXPECTED,
@@ -62,13 +64,13 @@ def reconcile_approved_contract(
             )
         )
 
-    for asset_key in sorted(approved_keys & observed_keys):
-        approved_schema = approved_assets[asset_key]
+    for asset_key in sorted(governed_keys & observed_keys):
+        governed_schema = governed_assets[asset_key]
         observed_asset = observed_assets[asset_key]
         differences.extend(
             _reconcile_properties(
                 asset_key=asset_key,
-                approved_properties=list(approved_schema.properties or []),
+                governed_properties=list(governed_schema.properties or []),
                 observed_asset=observed_asset,
             )
         )
@@ -90,17 +92,17 @@ def reconcile_approved_contract(
 def _reconcile_properties(
     *,
     asset_key: str,
-    approved_properties: list[SchemaProperty],
+    governed_properties: list[SchemaProperty],
     observed_asset: ObservedAsset,
 ) -> list[ReconciliationDifference]:
-    approved = build_property_index(asset_key, approved_properties)
+    governed = build_property_index(asset_key, governed_properties)
     observed = _build_observed_property_index(asset_key, observed_asset)
     differences: list[ReconciliationDifference] = []
 
-    approved_keys = set(approved)
+    governed_keys = set(governed)
     observed_keys = set(observed)
 
-    for prop_key in sorted(approved_keys - observed_keys):
+    for prop_key in sorted(governed_keys - observed_keys):
         differences.append(
             _difference(
                 difference_type=ReconciliationDifferenceType.MISSING,
@@ -110,7 +112,7 @@ def _reconcile_properties(
             )
         )
 
-    for prop_key in sorted(observed_keys - approved_keys):
+    for prop_key in sorted(observed_keys - governed_keys):
         differences.append(
             _difference(
                 difference_type=ReconciliationDifferenceType.UNEXPECTED,
@@ -120,12 +122,12 @@ def _reconcile_properties(
             )
         )
 
-    for prop_key in sorted(approved_keys & observed_keys):
+    for prop_key in sorted(governed_keys & observed_keys):
         differences.extend(
             _reconcile_matching_property(
                 asset_key=asset_key,
                 property_key=prop_key,
-                approved=approved[prop_key],
+                governed=governed[prop_key],
                 observed=observed[prop_key],
             )
         )
@@ -137,13 +139,13 @@ def _reconcile_matching_property(
     *,
     asset_key: str,
     property_key: PropertyIdentity,
-    approved: SchemaProperty,
+    governed: SchemaProperty,
     observed: ObservedProperty,
 ) -> list[ReconciliationDifference]:
     differences: list[ReconciliationDifference] = []
     property_identity = property_key[1]
 
-    expected_physical = _optional_text(getattr(approved, "physicalType", None))
+    expected_physical = _optional_text(getattr(governed, "physicalType", None))
     observed_physical = _optional_text(observed.physical_type)
     if (
         expected_physical is not None
@@ -162,7 +164,7 @@ def _reconcile_matching_property(
             )
         )
 
-    required = getattr(approved, "required", None)
+    required = getattr(governed, "required", None)
     nullable = observed.nullable
     if isinstance(required, bool) and isinstance(nullable, bool):
         expected_nullable = not required
@@ -277,7 +279,9 @@ def _difference_sort_key(
 def _required_contract_text(value: object, *, field: str) -> str:
     text = _optional_text(value)
     if text is None:
-        raise ValidationError(f"Approved contract {field} is required for reconciliation")
+        raise ValidationError(
+            f"Governed desired-state contract {field} is required for reconciliation"
+        )
     return text
 
 
