@@ -61,7 +61,7 @@ jobs:
 
           tag="$(git describe --tags --exact-match HEAD)"
           echo "released=true" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#semapact-v}" >> "$GITHUB_OUTPUT"
 
       - name: Build package
         if: steps.version.outputs.released == 'true'
