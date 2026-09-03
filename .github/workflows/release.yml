@@ -3,14 +3,15 @@ name: Release
 on:
   workflow_dispatch:
 
-permissions:
-  contents: write    # Crucial for pushing commits, tags, and creating releases
-  id-token: write    # Crucial for PyPI trusted publishing OIDC authentication
-
 jobs:
   release:
-    name: Semantic Release & Publish
+    name: Semantic Release & Build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      released: ${{ steps.version.outputs.released }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -24,7 +25,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           token: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-          fetch-depth: 0    # Critical: fetch all git history for semantic analysis of conventional commits
+          fetch-depth: 0
           persist-credentials: true
 
       - name: Set up Python
@@ -35,39 +36,74 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
 
-      # Install python-semantic-release in the runner environment
       - name: Install python-semantic-release
-        run: |
-          uv pip install --system python-semantic-release
+        run: uv pip install --system python-semantic-release
 
-      # Run semantic-release version to check if a new version is warranted.
-      # If so, it updates pyproject.toml, builds CHANGELOG.md, commits, tags, and pushes back to main.
       - name: Run semantic-release version
         id: version
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Check if we should release and perform version bump + git commit/tag push
-          semantic-release -v version
 
-      # Build the final wheel and source distribution artifacts
+          before="$(git rev-parse HEAD)"
+          semantic-release -v version
+          after="$(git rev-parse HEAD)"
+
+          if [ "$before" = "$after" ]; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "No releasable changes detected."
+            exit 0
+          fi
+
+          tag="$(git describe --tags --exact-match HEAD)"
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#semapact-v}" >> "$GITHUB_OUTPUT"
+
       - name: Build package
+        if: steps.version.outputs.released == 'true'
         run: uv build
 
-      # Run semantic-release publish to upload built artifacts to GitHub Releases
+      - name: Validate distribution metadata
+        if: steps.version.outputs.released == 'true'
+        run: uvx twine check dist/*
+
       - name: Publish to GitHub Releases
-        id: publish-gh
+        if: steps.version.outputs.released == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-        run: |
-          semantic-release -v publish
+        run: semantic-release -v publish
 
-      # Publish the built distribution wheels to PyPI using PyPA official OIDC Action
-      # (Temporarily commented out: uncomment this step and configure PyPI Trusted Publishing when ready to release publicly)
-      # - name: Publish to PyPI
-      #   uses: pypa/gh-action-pypi-publish@release/v1
-      #   with:
-      #     skip-existing: true
+      - name: Upload Python distributions
+        if: steps.version.outputs.released == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-dist-${{ steps.version.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download Python distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-dist-${{ needs.release.outputs.version }}
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
