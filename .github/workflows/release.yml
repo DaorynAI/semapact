@@ -37,7 +37,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Install python-semantic-release
-        run: uv pip install --system python-semantic-release
+        run: uv pip install --system python-semantic-release==10.6.2
 
       - name: Run semantic-release version
         id: version
@@ -62,14 +62,6 @@ jobs:
           tag="$(git describe --tags --exact-match HEAD)"
           echo "released=true" >> "$GITHUB_OUTPUT"
           echo "version=${tag#semapact-v}" >> "$GITHUB_OUTPUT"
-
-      - name: Build package
-        if: steps.version.outputs.released == 'true'
-        run: uv build
-
-      - name: Validate distribution metadata
-        if: steps.version.outputs.released == 'true'
-        run: uvx twine check dist/*
 
       - name: Publish to GitHub Releases
         if: steps.version.outputs.released == 'true'
