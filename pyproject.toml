@@ -131,3 +131,6 @@ upload_to_release = true
 build_command = "uv build"
 allow_zero_version = true
 major_on_zero = false
+
+[tool.semantic_release.changelog.default_templates]
+mask_initial_release = true
