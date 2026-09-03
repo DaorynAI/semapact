@@ -22,7 +22,7 @@ from semapact.observation import (
 from semapact.reconciliation import (
     ReconciliationDifferenceType,
     ReconciliationSubject,
-    reconcile_approved_contract,
+    reconcile_governed_contract,
     serialize_reconciliation_result,
 )
 
@@ -115,7 +115,7 @@ def test_exact_comparable_state_has_no_differences() -> None:
         )
     )
 
-    result = reconcile_approved_contract(contract, observation)
+    result = reconcile_governed_contract(contract, observation)
 
     assert result.differences == ()
     assert result.has_differences is False
@@ -144,7 +144,7 @@ def test_missing_and_unexpected_assets_and_properties_are_reported() -> None:
         _asset("payments"),
     )
 
-    result = reconcile_approved_contract(contract, observation)
+    result = reconcile_governed_contract(contract, observation)
 
     assert [
         (item.difference_type, item.subject, item.path)
@@ -191,7 +191,7 @@ def test_physical_type_and_nullability_mismatches_are_reported() -> None:
         _asset("orders", ("customer_id", "STRING", True))
     )
 
-    result = reconcile_approved_contract(contract, observation)
+    result = reconcile_governed_contract(contract, observation)
 
     assert len(result.differences) == 2
     physical, nullable = result.differences
@@ -212,7 +212,7 @@ def test_unknown_comparable_values_are_not_guessed() -> None:
     )
     observation = _observation(_asset("orders", ("id", None, None)))
 
-    result = reconcile_approved_contract(contract, observation)
+    result = reconcile_governed_contract(contract, observation)
 
     assert result.differences == ()
 
@@ -228,7 +228,7 @@ def test_duplicate_canonical_observed_asset_identity_fails_closed() -> None:
         ValidationError,
         match="Duplicate canonical observed asset identity found: 'orders'",
     ):
-        reconcile_approved_contract(contract, observation)
+        reconcile_governed_contract(contract, observation)
 
 
 def test_duplicate_canonical_observed_property_identity_fails_closed() -> None:
@@ -250,7 +250,7 @@ def test_duplicate_canonical_observed_property_identity_fails_closed() -> None:
         ValidationError,
         match="Duplicate canonical observed property identity found: 'id'",
     ):
-        reconcile_approved_contract(contract, observation)
+        reconcile_governed_contract(contract, observation)
 
 
 def test_difference_order_and_serialization_are_deterministic() -> None:
@@ -274,8 +274,8 @@ def test_difference_order_and_serialization_are_deterministic() -> None:
     observation_left = _observation(payments_observed, orders_observed)
     observation_right = _observation(orders_observed, payments_observed)
 
-    left = reconcile_approved_contract(contract_left, observation_left)
-    right = reconcile_approved_contract(contract_right, observation_right)
+    left = reconcile_governed_contract(contract_left, observation_left)
+    right = reconcile_governed_contract(contract_right, observation_right)
 
     assert left.differences == right.differences
     assert serialize_reconciliation_result(left) == serialize_reconciliation_result(right)
@@ -294,7 +294,7 @@ def test_reconciliation_does_not_mutate_inputs() -> None:
     contract_before = deepcopy(contract.model_dump())
     observation_before = observation.model_dump()
 
-    reconcile_approved_contract(contract, observation)
+    reconcile_governed_contract(contract, observation)
 
     assert contract.model_dump() == contract_before
     assert observation.model_dump() == observation_before
