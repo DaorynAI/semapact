@@ -124,13 +124,18 @@ include = ["semapact*"]
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
-branch = "main"
 tag_format = "semapact-v{version}"
-upload_to_pypi = false
-upload_to_release = true
-build_command = "uv build"
+build_command = "uv build && uvx twine check dist/*"
 allow_zero_version = true
 major_on_zero = false
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.publish]
+dist_glob_patterns = ["dist/*"]
+upload_to_vcs_release = true
 
 [tool.semantic_release.changelog.default_templates]
 mask_initial_release = true
