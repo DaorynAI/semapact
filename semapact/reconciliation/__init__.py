@@ -1,6 +1,6 @@
-"""Platform-neutral desired-vs-observed reconciliation."""
+"""Platform-neutral governed-desired-vs-observed reconciliation."""
 
-from semapact.reconciliation.engine import reconcile_approved_contract
+from semapact.reconciliation.engine import reconcile_governed_contract
 from semapact.reconciliation.models import (
     ReconciliationDifference,
     ReconciliationDifferenceType,
@@ -14,6 +14,6 @@ __all__ = [
     "ReconciliationDifferenceType",
     "ReconciliationResult",
     "ReconciliationSubject",
-    "reconcile_approved_contract",
+    "reconcile_governed_contract",
     "serialize_reconciliation_result",
 ]
