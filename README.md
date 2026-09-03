@@ -351,4 +351,6 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md) for pr
 
 ## License
 
-MIT
+Copyright 2026 Elliot Sun.
+
+Licensed under the Apache License, Version 2.0 (Apache-2.0). See [`LICENSE`](LICENSE).
