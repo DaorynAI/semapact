@@ -126,6 +126,7 @@ include = ["semapact*"]
 version_toml = ["pyproject.toml:project.version"]
 tag_format = "semapact-v{version}"
 build_command = "uv build && uvx twine check dist/*"
+commit_message = "chore(release): {version}"
 allow_zero_version = true
 major_on_zero = false
 
@@ -133,9 +134,15 @@ major_on_zero = false
 match = "main"
 prerelease = false
 
-[tool.semantic_release.publish]
-dist_glob_patterns = ["dist/*"]
-upload_to_vcs_release = true
+[tool.semantic_release.changelog]
+exclude_commit_patterns = [
+  '''chore(?:\([^)]*?\))?: .+''',
+  '''ci(?:\([^)]*?\))?: .+''',
+  '''docs(?:\([^)]*?\))?: .+''',
+  '''refactor(?:\([^)]*?\))?: .+''',
+  '''style(?:\([^)]*?\))?: .+''',
+  '''test(?:\([^)]*?\))?: .+''',
+]
 
 [tool.semantic_release.changelog.default_templates]
 mask_initial_release = true
