@@ -77,6 +77,51 @@ jobs:
           .venv-smoke/bin/python -c "import semapact; from semapact import ContractLoader, ContractMergeEngine; from semapact.governance import GovernanceDecision; from semapact.reconciliation import reconcile_governed_contract; print(semapact.__name__, ContractLoader.__name__, ContractMergeEngine.__name__, GovernanceDecision.__name__, reconcile_governed_contract.__name__)"
           .venv-smoke/bin/semapact --help
 
+  release-config:
+    name: semantic-release-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install pinned semantic-release
+        run: uv pip install --system python-semantic-release==10.6.2
+
+      - name: Validate release configuration and next version
+        shell: bash
+        run: |
+          git checkout -B main
+          current="$(python - <<'PY'
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          PY
+          )"
+          next="$(semantic-release version --print)"
+
+          if [ -z "$next" ]; then
+            echo "::error::semantic-release did not calculate a version."
+            exit 1
+          fi
+
+          if [ "$current" = "0.0.0" ] && [ "$next" != "0.1.0" ]; then
+            echo "::error::Expected first SemaPact release 0.1.0, got $next."
+            exit 1
+          fi
+
+          echo "semantic-release config valid: current=$current next=$next"
+
   databricks-extra:
     runs-on: ubuntu-latest
     timeout-minutes: 30
