@@ -125,7 +125,7 @@ include = ["semapact*"]
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
 tag_format = "semapact-v{version}"
-build_command = "uv build && uvx twine check dist/*"
+build_command = "rm -rf dist && uv build && uvx twine check dist/*"
 commit_message = "chore(release): {version}"
 allow_zero_version = true
 major_on_zero = false
