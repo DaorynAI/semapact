@@ -3,15 +3,20 @@ name: Release
 on:
   workflow_dispatch:
 
+concurrency:
+  group: semapact-release
+  cancel-in-progress: false
+
 jobs:
   release:
-    name: Semantic Release & Build
+    name: Tag, Build & Create Release
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
-      released: ${{ steps.version.outputs.released }}
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -21,9 +26,10 @@ jobs:
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
         continue-on-error: true
 
-      - name: Checkout Code
+      - name: Checkout main
         uses: actions/checkout@v7
         with:
+          ref: main
           token: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
           persist-credentials: true
@@ -36,44 +42,79 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
 
-      - name: Install python-semantic-release
+      - name: Install release tooling
         run: uv pip install --system python-semantic-release==10.6.2
 
-      - name: Run semantic-release version
-        id: version
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+      - name: Resolve release version
+        id: release
         shell: bash
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          version="$(python - <<'PY'
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          PY
+          )"
 
-          before="$(git rev-parse HEAD)"
-          semantic-release -v version
-          after="$(git rev-parse HEAD)"
-
-          if [ "$before" = "$after" ]; then
-            echo "released=false" >> "$GITHUB_OUTPUT"
-            echo "version=" >> "$GITHUB_OUTPUT"
-            echo "No releasable changes detected."
-            exit 0
+          if [ -z "$version" ] || [ "$version" = "0.0.0" ]; then
+            echo "::error::main does not contain a prepared release version. Run Prepare Release and merge its PR first."
+            exit 1
           fi
 
-          tag="$(git describe --tags --exact-match HEAD)"
-          echo "released=true" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#semapact-v}" >> "$GITHUB_OUTPUT"
+          tag="semapact-v${version}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Publish to GitHub Releases
-        if: steps.version.outputs.released == 'true'
+      - name: Validate tag state
+        id: tag-state
+        shell: bash
+        run: |
+          git fetch --tags --force
+          tag="${{ steps.release.outputs.tag }}"
+          current="$(git rev-parse HEAD)"
+
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            tagged="$(git rev-list -n 1 "$tag")"
+            if [ "$tagged" != "$current" ]; then
+              echo "::error::$tag already exists on $tagged, not current main $current."
+              exit 1
+            fi
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "$tag already points at current main; resuming release."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build exact release distributions
+        run: |
+          rm -rf dist
+          uv build
+          uvx twine check dist/*
+
+      - name: Create release tag
+        if: steps.tag-state.outputs.exists != 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          tag="${{ steps.release.outputs.tag }}"
+          git tag -a "$tag" -m "SemaPact ${{ steps.release.outputs.version }}"
+          git push origin "$tag"
+
+      - name: Create or update GitHub Release notes
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-        run: semantic-release -v publish
+        run: semantic-release -v changelog --post-to-release-tag "${{ steps.release.outputs.tag }}"
+
+      - name: Upload distributions to GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.release.outputs.tag }}" dist/* --clobber
 
       - name: Upload Python distributions
-        if: steps.version.outputs.released == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: python-dist-${{ steps.version.outputs.version }}
+          name: python-dist-${{ steps.release.outputs.version }}
           path: dist/*
           if-no-files-found: error
           retention-days: 7
@@ -81,7 +122,6 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     needs: release
-    if: needs.release.outputs.released == 'true'
     runs-on: ubuntu-latest
     environment:
       name: pypi
