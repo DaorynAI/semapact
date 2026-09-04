@@ -116,7 +116,7 @@ jobs:
             exit 1
           fi
 
-          changed="$(git diff --name-only)"
+          changed="$( { git diff --name-only; git diff --cached --name-only; } | sort -u )"
           if [ -z "$changed" ]; then
             echo "::error::semantic-release did not modify any tracked release files."
             exit 1
