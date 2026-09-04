@@ -98,7 +98,7 @@ jobs:
       - name: Install pinned semantic-release
         run: uv pip install --system python-semantic-release==10.6.2
 
-      - name: Validate release configuration and next version
+      - name: Validate release configuration and prepare-only path
         shell: bash
         run: |
           git checkout -B main
@@ -120,7 +120,38 @@ jobs:
             exit 1
           fi
 
-          echo "semantic-release config valid: current=$current next=$next"
+          semantic-release -v version --no-commit --no-tag
+
+          prepared="$(python - <<'PY'
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          PY
+          )"
+          if [ "$prepared" != "$next" ]; then
+            echo "::error::Prepared version $prepared does not match calculated version $next."
+            exit 1
+          fi
+
+          changed="$( { git diff --name-only; git diff --cached --name-only; } | sort -u )"
+          if [ -z "$changed" ]; then
+            echo "::error::Prepare-only semantic-release path did not modify tracked release files."
+            exit 1
+          fi
+
+          unexpected="$(printf '%s\n' "$changed" | grep -v -E '^(pyproject\.toml|CHANGELOG\.md)$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "::error::Prepare-only semantic-release path modified unexpected tracked files:"
+            echo "$unexpected"
+            exit 1
+          fi
+
+          if ! printf '%s\n' "$changed" | grep -qx 'pyproject.toml'; then
+            echo "::error::Prepare-only semantic-release path did not modify pyproject.toml."
+            exit 1
+          fi
+
+          echo "semantic-release prepare path valid: current=$current next=$next prepared=$prepared"
 
   databricks-extra:
     runs-on: ubuntu-latest

@@ -99,10 +99,9 @@ jobs:
       - name: Stamp version and changelog
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT }}
-          GIT_COMMIT_AUTHOR: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-        run: semantic-release -v version --no-push --no-vcs-release --no-tag
+        run: semantic-release -v version --no-commit --no-tag
 
-      - name: Verify prepared release commit
+      - name: Verify and commit prepared release
         shell: bash
         run: |
           prepared="$(python - <<'PY'
@@ -117,10 +116,39 @@ jobs:
             exit 1
           fi
 
-          unexpected="$(git diff --name-only HEAD^ HEAD | grep -v -E '^(pyproject\.toml|CHANGELOG\.md)$' || true)"
+          changed="$( { git diff --name-only; git diff --cached --name-only; } | sort -u )"
+          if [ -z "$changed" ]; then
+            echo "::error::semantic-release did not modify any tracked release files."
+            exit 1
+          fi
+
+          unexpected="$(printf '%s\n' "$changed" | grep -v -E '^(pyproject\.toml|CHANGELOG\.md)$' || true)"
           if [ -n "$unexpected" ]; then
             echo "::error::Release preparation modified unexpected tracked files:"
             echo "$unexpected"
+            exit 1
+          fi
+
+          if ! printf '%s\n' "$changed" | grep -qx 'pyproject.toml'; then
+            echo "::error::Release preparation did not modify pyproject.toml."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml CHANGELOG.md
+          git commit -m "chore(release): ${expected}"
+
+          committed="$(git diff-tree --no-commit-id --name-only -r HEAD)"
+          unexpected_committed="$(printf '%s\n' "$committed" | grep -v -E '^(pyproject\.toml|CHANGELOG\.md)$' || true)"
+          if [ -n "$unexpected_committed" ]; then
+            echo "::error::Release commit contains unexpected tracked files:"
+            echo "$unexpected_committed"
+            exit 1
+          fi
+
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "::error::Tracked release changes remain after creating the release commit."
             exit 1
           fi
 
