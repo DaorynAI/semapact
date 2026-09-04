@@ -133,7 +133,7 @@ jobs:
             exit 1
           fi
 
-          changed="$(git diff --name-only)"
+          changed="$( { git diff --name-only; git diff --cached --name-only; } | sort -u )"
           if [ -z "$changed" ]; then
             echo "::error::Prepare-only semantic-release path did not modify tracked release files."
             exit 1
