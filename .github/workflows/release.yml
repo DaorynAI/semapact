@@ -18,21 +18,24 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-        continue-on-error: true
-
-      - name: Checkout main
+      - name: Checkout dispatched main commit
         uses: actions/checkout@v7
         with:
-          ref: main
-          token: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-          persist-credentials: true
+
+      - name: Verify dispatched commit is current main
+        shell: bash
+        run: |
+          git fetch origin main --tags --force
+          current="$(git rev-parse HEAD)"
+          main="$(git rev-parse origin/main)"
+          if [ "$current" != "$main" ]; then
+            echo "::error::main moved after this release was dispatched. Re-run Release from current main."
+            echo "dispatched=$current"
+            echo "current-main=$main"
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -49,67 +52,110 @@ jobs:
         id: release
         shell: bash
         run: |
-          version="$(python - <<'PY'
-          import tomllib
-          with open('pyproject.toml', 'rb') as f:
-              print(tomllib.load(f)['project']['version'])
-          PY
-          )"
+          mapfile -t head_tags < <(git tag --points-at HEAD --list 'semapact-v*')
 
-          if [ -z "$version" ] || [ "$version" = "0.0.0" ]; then
-            echo "::error::main does not contain a prepared release version. Run Prepare Release and merge its PR first."
+          if [ "${#head_tags[@]}" -gt 1 ]; then
+            echo "::error::Current main has multiple SemaPact release tags: ${head_tags[*]}"
             exit 1
           fi
 
-          tag="semapact-v${version}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-      - name: Validate tag state
-        id: tag-state
-        shell: bash
-        run: |
-          git fetch --tags --force
-          tag="${{ steps.release.outputs.tag }}"
-          current="$(git rev-parse HEAD)"
-
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            tagged="$(git rev-list -n 1 "$tag")"
-            if [ "$tagged" != "$current" ]; then
-              echo "::error::$tag already exists on $tagged, not current main $current."
+          if [ "${#head_tags[@]}" -eq 1 ]; then
+            tag="${head_tags[0]}"
+            version="${tag#semapact-v}"
+            echo "Resuming existing release tag $tag on current main."
+          else
+            version="$(semantic-release version --print)"
+            if [ -z "$version" ]; then
+              echo "::error::semantic-release found no releasable changes on current main."
               exit 1
             fi
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "$tag already points at current main; resuming release."
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+            tag="semapact-v${version}"
+
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              tagged="$(git rev-list -n 1 "$tag")"
+              echo "::error::$tag already exists on $tagged, not current main."
+              exit 1
+            fi
+
+            if ! git tag --list 'semapact-v*' | grep -q . && [ "$version" != "0.1.0" ]; then
+              echo "::error::Expected first SemaPact release 0.1.0, got $version."
+              exit 1
+            fi
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" -m "SemaPact $version"
           fi
 
-      - name: Build exact release distributions
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Releasing SemaPact $version from $(git rev-parse HEAD)"
+
+      - name: Build exact tagged distributions
+        shell: bash
         run: |
+          tag="${{ steps.release.outputs.tag }}"
+          version="${{ steps.release.outputs.version }}"
+          tagged="$(git rev-list -n 1 "$tag")"
+          current="$(git rev-parse HEAD)"
+          if [ "$tagged" != "$current" ]; then
+            echo "::error::$tag resolves to $tagged, not checked-out commit $current."
+            exit 1
+          fi
+
           rm -rf dist
           uv build
           uvx twine check dist/*
 
-      - name: Create release tag
-        if: steps.tag-state.outputs.exists != 'true'
+          test -f "dist/semapact-${version}.tar.gz" || {
+            echo "::error::Missing semapact-${version}.tar.gz; SCM-derived sdist version is wrong."
+            ls -la dist
+            exit 1
+          }
+
+          wheel_count="$(find dist -maxdepth 1 -type f -name "semapact-${version}-*.whl" | wc -l)"
+          if [ "$wheel_count" != "1" ]; then
+            echo "::error::Expected exactly one semapact-${version} wheel, found $wheel_count."
+            ls -la dist
+            exit 1
+          fi
+
+      - name: Push release tag
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           tag="${{ steps.release.outputs.tag }}"
-          git tag -a "$tag" -m "SemaPact ${{ steps.release.outputs.version }}"
-          git push origin "$tag"
+          current="$(git rev-parse HEAD)"
 
-      - name: Create or update GitHub Release notes
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-        run: semantic-release -v changelog --post-to-release-tag "${{ steps.release.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            remote="$(git ls-remote --tags origin "refs/tags/$tag^{}" | awk '{print $1}')"
+            if [ -z "$remote" ]; then
+              remote="$(git ls-remote --tags origin "refs/tags/$tag" | awk '{print $1}')"
+            fi
+            if [ "$remote" != "$current" ]; then
+              echo "::error::Remote $tag does not resolve to current main $current."
+              exit 1
+            fi
+            echo "$tag already exists remotely on current main; resuming."
+          else
+            git push origin "$tag"
+          fi
 
-      - name: Upload distributions to GitHub Release
+      - name: Create or update GitHub Release
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ steps.release.outputs.tag }}" dist/* --clobber
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ steps.release.outputs.tag }}"
+          version="${{ steps.release.outputs.version }}"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" dist/* \
+              --verify-tag \
+              --title "SemaPact $version" \
+              --generate-notes
+          fi
 
       - name: Upload Python distributions
         uses: actions/upload-artifact@v7
