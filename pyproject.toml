@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=77", "wheel"]
+requires = ["setuptools>=80", "setuptools-scm>=9.2", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "semapact"
-version = "0.0.0"
+dynamic = ["version"]
 description = "Deterministic lifecycle governance and production assurance for ODCS data contracts"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -122,11 +122,15 @@ addopts = "-q"
 [tool.setuptools.packages.find]
 include = ["semapact*"]
 
+[tool.setuptools_scm]
+fallback_version = "0.0.dev0"
+
+[tool.setuptools_scm.tag]
+prefix = "semapact-v"
+strict = true
+
 [tool.semantic_release]
-version_toml = ["pyproject.toml:project.version"]
 tag_format = "semapact-v{version}"
-build_command = "rm -rf dist && uv build && uvx twine check dist/*"
-commit_message = "chore(release): {version}"
 allow_zero_version = true
 major_on_zero = false
 
