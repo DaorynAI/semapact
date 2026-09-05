@@ -98,60 +98,45 @@ jobs:
       - name: Install pinned semantic-release
         run: uv pip install --system python-semantic-release==10.6.2
 
-      - name: Validate release configuration and prepare-only path
+      - name: Validate semantic-release calculation
         shell: bash
         run: |
           git checkout -B main
-          current="$(python - <<'PY'
-          import tomllib
-          with open('pyproject.toml', 'rb') as f:
-              print(tomllib.load(f)['project']['version'])
-          PY
-          )"
           next="$(semantic-release version --print)"
 
-          if [ -z "$next" ]; then
-            echo "::error::semantic-release did not calculate a version."
-            exit 1
+          if ! git tag --list 'semapact-v*' | grep -q .; then
+            if [ "$next" != "0.1.0" ]; then
+              echo "::error::Expected first SemaPact release 0.1.0, got '${next:-<none>}'."
+              exit 1
+            fi
+            echo "First SemaPact release correctly resolves to $next."
+          else
+            echo "semantic-release next version: ${next:-<no releasable changes>}"
           fi
 
-          if [ "$current" = "0.0.0" ] && [ "$next" != "0.1.0" ]; then
-            echo "::error::Expected first SemaPact release 0.1.0, got $next."
+      - name: Validate tag-derived package version
+        shell: bash
+        run: |
+          test_tag="semapact-v9.9.9"
+          git tag "$test_tag"
+          trap 'git tag -d "$test_tag" >/dev/null 2>&1 || true' EXIT
+
+          rm -rf dist
+          uv build
+          uvx twine check dist/*
+
+          test -f dist/semapact-9.9.9.tar.gz || {
+            echo "::error::setuptools-scm did not derive sdist version 9.9.9 from $test_tag."
+            ls -la dist
+            exit 1
+          }
+
+          wheel_count="$(find dist -maxdepth 1 -type f -name 'semapact-9.9.9-*.whl' | wc -l)"
+          if [ "$wheel_count" != "1" ]; then
+            echo "::error::Expected exactly one semapact-9.9.9 wheel, found $wheel_count."
+            ls -la dist
             exit 1
           fi
-
-          semantic-release -v version --no-commit --no-tag
-
-          prepared="$(python - <<'PY'
-          import tomllib
-          with open('pyproject.toml', 'rb') as f:
-              print(tomllib.load(f)['project']['version'])
-          PY
-          )"
-          if [ "$prepared" != "$next" ]; then
-            echo "::error::Prepared version $prepared does not match calculated version $next."
-            exit 1
-          fi
-
-          changed="$( { git diff --name-only; git diff --cached --name-only; } | sort -u )"
-          if [ -z "$changed" ]; then
-            echo "::error::Prepare-only semantic-release path did not modify tracked release files."
-            exit 1
-          fi
-
-          unexpected="$(printf '%s\n' "$changed" | grep -v -E '^(pyproject\.toml|CHANGELOG\.md)$' || true)"
-          if [ -n "$unexpected" ]; then
-            echo "::error::Prepare-only semantic-release path modified unexpected tracked files:"
-            echo "$unexpected"
-            exit 1
-          fi
-
-          if ! printf '%s\n' "$changed" | grep -qx 'pyproject.toml'; then
-            echo "::error::Prepare-only semantic-release path did not modify pyproject.toml."
-            exit 1
-          fi
-
-          echo "semantic-release prepare path valid: current=$current next=$next prepared=$prepared"
 
   databricks-extra:
     runs-on: ubuntu-latest
