@@ -18,10 +18,10 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
     steps:
-      - name: Checkout dispatched main commit
+      - name: Checkout main
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: main
           fetch-depth: 0
 
       - name: Verify dispatched commit is current main
@@ -29,11 +29,20 @@ jobs:
         run: |
           git fetch origin main --tags --force
           current="$(git rev-parse HEAD)"
+          dispatched="${{ github.sha }}"
           main="$(git rev-parse origin/main)"
-          if [ "$current" != "$main" ]; then
+
+          if [ "$current" != "$dispatched" ] || [ "$current" != "$main" ]; then
             echo "::error::main moved after this release was dispatched. Re-run Release from current main."
-            echo "dispatched=$current"
+            echo "checked-out=$current"
+            echo "dispatched=$dispatched"
             echo "current-main=$main"
+            exit 1
+          fi
+
+          branch="$(git branch --show-current)"
+          if [ "$branch" != "main" ]; then
+            echo "::error::Release must run from an attached main branch; got '${branch:-<detached>}'."
             exit 1
           fi
 
