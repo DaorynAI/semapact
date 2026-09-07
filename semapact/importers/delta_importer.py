@@ -131,6 +131,17 @@ def _build_imported_contract(
     return contract_model
 
 
+def _table_uri_identity(table_uri: str) -> str:
+    normalized = table_uri.strip()
+    if "://" in normalized:
+        parsed = urlparse(normalized)
+        normalized_path = parsed.path.rstrip("/") or parsed.path
+        return parsed._replace(path=normalized_path).geturl()
+
+    normalized_path = normalized.rstrip("/\\")
+    return normalized_path or normalized
+
+
 def _resolve_table_uris(source: str, import_args: dict) -> List[str]:
     table_uris = import_args.get("table_uris") or import_args.get("tables") or []
     if isinstance(table_uris, str):
@@ -138,9 +149,22 @@ def _resolve_table_uris(source: str, import_args: dict) -> List[str]:
     if not isinstance(table_uris, list):
         raise ValueError("table_uris must be a list of table URIs")
 
-    normalized = [item for item in table_uris if isinstance(item, str) and item.strip()]
-    if source:
-        normalized.insert(0, source)
+    candidates = [
+        item.strip()
+        for item in table_uris
+        if isinstance(item, str) and item.strip()
+    ]
+    if source and source.strip():
+        candidates.insert(0, source.strip())
+
+    normalized: List[str] = []
+    seen: set[str] = set()
+    for table_uri in candidates:
+        identity = _table_uri_identity(table_uri)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        normalized.append(table_uri)
 
     if not normalized:
         raise ValueError("Delta importer requires at least one table URI")
