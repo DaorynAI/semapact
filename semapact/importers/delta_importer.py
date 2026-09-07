@@ -273,26 +273,25 @@ def _extract_delta_relationships(
     if not isinstance(configuration, dict):
         return None
 
-    relationships = {}
+    relationships: Dict[str, List[Relationship]] = {}
+    prefix = "semapact.fk."
     for key, value in configuration.items():
-        if isinstance(key, str):
-            prefix = None
-            if key.startswith("semapact.fk."):
-                prefix = "semapact.fk."
-            elif key.startswith("semapact.fk."):
-                prefix = "semapact.fk."
+        if not isinstance(key, str) or not key.startswith(prefix):
+            continue
 
-            if prefix:
-                from_field = key[len(prefix) :]
-                to_fields = [item.strip() for item in str(value).split(",") if item.strip()]
+        from_field = key[len(prefix) :].strip()
+        if not from_field:
+            continue
 
-            rels = []
-            for to_field in to_fields:
-                rels.append(Relationship(type="foreignKey", to=to_field))
-            if rels:
-                relationships[from_field] = rels
+        to_fields = [item.strip() for item in str(value).split(",") if item.strip()]
+        if not to_fields:
+            continue
 
-    return relationships if relationships else None
+        relationships[from_field] = [
+            Relationship(type="foreignKey", to=to_field) for to_field in to_fields
+        ]
+
+    return relationships or None
 
 
 def _extract_table_description(metadata: Any) -> Optional[str]:
