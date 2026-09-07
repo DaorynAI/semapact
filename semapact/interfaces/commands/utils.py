@@ -36,6 +36,23 @@ def _parse_table_uris(value: str | None) -> list[str] | None:
     items = [item.strip() for item in value.split(",") if item.strip()]
     return items or None
 
+
+def _split_discovered_delta_tables(
+    source: str,
+    table_uris: list[str] | None,
+) -> tuple[str, list[str]]:
+    """Map a complete discovery result to the Delta importer's input contract.
+
+    ``source`` is a discovery root at the CLI boundary, but the Delta importer
+    interprets ``source`` as the primary Delta table and ``table_uris`` as
+    additional tables. Use the first discovered table as the primary source so
+    a parent discovery directory is never injected as a table.
+    """
+    if not table_uris:
+        return source, []
+    return table_uris[0], table_uris[1:]
+
+
 def _build_git_config(args: argparse.Namespace):
     from semapact.devops.pr_creator import AzureDevOpsConfig, GitHubConfig
     from semapact.core.config import config_manager
