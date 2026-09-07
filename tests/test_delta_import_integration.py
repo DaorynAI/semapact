@@ -89,7 +89,7 @@ def test_local_delta_discovery_and_import_end_to_end(tmp_path: Path) -> None:
         str(payments.absolute()),
     }
 
-    schemas = contract.schema or []
+    schemas = contract.schema_ or []
     assert {schema.name for schema in schemas} == {"orders", "payments"}
     assert len(schemas) == 2
     for schema in schemas:
@@ -104,7 +104,7 @@ def test_local_delta_import_preserves_governance_regression_path(tmp_path: Path)
     governed = source.model_copy(deep=True)
     governed.status = "active"
 
-    for schema in governed.schema or []:
+    for schema in governed.schema_ or []:
         schema.customProperties = [
             *(schema.customProperties or []),
             _lifecycle("active"),
@@ -116,7 +116,7 @@ def test_local_delta_import_preserves_governance_regression_path(tmp_path: Path)
             ]
 
     orders_schema = next(
-        schema for schema in governed.schema or [] if schema.name == "orders"
+        schema for schema in governed.schema_ or [] if schema.name == "orders"
     )
     orders_schema.properties = [
         *(orders_schema.properties or []),
@@ -139,7 +139,7 @@ def test_local_delta_import_preserves_governance_regression_path(tmp_path: Path)
 
     merged_orders = next(
         schema
-        for schema in analysis.merge_result.contract.schema or []
+        for schema in analysis.merge_result.contract.schema_ or []
         if schema.name == "orders"
     )
     legacy = next(
