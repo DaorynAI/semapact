@@ -146,7 +146,7 @@ def test_plan_command_does_not_inject_discovery_root(
     )
 
     args = argparse.Namespace(
-        effective_date=None,
+        effective_date="2026-09-07",
         base="base.yaml",
         type="delta",
         source=str(tmp_path),
