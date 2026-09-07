@@ -101,12 +101,16 @@ def test_cli_discover_delta_tables_local(sample_odcs_model, tmp_path, monkeypatc
 
     assert exit_code == 0
     assert captured["format"] == "delta"
-    
-    # It should have discovered table1 and table2
-    assert len(captured["table_uris"]) == 2
-    assert any("table1" in uri for uri in captured["table_uris"])
-    assert any("table2" in uri for uri in captured["table_uris"])
-    assert not any("not_a_table" in uri for uri in captured["table_uris"])
+
+    # Discovery should pass only concrete Delta tables to the importer. The
+    # first table becomes the primary source and the rest remain additional.
+    discovered_inputs = {captured["source"], *captured["table_uris"]}
+    assert captured["source"] != str(tmp_path)
+    assert len(captured["table_uris"]) == 1
+    assert len(discovered_inputs) == 2
+    assert any("table1" in uri for uri in discovered_inputs)
+    assert any("table2" in uri for uri in discovered_inputs)
+    assert not any("not_a_table" in uri for uri in discovered_inputs)
 
 
 def test_cli_import_supports_delta_table_alias(

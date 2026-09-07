@@ -9,6 +9,7 @@ from semapact.governance import (
 from semapact.interfaces.commands.utils import (
     _parse_table_uris,
     _resolve_adls_oauth_token_from_config,
+    _split_discovered_delta_tables,
 )
 from semapact.services import GovernanceService
 
@@ -20,6 +21,7 @@ def run_plan(args: argparse.Namespace) -> None:
 
     print(f"\n🔍 Contract Analysis: {args.base}")
 
+    import_source = args.source
     import_args: dict[str, Any] = {}
     if args.type in {"delta", "delta-table"}:
         oauth_token = None
@@ -43,6 +45,10 @@ def run_plan(args: argparse.Namespace) -> None:
                 import logging
                 logging.getLogger("semapact").warning(f"Failed to auto-discover delta tables: {e}")
                 table_uris = []
+            import_source, table_uris = _split_discovered_delta_tables(
+                args.source,
+                table_uris,
+            )
         
         if oauth_token:
             import_args["oauth_bearer_token"] = oauth_token
@@ -54,7 +60,7 @@ def run_plan(args: argparse.Namespace) -> None:
     # Import temporary contract from source
     imported = pipeline.import_schema(
         source_type=args.type,
-        source=args.source,
+        source=import_source,
         uc_workspace_url=args.workspace_url,
         uc_token=args.token,
         import_args=import_args if import_args else None,

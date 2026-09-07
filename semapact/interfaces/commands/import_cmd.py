@@ -8,6 +8,7 @@ from semapact.governance import GovernanceOperation, enforce_governance_gate
 from semapact.interfaces.commands.utils import (
     _parse_table_uris,
     _resolve_adls_oauth_token_from_config,
+    _split_discovered_delta_tables,
 )
 from semapact.services import GovernanceService
 
@@ -24,6 +25,7 @@ def run_import(args: argparse.Namespace) -> Path:
         existing_contract = loader.load(args.existing)
 
     if args.format in {"delta", "delta-table"}:
+        import_source = args.source
         oauth_token = None
         if args.source.startswith("abfss://") or "dfs.core.windows.net" in args.source:
             oauth_token = _resolve_adls_oauth_token_from_config()
@@ -40,10 +42,14 @@ def run_import(args: argparse.Namespace) -> Path:
             except Exception as e:
                 logging.getLogger("semapact").warning(f"Failed to auto-discover delta tables: {e}")
                 table_uris = []
+            import_source, table_uris = _split_discovered_delta_tables(
+                args.source,
+                table_uris,
+            )
                 
         contract = DataContract.import_from_source(
             format="delta",
-            source=args.source,
+            source=import_source,
             oauth_bearer_token=oauth_token,
             table_uris=table_uris,
         )
