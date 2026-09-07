@@ -62,7 +62,7 @@ def test_local_delta_discovery_and_import_end_to_end(tmp_path: Path) -> None:
     discovered = LocalStorageAdapter().discover_delta_tables(str(tmp_path))
     primary, additional = _split_discovered_delta_tables(str(tmp_path), discovered)
 
-    contract = DeltaTableImporter().import_source(
+    contract = DeltaTableImporter("delta").import_source(
         primary,
         {"table_uris": additional},
     )
