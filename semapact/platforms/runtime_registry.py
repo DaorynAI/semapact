@@ -1,4 +1,4 @@
-"""Composition root for runtime provider implementations."""
+"""Runtime-location resolution and provider composition boundary."""
 
 from __future__ import annotations
 
@@ -29,40 +29,29 @@ def resolve_runtime_location(
     fallback_platform: str | None = None,
     fallback_runtime_target: str | None = None,
 ) -> ResolvedRuntimeLocation:
-    """Resolve runtime metadata with contract-first, fail-closed precedence.
-
-    Contract ``servers`` are authoritative when present. CLI platform/runtime values
-    are fallback only and are consulted exclusively when the contract defines no
-    servers.
-    """
+    """Resolve runtime location with contract-first, fail-closed precedence."""
     servers = tuple(contract.servers or ())
     if servers:
         selected = _select_contract_server(servers, server_name)
-        platform = _required_server_text(
-            selected,
-            "type",
-            "Selected contract server must define a runtime type",
-        )
-        resolved_name = _required_server_text(
-            selected,
-            "server",
-            "Selected contract server must define a server identifier",
-        )
+        platform = _required(selected.type, "Selected contract server must define a runtime type")
         return ResolvedRuntimeLocation(
             platform=platform,
-            runtime_target=_runtime_target_from_contract_server(platform, selected),
+            runtime_target=_runtime_target_from_server(platform, selected),
             source="contract",
-            server_name=resolved_name,
+            server_name=_required(
+                selected.server,
+                "Selected contract server must define a server identifier",
+            ),
             contract_server=selected,
         )
 
-    if _clean_optional(server_name):
+    if _clean(server_name):
         raise ValidationError(
             "--server cannot be used because the contract defines no servers"
         )
 
-    platform = _clean_optional(fallback_platform)
-    runtime_target = _clean_optional(fallback_runtime_target)
+    platform = _clean(fallback_platform)
+    runtime_target = _clean(fallback_runtime_target)
     if not platform or not runtime_target:
         raise ValidationError(
             "Contract defines no servers; provide both --platform and --runtime"
@@ -80,12 +69,7 @@ def create_runtime_provider_registry(
     *,
     contract_server: Server | None = None,
 ) -> RuntimeProviderRegistry:
-    """Create a registry containing the selected supported runtime provider.
-
-    Provider construction remains outside reconciliation and CLI semantics. Only the
-    selected provider is initialized so unrelated optional dependencies or credentials
-    are never required.
-    """
+    """Create only the selected provider, keeping optional dependencies lazy."""
     normalized = platform.strip().casefold()
     if normalized == "databricks":
         return RuntimeProviderRegistry(
@@ -100,13 +84,12 @@ def _select_contract_server(
     servers: tuple[Server, ...],
     requested_name: str | None,
 ) -> Server:
-    requested = _clean_optional(requested_name)
+    requested = _clean(requested_name)
     if requested:
         matches = [
             server
             for server in servers
-            if _optional_text(_server_field(server, "server"), casefold=True)
-            == requested.casefold()
+            if _clean(server.server, casefold=True) == requested.casefold()
         ]
         if len(matches) == 1:
             return matches[0]
@@ -114,34 +97,25 @@ def _select_contract_server(
             raise ValidationError(
                 f"Contract contains duplicate server identifier '{requested}'"
             )
-        available = ", ".join(sorted(_server_names(servers))) or "none"
         raise ValidationError(
-            f"Contract server '{requested}' was not found. Available servers: {available}"
+            f"Contract server '{requested}' was not found. "
+            f"Available servers: {_available_server_names(servers)}"
         )
 
     if len(servers) == 1:
         return servers[0]
 
-    available = ", ".join(sorted(_server_names(servers))) or "none"
     raise ValidationError(
         "Multiple contract servers are defined; select one with --server. "
-        f"Available servers: {available}"
+        f"Available servers: {_available_server_names(servers)}"
     )
 
 
-def _runtime_target_from_contract_server(platform: str, server: Server) -> str:
-    normalized = platform.strip().casefold()
-    if normalized == "databricks":
-        catalog = _required_server_text(
-            server,
-            "catalog",
-            "Databricks contract server must define catalog",
-        )
-        schema = _required_server_text(
-            server,
-            "schema",
-            "Databricks contract server must define schema",
-        )
+def _runtime_target_from_server(platform: str, server: Server) -> str:
+    """Project one ODCS server into the selected provider's runtime target."""
+    if platform.strip().casefold() == "databricks":
+        catalog = _required(server.catalog, "Databricks contract server must define catalog")
+        schema = _required(server.schema_, "Databricks contract server must define schema")
         return f"{catalog}.{schema}"
     raise ValidationError(
         f"Unsupported runtime provider '{platform}'. Supported providers: databricks"
@@ -157,14 +131,10 @@ def _create_databricks_provider(
         create_databricks_workspace_client,
     )
 
-    workspace_url = (
-        _clean_optional(_server_field(contract_server, "host"))
-        if contract_server is not None
-        else None
+    client = create_databricks_workspace_client(
+        workspace_url=_clean(contract_server.host) if contract_server else None
     )
-    client = create_databricks_workspace_client(workspace_url=workspace_url)
-    config = getattr(client, "config", None)
-    source_identifier = getattr(config, "host", None)
+    source_identifier = getattr(getattr(client, "config", None), "host", None)
     if not isinstance(source_identifier, str) or not source_identifier.strip():
         raise RuntimeError("Databricks SDK did not resolve a workspace host")
     return DatabricksRuntimeProvider(
@@ -173,40 +143,22 @@ def _create_databricks_provider(
     )
 
 
-def _server_names(servers: tuple[Server, ...]) -> tuple[str, ...]:
-    names = []
-    for server in servers:
-        name = _optional_text(_server_field(server, "server"))
-        if name:
-            names.append(name)
-    return tuple(names)
+def _available_server_names(servers: tuple[Server, ...]) -> str:
+    names = sorted(name for server in servers if (name := _clean(server.server)))
+    return ", ".join(names) or "none"
 
 
-def _server_field(server: Server, name: str) -> object | None:
-    """Read a server field using its ODCS wire alias."""
-    return server.model_dump(mode="python", by_alias=True).get(name)
-
-
-def _required_server_text(server: Server, field: str, message: str) -> str:
-    return _required_text(_server_field(server, field), message)
-
-
-def _required_text(value: object, message: str) -> str:
-    cleaned = _clean_optional(value)
+def _required(value: object, message: str) -> str:
+    cleaned = _clean(value)
     if not cleaned:
         raise ValidationError(message)
     return cleaned
 
 
-def _optional_text(value: object, *, casefold: bool = False) -> str | None:
-    cleaned = _clean_optional(value)
-    if cleaned is None:
-        return None
-    return cleaned.casefold() if casefold else cleaned
-
-
-def _clean_optional(value: object) -> str | None:
+def _clean(value: object, *, casefold: bool = False) -> str | None:
     if value is None:
         return None
     cleaned = str(value).strip()
-    return cleaned or None
+    if not cleaned:
+        return None
+    return cleaned.casefold() if casefold else cleaned
