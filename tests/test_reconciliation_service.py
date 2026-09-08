@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Sequence, cast
 
 from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject
 
+from semapact.core.loader import ContractLoader
 from semapact.observation import (
     ObservedAsset,
     ObservedAssetIdentity,
@@ -39,7 +41,7 @@ class _Provider:
         self,
         *,
         runtime_target: str,
-        assets: tuple[RuntimeAssetSpec, ...],
+        assets: Sequence[RuntimeAssetSpec],
     ) -> tuple[RuntimeAssetBinding, ...]:
         self.runtime_target = runtime_target
         self.specs = tuple(assets)
@@ -57,7 +59,7 @@ class _Provider:
     def observe(
         self,
         *,
-        bindings: tuple[RuntimeAssetBinding, ...],
+        bindings: Sequence[RuntimeAssetBinding],
     ) -> ObservedPlatformState:
         self.observed_bindings = tuple(bindings)
         identity = bindings[0].observed_asset
@@ -87,7 +89,7 @@ def test_reconciliation_service_orchestrates_provider_without_vendor_logic() -> 
     provider = _Provider()
     service = ReconciliationService(
         RuntimeProviderRegistry((provider,)),
-        contract_loader=loader,  # type: ignore[arg-type]
+        contract_loader=cast(ContractLoader, loader),
     )
 
     analysis = service.reconcile(
