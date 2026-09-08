@@ -318,18 +318,22 @@ def _build_parser() -> argparse.ArgumentParser:
 
     reconcile_parser = subparsers.add_parser(
         "reconcile",
-        help="Compare a governed data product with a selected runtime provider",
+        help="Compare a governed data product with its runtime implementation",
     )
     reconcile_parser.add_argument(
         "--contract", required=True, help="Path or URL to the governed ODCS contract"
     )
     reconcile_parser.add_argument(
-        "--platform", required=True, help="Runtime provider key (for example: databricks)"
+        "--server",
+        help="Contract server identifier when the contract defines multiple servers",
+    )
+    reconcile_parser.add_argument(
+        "--platform",
+        help="Fallback runtime provider when the contract defines no servers",
     )
     reconcile_parser.add_argument(
         "--runtime",
-        required=True,
-        help="Provider-local runtime product target",
+        help="Fallback provider-local runtime product target when the contract defines no servers",
     )
     reconcile_parser.add_argument(
         "--output",
