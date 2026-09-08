@@ -12,8 +12,6 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
 
-from semapact.reconciliation.reasons import RuntimeReasonCode
-
 
 class ReconciliationModel(BaseModel):
     """Shared immutable base for reconciliation models."""
@@ -36,6 +34,17 @@ class ReconciliationSubject(str, Enum):
     PROPERTY = "property"
     PHYSICAL_TYPE = "physical_type"
     NULLABILITY = "nullability"
+
+
+class RuntimeReasonCode(str, Enum):
+    """Stable semantic identifiers for supported runtime differences."""
+
+    RUNTIME_SCHEMA_ADDED = "RUNTIME_SCHEMA_ADDED"
+    RUNTIME_SCHEMA_REMOVED = "RUNTIME_SCHEMA_REMOVED"
+    RUNTIME_PROPERTY_ADDED = "RUNTIME_PROPERTY_ADDED"
+    RUNTIME_PROPERTY_REMOVED = "RUNTIME_PROPERTY_REMOVED"
+    RUNTIME_PHYSICAL_TYPE_CHANGED = "RUNTIME_PHYSICAL_TYPE_CHANGED"
+    RUNTIME_REQUIRED_CHANGED = "RUNTIME_REQUIRED_CHANGED"
 
 
 class ReconciliationDifference(ReconciliationModel):
