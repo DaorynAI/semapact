@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from semapact.reconciliation import (
 
 CAPTURED_AT = datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc)
 GOLDEN_PATH = Path(__file__).parent / "fixtures" / "m1_reconciliation_golden.json"
+ScenarioFactory = Callable[[], tuple[OpenDataContractStandard, ObservedPlatformState]]
 
 
 def _contract(*schemas: SchemaObject) -> OpenDataContractStandard:
@@ -126,7 +128,7 @@ def _composite_drift_scenario(
     *,
     reverse_order: bool = False,
 ) -> tuple[OpenDataContractStandard, ObservedPlatformState]:
-    order_properties = [
+    governed_properties = [
         SchemaProperty(
             name="id",
             type="integer",
@@ -145,30 +147,23 @@ def _composite_drift_scenario(
             required=True,
         ),
     ]
-    schemas = [
-        SchemaObject(name="customers", properties=[]),
-        SchemaObject(name="orders", properties=order_properties),
-    ]
     observed_properties = [
         ("id", "STRING", True),
         ("note", "STRING", True),
         ("created_at", None, None),
     ]
-    observed_assets = [
-        _asset("orders", *observed_properties),
-        _asset("payments"),
-    ]
+    if reverse_order:
+        governed_properties = list(reversed(governed_properties))
+        observed_properties = list(reversed(observed_properties))
+
+    customers = SchemaObject(name="customers", properties=[])
+    orders = SchemaObject(name="orders", properties=governed_properties)
+    observed_orders = _asset("orders", *observed_properties)
+    payments = _asset("payments")
 
     if reverse_order:
-        order_properties.reverse()
-        schemas.reverse()
-        observed_properties.reverse()
-        observed_assets = [
-            _asset("payments"),
-            _asset("orders", *observed_properties),
-        ]
-
-    return _contract(*schemas), _observation(*observed_assets)
+        return _contract(orders, customers), _observation(payments, observed_orders)
+    return _contract(customers, orders), _observation(observed_orders, payments)
 
 
 def _golden() -> dict[str, dict[str, object]]:
@@ -185,9 +180,9 @@ def _golden() -> dict[str, dict[str, object]]:
 )
 def test_m1_reconciliation_matches_golden_contract(
     scenario_name: str,
-    scenario: object,
+    scenario: ScenarioFactory,
 ) -> None:
-    contract, observation = scenario()  # type: ignore[operator]
+    contract, observation = scenario()
     result = reconcile_governed_contract(contract, observation)
     expected = _golden()[scenario_name]
 
