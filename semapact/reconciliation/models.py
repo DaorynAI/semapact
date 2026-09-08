@@ -68,11 +68,17 @@ class ReconciliationResult(ReconciliationModel):
     observation_source_identifier: str
     observation_fingerprint: str
     differences: tuple[ReconciliationDifference, ...] = ()
+    unverified_paths: tuple[str, ...] = ()
 
     @property
     def has_differences(self) -> bool:
         """Return whether any runtime differences were found."""
         return bool(self.differences)
+
+    @property
+    def comparison_complete(self) -> bool:
+        """Return whether every governed comparison could be verified."""
+        return not self.unverified_paths
 
 
 def serialize_reconciliation_result(result: ReconciliationResult) -> str:
