@@ -22,6 +22,7 @@ from semapact.observation import (
 from semapact.reconciliation import (
     ReconciliationDifferenceType,
     ReconciliationSubject,
+    RuntimeReasonCode,
     reconcile_governed_contract,
     serialize_reconciliation_result,
 )
@@ -147,27 +148,31 @@ def test_missing_and_unexpected_assets_and_properties_are_reported() -> None:
     result = reconcile_governed_contract(contract, observation)
 
     assert [
-        (item.difference_type, item.subject, item.path)
+        (item.difference_type, item.subject, item.reason_code, item.path)
         for item in result.differences
     ] == [
         (
             ReconciliationDifferenceType.MISSING,
             ReconciliationSubject.ASSET,
+            RuntimeReasonCode.RUNTIME_SCHEMA_REMOVED,
             "schema[customers]",
         ),
         (
             ReconciliationDifferenceType.MISSING,
             ReconciliationSubject.PROPERTY,
+            RuntimeReasonCode.RUNTIME_PROPERTY_REMOVED,
             "schema[orders].properties[amount]",
         ),
         (
             ReconciliationDifferenceType.UNEXPECTED,
             ReconciliationSubject.PROPERTY,
+            RuntimeReasonCode.RUNTIME_PROPERTY_ADDED,
             "schema[orders].properties[note]",
         ),
         (
             ReconciliationDifferenceType.UNEXPECTED,
             ReconciliationSubject.ASSET,
+            RuntimeReasonCode.RUNTIME_SCHEMA_ADDED,
             "schema[payments]",
         ),
     ]
@@ -196,9 +201,11 @@ def test_physical_type_and_nullability_mismatches_are_reported() -> None:
     assert len(result.differences) == 2
     physical, nullable = result.differences
     assert physical.subject is ReconciliationSubject.PHYSICAL_TYPE
+    assert physical.reason_code is RuntimeReasonCode.RUNTIME_PHYSICAL_TYPE_CHANGED
     assert physical.expected == "BIGINT"
     assert physical.observed == "STRING"
     assert nullable.subject is ReconciliationSubject.NULLABILITY
+    assert nullable.reason_code is RuntimeReasonCode.RUNTIME_REQUIRED_CHANGED
     assert nullable.expected is False
     assert nullable.observed is True
 
@@ -279,6 +286,7 @@ def test_difference_order_and_serialization_are_deterministic() -> None:
 
     assert left.differences == right.differences
     assert serialize_reconciliation_result(left) == serialize_reconciliation_result(right)
+    assert "RUNTIME_PHYSICAL_TYPE_CHANGED" in serialize_reconciliation_result(left)
 
 
 def test_reconciliation_does_not_mutate_inputs() -> None:
