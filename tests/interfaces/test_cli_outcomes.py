@@ -59,17 +59,22 @@ def test_process_outcome_and_exit_code_mappings():
         ProcessOutcome.GOVERNANCE_BLOCKED: CliExitCode.GOVERNANCE_BLOCKED,
         ProcessOutcome.REVIEW_REQUIRED: CliExitCode.REVIEW_REQUIRED,
         ProcessOutcome.RUNTIME_ERROR: CliExitCode.RUNTIME_ERROR,
+        ProcessOutcome.RUNTIME_DRIFT: CliExitCode.RUNTIME_DRIFT,
+        ProcessOutcome.RUNTIME_INDETERMINATE: CliExitCode.RUNTIME_INDETERMINATE,
     }
 
+    assert set(ProcessOutcome) == set(expected_mappings)
     for outcome, expected_code in expected_mappings.items():
         assert exit_code_from_outcome(outcome) == expected_code
-        assert int(expected_code) in (0, 2, 3, 4, 5)
+        assert int(expected_code) in (0, 2, 3, 4, 5, 6, 7)
 
     assert int(CliExitCode.SUCCESS) == 0
     assert int(CliExitCode.VALIDATION_FAILED) == 2
     assert int(CliExitCode.GOVERNANCE_BLOCKED) == 3
     assert int(CliExitCode.REVIEW_REQUIRED) == 4
     assert int(CliExitCode.RUNTIME_ERROR) == 5
+    assert int(CliExitCode.RUNTIME_DRIFT) == 6
+    assert int(CliExitCode.RUNTIME_INDETERMINATE) == 7
 
 
 def test_outcome_from_gate_result():
