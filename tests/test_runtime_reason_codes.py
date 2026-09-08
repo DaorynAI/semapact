@@ -19,10 +19,8 @@ from semapact.observation import (
     with_observed_state_fingerprint,
 )
 from semapact.reconciliation import (
-    RUNTIME_REASON_REGISTRY,
     ReconciliationDifferenceType,
     ReconciliationSubject,
-    RuntimeDifferenceClassification,
     RuntimeReasonCode,
     reconcile_governed_contract,
     serialize_reconciliation_result,
@@ -108,11 +106,6 @@ def test_supported_runtime_differences_have_stable_reason_codes() -> None:
         RuntimeReasonCode.RUNTIME_PHYSICAL_TYPE_CHANGED,
         RuntimeReasonCode.RUNTIME_REQUIRED_CHANGED,
     }
-    assert all(
-        difference.classification is RuntimeDifferenceClassification.STRUCTURAL
-        for difference in result.differences
-    )
-    assert all(difference.message for difference in result.differences)
 
     by_code = {difference.reason_code: difference for difference in result.differences}
     assert by_code[RuntimeReasonCode.RUNTIME_SCHEMA_REMOVED].path == "schema[customers]"
@@ -135,15 +128,7 @@ def test_supported_runtime_differences_have_stable_reason_codes() -> None:
     assert by_code[RuntimeReasonCode.RUNTIME_REQUIRED_CHANGED].observed is True
 
 
-def test_runtime_reason_registry_covers_every_public_code() -> None:
-    assert set(RUNTIME_REASON_REGISTRY) == set(RuntimeReasonCode)
-    assert all(
-        definition.description.strip()
-        for definition in RUNTIME_REASON_REGISTRY.values()
-    )
-
-
-def test_runtime_reason_metadata_is_serialized_for_automation() -> None:
+def test_runtime_reason_code_is_serialized_with_existing_raw_evidence() -> None:
     contract = OpenDataContractStandard.model_construct(
         id="orders-contract",
         version="1.2.3",
@@ -156,10 +141,8 @@ def test_runtime_reason_metadata_is_serialized_for_automation() -> None:
     assert payload["differences"] == [
         {
             "asset_identity": "orders",
-            "classification": "STRUCTURAL",
             "difference_type": "missing",
             "expected": None,
-            "message": "A governed asset is missing from runtime. Path: schema[orders]",
             "observed": None,
             "path": "schema[orders]",
             "property_identity": None,
