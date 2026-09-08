@@ -8,7 +8,6 @@ import json
 from typing import Literal
 
 from semapact.interfaces.outcomes import ProcessOutcome, outcome_from_reconciliation_status
-from semapact.platforms.runtime_registry import create_runtime_provider_registry
 from semapact.services.reconciliation_service import ReconciliationService, RuntimeReconciliation
 
 
@@ -22,11 +21,11 @@ class ReconcileCommandResult:
 
 def run_reconcile(args: argparse.Namespace) -> ReconcileCommandResult:
     """Execute the provider-neutral reconciliation workflow."""
-    registry = create_runtime_provider_registry(args.platform)
-    analysis = ReconciliationService(registry).reconcile(
+    analysis = ReconciliationService().reconcile(
         contract_path=args.contract,
-        platform=args.platform,
-        runtime_target=args.runtime,
+        server_name=args.server,
+        fallback_platform=args.platform,
+        fallback_runtime_target=args.runtime,
     )
     output_format: Literal["text", "json"] = args.output
     rendered = (
@@ -44,6 +43,8 @@ def _format_json(analysis: RuntimeReconciliation) -> str:
     payload = {
         "platform": analysis.platform,
         "runtimeTarget": analysis.runtime_target,
+        "runtimeSource": analysis.runtime_source,
+        "server": analysis.server_name,
         "status": analysis.status.value,
         "bindings": [
             {
@@ -59,11 +60,15 @@ def _format_json(analysis: RuntimeReconciliation) -> str:
 
 def _format_text(analysis: RuntimeReconciliation) -> str:
     result = analysis.result
+    runtime_source = analysis.runtime_source
+    if analysis.server_name:
+        runtime_source += f" ({analysis.server_name})"
     lines = [
         f"Status: {analysis.status.value}",
         f"Contract: {result.contract_id}@{result.contract_version}",
         f"Platform: {analysis.platform}",
         f"Runtime: {analysis.runtime_target}",
+        f"Runtime source: {runtime_source}",
         f"Observation fingerprint: {result.observation_fingerprint}",
         "Bindings:",
     ]
