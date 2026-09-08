@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+import pytest
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
     SchemaObject,
     SchemaProperty,
 )
-import pytest
 
 import semapact.services.governance_service as governance_service_module
+from semapact.change_context import ChangeContext
+from semapact.governance.models import GovernanceDecision
+from semapact.lifecycle.merge_engine import MergeConflict
 from semapact.services import GovernanceService
 
 
@@ -42,10 +47,21 @@ def test_evaluate_proposal_evaluates_once_and_reuses_authoritative_changes(
     original = governance_service_module.evaluate_governance_decision
     calls = 0
 
-    def counted_evaluator(*args: object, **kwargs: object):
+    def counted_evaluator(
+        base_contract: OpenDataContractStandard,
+        candidate_contract: OpenDataContractStandard,
+        *,
+        context: ChangeContext,
+        merge_conflicts: Sequence[MergeConflict] = (),
+    ) -> GovernanceDecision:
         nonlocal calls
         calls += 1
-        return original(*args, **kwargs)
+        return original(
+            base_contract,
+            candidate_contract,
+            context=context,
+            merge_conflicts=merge_conflicts,
+        )
 
     monkeypatch.setattr(
         governance_service_module,
@@ -65,7 +81,7 @@ def test_evaluate_proposal_evaluates_once_and_reuses_authoritative_changes(
 
     assert calls == 1
     assert proposal.change_set.changes == proposal.decision.changes
-    assert proposal.change_set.context is proposal.decision.context
+    assert proposal.change_set.context == proposal.decision.context
     assert proposal.change_set.base_revision_ref == "git:abc123"
     assert proposal.change_set.candidate_revision_ref == "git:def456"
     assert proposal.change_set.source == "api"
