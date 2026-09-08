@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from semapact.governance.gate import GovernanceGateResult
+    from semapact.reconciliation import RuntimeDriftStatus
 
 
 logger = logging.getLogger("semapact")
@@ -25,6 +26,8 @@ class ProcessOutcome(str, Enum):
     GOVERNANCE_BLOCKED = "GOVERNANCE_BLOCKED"
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
     RUNTIME_ERROR = "RUNTIME_ERROR"
+    RUNTIME_DRIFT = "RUNTIME_DRIFT"
+    RUNTIME_INDETERMINATE = "RUNTIME_INDETERMINATE"
 
 
 class CliExitCode(IntEnum):
@@ -35,6 +38,8 @@ class CliExitCode(IntEnum):
     GOVERNANCE_BLOCKED = 3
     REVIEW_REQUIRED = 4
     RUNTIME_ERROR = 5
+    RUNTIME_DRIFT = 6
+    RUNTIME_INDETERMINATE = 7
 
 
 _OUTCOME_TO_EXIT_CODE: dict[ProcessOutcome, CliExitCode] = {
@@ -43,6 +48,8 @@ _OUTCOME_TO_EXIT_CODE: dict[ProcessOutcome, CliExitCode] = {
     ProcessOutcome.GOVERNANCE_BLOCKED: CliExitCode.GOVERNANCE_BLOCKED,
     ProcessOutcome.REVIEW_REQUIRED: CliExitCode.REVIEW_REQUIRED,
     ProcessOutcome.RUNTIME_ERROR: CliExitCode.RUNTIME_ERROR,
+    ProcessOutcome.RUNTIME_DRIFT: CliExitCode.RUNTIME_DRIFT,
+    ProcessOutcome.RUNTIME_INDETERMINATE: CliExitCode.RUNTIME_INDETERMINATE,
 }
 
 
@@ -55,7 +62,7 @@ def exit_code_from_outcome(outcome: ProcessOutcome) -> CliExitCode:
 
 
 def outcome_from_gate_result(gate_result: GovernanceGateResult) -> ProcessOutcome:
-    """Map a GovernanceGateResult directly to its corresponding ProcessOutcome."""
+    """Map a GovernanceGateResult directly to the appropriate ProcessOutcome."""
     if gate_result.allowed:
         return ProcessOutcome.SUCCESS
     if gate_result.reason == "blocked":
@@ -63,6 +70,24 @@ def outcome_from_gate_result(gate_result: GovernanceGateResult) -> ProcessOutcom
     if gate_result.reason == "review_required":
         return ProcessOutcome.REVIEW_REQUIRED
     raise ValueError(f"Unsupported GovernanceGateResult reason: {gate_result.reason!r}")
+
+
+def outcome_from_reconciliation_status(status: RuntimeDriftStatus) -> ProcessOutcome:
+    """Map an M1 runtime-assurance status to a process outcome."""
+    from semapact.reconciliation import RuntimeDriftStatus
+
+    if status is RuntimeDriftStatus.IN_SYNC:
+        return ProcessOutcome.SUCCESS
+    if status is RuntimeDriftStatus.DRIFT:
+        return ProcessOutcome.RUNTIME_DRIFT
+    if status is RuntimeDriftStatus.INDETERMINATE:
+        return ProcessOutcome.RUNTIME_INDETERMINATE
+    raise ValueError(f"Unsupported RuntimeDriftStatus: {status!r}")
+
+
+def exit_code_from_reconciliation_status(status: RuntimeDriftStatus) -> CliExitCode:
+    """Map an M1 runtime-assurance status directly to its CLI exit code."""
+    return exit_code_from_outcome(outcome_from_reconciliation_status(status))
 
 
 def outcome_from_exception(exc: BaseException) -> ProcessOutcome:
@@ -81,7 +106,6 @@ def outcome_from_exception(exc: BaseException) -> ProcessOutcome:
         return ProcessOutcome.VALIDATION_FAILED
 
     return ProcessOutcome.RUNTIME_ERROR
-
 
 
 def exit_code_from_exception(exc: BaseException) -> int:
