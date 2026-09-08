@@ -35,15 +35,17 @@ def resolve_runtime_location(
     are fallback only and are consulted exclusively when the contract defines no
     servers.
     """
-    servers = tuple(getattr(contract, "servers", None) or ())
+    servers = tuple(contract.servers or ())
     if servers:
         selected = _select_contract_server(servers, server_name)
-        platform = _required_text(
-            getattr(selected, "type", None),
+        platform = _required_server_text(
+            selected,
+            "type",
             "Selected contract server must define a runtime type",
         )
-        resolved_name = _required_text(
-            getattr(selected, "server", None),
+        resolved_name = _required_server_text(
+            selected,
+            "server",
             "Selected contract server must define a server identifier",
         )
         return ResolvedRuntimeLocation(
@@ -103,7 +105,7 @@ def _select_contract_server(
         matches = [
             server
             for server in servers
-            if _optional_text(getattr(server, "server", None), casefold=True)
+            if _optional_text(_server_field(server, "server"), casefold=True)
             == requested.casefold()
         ]
         if len(matches) == 1:
@@ -130,12 +132,14 @@ def _select_contract_server(
 def _runtime_target_from_contract_server(platform: str, server: object) -> str:
     normalized = platform.strip().casefold()
     if normalized == "databricks":
-        catalog = _required_text(
-            getattr(server, "catalog", None),
+        catalog = _required_server_text(
+            server,
+            "catalog",
             "Databricks contract server must define catalog",
         )
-        schema = _required_text(
-            getattr(server, "schema", None),
+        schema = _required_server_text(
+            server,
+            "schema",
             "Databricks contract server must define schema",
         )
         return f"{catalog}.{schema}"
@@ -154,7 +158,7 @@ def _create_databricks_provider(
     )
 
     workspace_url = (
-        _clean_optional(getattr(contract_server, "host", None))
+        _clean_optional(_server_field(contract_server, "host"))
         if contract_server is not None
         else None
     )
@@ -172,10 +176,30 @@ def _create_databricks_provider(
 def _server_names(servers: tuple[object, ...]) -> tuple[str, ...]:
     names = []
     for server in servers:
-        name = _optional_text(getattr(server, "server", None))
+        name = _optional_text(_server_field(server, "server"))
         if name:
             names.append(name)
     return tuple(names)
+
+
+def _server_field(server: object, name: str) -> object | None:
+    """Read a server field using ODCS wire aliases when available.
+
+    The ODCS Python model exposes reserved YAML names such as ``schema`` as
+    Python attributes such as ``schema_``. Reading an alias-aware model dump keeps
+    runtime resolution coupled to the ODCS wire contract rather than Python naming
+    details. Plain objects remain supported for isolated provider tests.
+    """
+    model_dump = getattr(server, "model_dump", None)
+    if callable(model_dump):
+        payload = model_dump(mode="python", by_alias=True)
+        if isinstance(payload, dict):
+            return payload.get(name)
+    return getattr(server, name, None)
+
+
+def _required_server_text(server: object, field: str, message: str) -> str:
+    return _required_text(_server_field(server, field), message)
 
 
 def _required_text(value: object, message: str) -> str:
