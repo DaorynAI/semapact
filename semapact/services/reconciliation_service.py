@@ -36,12 +36,10 @@ class ReconciliationService:
         workspace_url: str | None = None,
         token: str | None = None,
         profile: str | None = None,
-        runtime_context: RuntimeContext | str | None = "auto",
+        runtime_context: RuntimeContext = "auto",
     ) -> ReconciliationAnalysis:
         """Reconcile one governed contract against one Unity Catalog table."""
-        contract = ContractLoader(runtime_context=runtime_context or "auto").load(
-            contract_path
-        )
+        contract = ContractLoader(runtime_context=runtime_context).load(contract_path)
         client = create_databricks_workspace_client(
             workspace_url=workspace_url,
             token=token,
