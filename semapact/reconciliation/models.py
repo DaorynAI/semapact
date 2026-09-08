@@ -1,8 +1,8 @@
 """Platform-neutral reconciliation result models.
 
-Reconciliation reports raw desired-vs-observed differences. It does not infer
-drift cause, deployment state, or governance status; those classifications are
-separate downstream concerns.
+Reconciliation reports raw desired-vs-observed differences with stable runtime
+reason metadata. It does not infer drift cause, deployment state, or governance
+status; those classifications are separate downstream concerns.
 """
 
 from __future__ import annotations
@@ -11,6 +11,11 @@ import json
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
+
+from semapact.reconciliation.reasons import (
+    RuntimeDifferenceClassification,
+    RuntimeReasonCode,
+)
 
 
 class ReconciliationModel(BaseModel):
@@ -37,10 +42,13 @@ class ReconciliationSubject(str, Enum):
 
 
 class ReconciliationDifference(ReconciliationModel):
-    """One deterministic raw difference between desired and observed state."""
+    """One deterministic difference between governed and observed state."""
 
     difference_type: ReconciliationDifferenceType
     subject: ReconciliationSubject
+    reason_code: RuntimeReasonCode
+    classification: RuntimeDifferenceClassification
+    message: str
     path: str
     asset_identity: str
     property_identity: str | None = None
@@ -49,7 +57,7 @@ class ReconciliationDifference(ReconciliationModel):
 
 
 class ReconciliationResult(ReconciliationModel):
-    """Raw desired-vs-observed comparison result."""
+    """Governed desired-vs-observed comparison result."""
 
     contract_id: str
     contract_version: str
@@ -59,7 +67,7 @@ class ReconciliationResult(ReconciliationModel):
 
     @property
     def has_differences(self) -> bool:
-        """Return whether any raw differences were found."""
+        """Return whether any runtime differences were found."""
         return bool(self.differences)
 
 
