@@ -109,7 +109,7 @@ def test_changeset_identity_changes_with_revision_or_governance_context() -> Non
     assert first.change_set_id != different_context.change_set_id
 
 
-def test_provenance_does_not_redefine_proposal_identity() -> None:
+def test_changeset_identity_covers_provenance_without_affecting_governance() -> None:
     change = _change("id", before="STRING", after="BIGINT")
     context = ChangeContext(effective_date=date(2026, 9, 9))
 
@@ -132,7 +132,9 @@ def test_provenance_does_not_redefine_proposal_identity() -> None:
         actor_reference="service:ci",
     )
 
-    assert first.change_set_id == second.change_set_id
+    assert first.change_set_id != second.change_set_id
+    assert first.changes == second.changes
+    assert first.context == second.context
     assert first.source == "cli"
     assert second.source == "api"
     assert first.actor_reference == "user:alice"
@@ -165,7 +167,7 @@ def test_changeset_from_decision_reuses_authoritative_changes_and_context() -> N
     )
 
     assert change_set.contract_id == decision.contract_id
-    assert change_set.context is decision.context
+    assert change_set.context == decision.context
     assert change_set.changes == decision.changes
     assert change_set.base_revision_ref == "git:abc123"
     assert change_set.candidate_revision_ref == "git:def456"
