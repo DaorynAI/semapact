@@ -40,7 +40,6 @@ A reconciliation difference keeps the existing raw evidence and adds one stable 
 
 - A supported raw runtime difference maps to one stable reason code.
 - Existing raw evidence remains authoritative for comparison details and deterministic ordering.
-- Unknown or unsupported raw difference combinations fail explicitly rather than being silently mapped to an existing code.
 - Runtime reason codes do not determine `ALLOW`, `BLOCK`, or `REVIEW` and do not imply drift causality such as an unauthorized edit or pending deployment.
 - Presentation messages and higher-level classifications are intentionally outside this contract.
 
