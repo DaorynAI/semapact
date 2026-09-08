@@ -6,9 +6,9 @@ from semapact.reconciliation.models import (
     ReconciliationDifferenceType,
     ReconciliationResult,
     ReconciliationSubject,
+    RuntimeReasonCode,
     serialize_reconciliation_result,
 )
-from semapact.reconciliation.reasons import RuntimeReasonCode
 
 __all__ = [
     "ReconciliationDifference",
