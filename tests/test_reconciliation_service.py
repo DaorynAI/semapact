@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Sequence, cast
 
 from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject
@@ -30,9 +31,8 @@ class _Loader:
 
 
 class _Provider:
-    key = "warehouse"
-
-    def __init__(self) -> None:
+    def __init__(self, key: str) -> None:
+        self.key = key
         self.runtime_target: str | None = None
         self.specs: tuple[RuntimeAssetSpec, ...] = ()
         self.observed_bindings: tuple[RuntimeAssetBinding, ...] = ()
@@ -65,7 +65,7 @@ class _Provider:
         identity = bindings[0].observed_asset
         state = ObservedPlatformState(
             platform=self.key,
-            source_identifier="warehouse://test",
+            source_identifier=f"{self.key}://test",
             assets=(ObservedAsset(identity=identity, properties=()),),
             captured_at=datetime(2026, 9, 8, 21, 0, tzinfo=timezone.utc),
             fingerprint=None,
@@ -73,10 +73,11 @@ class _Provider:
         return with_observed_state_fingerprint(state)
 
 
-def test_reconciliation_service_orchestrates_provider_without_vendor_logic() -> None:
-    contract = OpenDataContractStandard.model_construct(
+def _contract(*, servers: list[object] | None = None) -> OpenDataContractStandard:
+    return OpenDataContractStandard.model_construct(
         id="sales-product",
         version="1.0.0",
+        servers=servers,
         schema_=[
             SchemaObject.model_construct(
                 name="orders",
@@ -85,8 +86,11 @@ def test_reconciliation_service_orchestrates_provider_without_vendor_logic() -> 
             )
         ],
     )
-    loader = _Loader(contract)
-    provider = _Provider()
+
+
+def test_reconciliation_service_uses_cli_runtime_only_when_contract_has_no_server() -> None:
+    loader = _Loader(_contract())
+    provider = _Provider("warehouse")
     service = ReconciliationService(
         RuntimeProviderRegistry((provider,)),
         contract_loader=cast(ContractLoader, loader),
@@ -94,8 +98,8 @@ def test_reconciliation_service_orchestrates_provider_without_vendor_logic() -> 
 
     analysis = service.reconcile(
         contract_path="contracts/sales.yaml",
-        platform="WAREHOUSE",
-        runtime_target="analytics",
+        fallback_platform="WAREHOUSE",
+        fallback_runtime_target="analytics",
     )
 
     assert loader.loaded_path == "contracts/sales.yaml"
@@ -106,5 +110,36 @@ def test_reconciliation_service_orchestrates_provider_without_vendor_logic() -> 
     assert provider.observed_bindings == analysis.bindings
     assert analysis.platform == "warehouse"
     assert analysis.runtime_target == "analytics"
+    assert analysis.runtime_source == "cli"
+    assert analysis.server_name is None
     assert analysis.status is RuntimeDriftStatus.IN_SYNC
     assert analysis.result.differences == ()
+
+
+def test_reconciliation_service_prefers_contract_server_over_cli_fallback() -> None:
+    server = SimpleNamespace(
+        server="production",
+        type="databricks",
+        host="https://workspace.example",
+        catalog="main",
+        schema="sales",
+    )
+    loader = _Loader(_contract(servers=[server]))
+    provider = _Provider("databricks")
+    service = ReconciliationService(
+        RuntimeProviderRegistry((provider,)),
+        contract_loader=cast(ContractLoader, loader),
+    )
+
+    analysis = service.reconcile(
+        contract_path="contracts/sales.yaml",
+        fallback_platform="warehouse",
+        fallback_runtime_target="ignored",
+    )
+
+    assert provider.runtime_target == "main.sales"
+    assert analysis.platform == "databricks"
+    assert analysis.runtime_target == "main.sales"
+    assert analysis.runtime_source == "contract"
+    assert analysis.server_name == "production"
+    assert analysis.status is RuntimeDriftStatus.IN_SYNC
