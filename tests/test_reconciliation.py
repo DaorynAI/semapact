@@ -119,7 +119,9 @@ def test_exact_comparable_state_has_no_differences() -> None:
     result = reconcile_governed_contract(contract, observation)
 
     assert result.differences == ()
+    assert result.unverified_paths == ()
     assert result.has_differences is False
+    assert result.comparison_complete is True
     assert result.contract_id == "orders-contract"
     assert result.contract_version == "1.2.3"
     assert result.observation_fingerprint == observation.fingerprint
@@ -210,7 +212,33 @@ def test_physical_type_and_nullability_mismatches_are_reported() -> None:
     assert nullable.observed is True
 
 
-def test_unknown_comparable_values_are_not_guessed() -> None:
+def test_governed_comparables_without_runtime_evidence_are_unverified() -> None:
+    contract = _contract(
+        SchemaObject(
+            name="orders",
+            properties=[
+                SchemaProperty(
+                    name="id",
+                    type="integer",
+                    physicalType="BIGINT",
+                    required=True,
+                )
+            ],
+        )
+    )
+    observation = _observation(_asset("orders", ("id", None, None)))
+
+    result = reconcile_governed_contract(contract, observation)
+
+    assert result.differences == ()
+    assert result.unverified_paths == (
+        "schema[orders].properties[id].nullability",
+        "schema[orders].properties[id].physicalType",
+    )
+    assert result.comparison_complete is False
+
+
+def test_unknown_values_without_governed_comparables_are_not_evidence_gaps() -> None:
     contract = _contract(
         SchemaObject(
             name="orders",
@@ -222,6 +250,8 @@ def test_unknown_comparable_values_are_not_guessed() -> None:
     result = reconcile_governed_contract(contract, observation)
 
     assert result.differences == ()
+    assert result.unverified_paths == ()
+    assert result.comparison_complete is True
 
 
 def test_duplicate_canonical_observed_asset_identity_fails_closed() -> None:
@@ -285,6 +315,7 @@ def test_difference_order_and_serialization_are_deterministic() -> None:
     right = reconcile_governed_contract(contract_right, observation_right)
 
     assert left.differences == right.differences
+    assert left.unverified_paths == right.unverified_paths
     assert serialize_reconciliation_result(left) == serialize_reconciliation_result(right)
     assert "RUNTIME_PHYSICAL_TYPE_CHANGED" in serialize_reconciliation_result(left)
 
