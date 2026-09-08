@@ -145,6 +145,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Attempt to extract column-level lineage and logic from source (only supported for uc/unity format)",
     )
 
+    reconcile_parser = subparsers.add_parser(
+        "reconcile",
+        help="Reconcile a governed contract against one Unity Catalog table",
+    )
+    reconcile_parser.add_argument(
+        "--contract", required=True, help="Path to the governed ODCS YAML contract"
+    )
+    reconcile_parser.add_argument(
+        "--source", required=True, help="Unity Catalog table as catalog.schema.table"
+    )
+    reconcile_parser.add_argument("--workspace-url")
+    reconcile_parser.add_argument("--token")
+    reconcile_parser.add_argument("--profile")
+    reconcile_parser.add_argument(
+        "--runtime-context",
+        choices=["auto", "synapse", "fabric"],
+        default="auto",
+    )
+    reconcile_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
     merge_parser = subparsers.add_parser(
         "merge", help="Merge base and business-edited contracts"
     )
@@ -381,6 +406,25 @@ def main() -> int:
             output = run_import(args)
             print(output)
             return 0
+
+        if args.command == "reconcile":
+            from semapact.interfaces.commands.reconcile_cmd import (
+                format_reconciliation_json,
+                format_reconciliation_text,
+                run_reconcile,
+            )
+            from semapact.interfaces.outcomes import (
+                exit_code_from_reconciliation_status,
+            )
+
+            analysis = run_reconcile(args)
+            output = (
+                format_reconciliation_json(analysis)
+                if args.output == "json"
+                else format_reconciliation_text(analysis)
+            )
+            print(output)
+            return int(exit_code_from_reconciliation_status(analysis.status))
 
         if args.command == "export":
             from semapact.interfaces.commands.export_cmd import run_export
