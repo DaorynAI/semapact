@@ -65,7 +65,14 @@ def _format_text(analysis: RuntimeReconciliation) -> str:
         f"Platform: {analysis.platform}",
         f"Runtime: {analysis.runtime_target}",
         f"Observation fingerprint: {result.observation_fingerprint}",
+        "Bindings:",
     ]
+    for binding in analysis.bindings:
+        identity = binding.observed_asset
+        physical_name = ".".join((*identity.namespace, identity.asset))
+        lines.append(
+            f"  - {binding.governed_asset} -> {identity.platform}:{physical_name}"
+        )
 
     if result.differences:
         lines.append("Differences:")
