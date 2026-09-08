@@ -1,0 +1,102 @@
+{
+  "composite_drift": {
+    "reconciliation": {
+      "contract_id": "orders-contract",
+      "contract_version": "1.2.3",
+      "differences": [
+        {
+          "asset_identity": "customers",
+          "difference_type": "missing",
+          "expected": null,
+          "observed": null,
+          "path": "schema[customers]",
+          "property_identity": null,
+          "reason_code": "RUNTIME_SCHEMA_REMOVED",
+          "subject": "asset"
+        },
+        {
+          "asset_identity": "orders",
+          "difference_type": "missing",
+          "expected": null,
+          "observed": null,
+          "path": "schema[orders].properties[amount]",
+          "property_identity": "amount",
+          "reason_code": "RUNTIME_PROPERTY_REMOVED",
+          "subject": "property"
+        },
+        {
+          "asset_identity": "orders",
+          "difference_type": "mismatch",
+          "expected": "BIGINT",
+          "observed": "STRING",
+          "path": "schema[orders].properties[id].physicalType",
+          "property_identity": "id",
+          "reason_code": "RUNTIME_PHYSICAL_TYPE_CHANGED",
+          "subject": "physical_type"
+        },
+        {
+          "asset_identity": "orders",
+          "difference_type": "mismatch",
+          "expected": false,
+          "observed": true,
+          "path": "schema[orders].properties[id].nullability",
+          "property_identity": "id",
+          "reason_code": "RUNTIME_REQUIRED_CHANGED",
+          "subject": "nullability"
+        },
+        {
+          "asset_identity": "orders",
+          "difference_type": "unexpected",
+          "expected": null,
+          "observed": null,
+          "path": "schema[orders].properties[note]",
+          "property_identity": "note",
+          "reason_code": "RUNTIME_PROPERTY_ADDED",
+          "subject": "property"
+        },
+        {
+          "asset_identity": "payments",
+          "difference_type": "unexpected",
+          "expected": null,
+          "observed": null,
+          "path": "schema[payments]",
+          "property_identity": null,
+          "reason_code": "RUNTIME_SCHEMA_ADDED",
+          "subject": "asset"
+        }
+      ],
+      "observation_fingerprint": "obs-v1:sha256:f95eb513603e9b6273fe7426789e6632de4038c2255bad4d92487a77121b6e0e",
+      "observation_source_identifier": "https://adb.example",
+      "unverified_paths": [
+        "schema[orders].properties[created_at].nullability",
+        "schema[orders].properties[created_at].physicalType"
+      ]
+    },
+    "status": "DRIFT"
+  },
+  "in_sync": {
+    "reconciliation": {
+      "contract_id": "orders-contract",
+      "contract_version": "1.2.3",
+      "differences": [],
+      "observation_fingerprint": "obs-v1:sha256:59d00bd9e734dfec75ad898cc61117a0cb7a7c7664c331aa3e4185e90fd3c14d",
+      "observation_source_identifier": "https://adb.example",
+      "unverified_paths": []
+    },
+    "status": "IN_SYNC"
+  },
+  "indeterminate": {
+    "reconciliation": {
+      "contract_id": "orders-contract",
+      "contract_version": "1.2.3",
+      "differences": [],
+      "observation_fingerprint": "obs-v1:sha256:6fb881ad1e9807df3162a12d2bcd77cdb87a3b39f103b14ccd441d5d969e6bdf",
+      "observation_source_identifier": "https://adb.example",
+      "unverified_paths": [
+        "schema[orders].properties[id].nullability",
+        "schema[orders].properties[id].physicalType"
+      ]
+    },
+    "status": "INDETERMINATE"
+  }
+}
