@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from semapact.observation import RuntimeProviderRegistry
+from semapact.exceptions import ValidationError
+from semapact.observation import RuntimeProvider, RuntimeProviderRegistry
 
 
 def create_runtime_provider_registry(platform: str) -> RuntimeProviderRegistry:
@@ -15,10 +16,12 @@ def create_runtime_provider_registry(platform: str) -> RuntimeProviderRegistry:
     normalized = platform.strip().casefold()
     if normalized == "databricks":
         return RuntimeProviderRegistry((_create_databricks_provider(),))
-    raise ValueError(f"Unsupported runtime provider '{platform}'. Supported providers: databricks")
+    raise ValidationError(
+        f"Unsupported runtime provider '{platform}'. Supported providers: databricks"
+    )
 
 
-def _create_databricks_provider():
+def _create_databricks_provider() -> RuntimeProvider:
     from semapact.platforms.databricks import (
         DatabricksRuntimeProvider,
         create_databricks_workspace_client,
