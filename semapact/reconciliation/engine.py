@@ -19,10 +19,7 @@ from semapact.reconciliation.models import (
     ReconciliationResult,
     ReconciliationSubject,
 )
-from semapact.reconciliation.reasons import (
-    RuntimeReasonCode,
-    runtime_reason_definition,
-)
+from semapact.reconciliation.reasons import RuntimeReasonCode
 
 _SUBJECT_ORDER = {
     ReconciliationSubject.ASSET: 0,
@@ -262,23 +259,18 @@ def _difference(
     expected: str | bool | None = None,
     observed: str | bool | None = None,
 ) -> ReconciliationDifference:
-    path = _difference_path(
-        subject=subject,
-        asset_identity=asset_identity,
-        property_identity=property_identity,
-    )
-    reason_code = _runtime_reason_code(
-        difference_type=difference_type,
-        subject=subject,
-    )
-    reason_definition = runtime_reason_definition(reason_code)
     return ReconciliationDifference(
         difference_type=difference_type,
         subject=subject,
-        reason_code=reason_code,
-        classification=reason_definition.classification,
-        message=f"{reason_definition.description} Path: {path}",
-        path=path,
+        reason_code=_runtime_reason_code(
+            difference_type=difference_type,
+            subject=subject,
+        ),
+        path=_difference_path(
+            subject=subject,
+            asset_identity=asset_identity,
+            property_identity=property_identity,
+        ),
         asset_identity=asset_identity,
         property_identity=property_identity,
         expected=expected,
@@ -291,8 +283,7 @@ def _runtime_reason_code(
     difference_type: ReconciliationDifferenceType,
     subject: ReconciliationSubject,
 ) -> RuntimeReasonCode:
-    key = (difference_type, subject)
-    reason_code = _REASON_CODE_BY_RAW_DIFFERENCE.get(key)
+    reason_code = _REASON_CODE_BY_RAW_DIFFERENCE.get((difference_type, subject))
     if reason_code is None:
         raise ValueError(
             "Unsupported runtime difference combination: "
@@ -329,7 +320,7 @@ def _difference_sort_key(
         difference.asset_identity,
         difference.property_identity or "",
         _SUBJECT_ORDER[difference.subject],
-        difference.reason_code.value,
+        difference.difference_type.value,
     )
 
 
