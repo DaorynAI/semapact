@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from open_data_contract_standard.model import OpenDataContractStandard
+from open_data_contract_standard.model import OpenDataContractStandard, Server
 
 from semapact.exceptions import ValidationError
 from semapact.observation import RuntimeProvider, RuntimeProviderRegistry
@@ -19,7 +19,7 @@ class ResolvedRuntimeLocation:
     runtime_target: str
     source: Literal["contract", "cli"]
     server_name: str | None = None
-    contract_server: object | None = None
+    contract_server: Server | None = None
 
 
 def resolve_runtime_location(
@@ -78,7 +78,7 @@ def resolve_runtime_location(
 def create_runtime_provider_registry(
     platform: str,
     *,
-    contract_server: object | None = None,
+    contract_server: Server | None = None,
 ) -> RuntimeProviderRegistry:
     """Create a registry containing the selected supported runtime provider.
 
@@ -97,9 +97,9 @@ def create_runtime_provider_registry(
 
 
 def _select_contract_server(
-    servers: tuple[object, ...],
+    servers: tuple[Server, ...],
     requested_name: str | None,
-) -> object:
+) -> Server:
     requested = _clean_optional(requested_name)
     if requested:
         matches = [
@@ -129,7 +129,7 @@ def _select_contract_server(
     )
 
 
-def _runtime_target_from_contract_server(platform: str, server: object) -> str:
+def _runtime_target_from_contract_server(platform: str, server: Server) -> str:
     normalized = platform.strip().casefold()
     if normalized == "databricks":
         catalog = _required_server_text(
@@ -150,7 +150,7 @@ def _runtime_target_from_contract_server(platform: str, server: object) -> str:
 
 def _create_databricks_provider(
     *,
-    contract_server: object | None = None,
+    contract_server: Server | None = None,
 ) -> RuntimeProvider:
     from semapact.platforms.databricks import (
         DatabricksRuntimeProvider,
@@ -173,7 +173,7 @@ def _create_databricks_provider(
     )
 
 
-def _server_names(servers: tuple[object, ...]) -> tuple[str, ...]:
+def _server_names(servers: tuple[Server, ...]) -> tuple[str, ...]:
     names = []
     for server in servers:
         name = _optional_text(_server_field(server, "server"))
@@ -182,23 +182,12 @@ def _server_names(servers: tuple[object, ...]) -> tuple[str, ...]:
     return tuple(names)
 
 
-def _server_field(server: object, name: str) -> object | None:
-    """Read a server field using ODCS wire aliases when available.
-
-    The ODCS Python model exposes reserved YAML names such as ``schema`` as
-    Python attributes such as ``schema_``. Reading an alias-aware model dump keeps
-    runtime resolution coupled to the ODCS wire contract rather than Python naming
-    details. Plain objects remain supported for isolated provider tests.
-    """
-    model_dump = getattr(server, "model_dump", None)
-    if callable(model_dump):
-        payload = model_dump(mode="python", by_alias=True)
-        if isinstance(payload, dict):
-            return payload.get(name)
-    return getattr(server, name, None)
+def _server_field(server: Server, name: str) -> object | None:
+    """Read a server field using its ODCS wire alias."""
+    return server.model_dump(mode="python", by_alias=True).get(name)
 
 
-def _required_server_text(server: object, field: str, message: str) -> str:
+def _required_server_text(server: Server, field: str, message: str) -> str:
     return _required_text(_server_field(server, field), message)
 
 
