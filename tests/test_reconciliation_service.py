@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from typing import Sequence, cast
 
-from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject
+from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject, Server
 
 from semapact.core.loader import ContractLoader
 from semapact.observation import (
@@ -73,7 +72,7 @@ class _Provider:
         return with_observed_state_fingerprint(state)
 
 
-def _contract(*, servers: list[object] | None = None) -> OpenDataContractStandard:
+def _contract(*, servers: list[Server] | None = None) -> OpenDataContractStandard:
     return OpenDataContractStandard.model_construct(
         id="sales-product",
         version="1.0.0",
@@ -117,12 +116,14 @@ def test_reconciliation_service_uses_cli_runtime_only_when_contract_has_no_serve
 
 
 def test_reconciliation_service_prefers_contract_server_over_cli_fallback() -> None:
-    server = SimpleNamespace(
-        server="production",
-        type="databricks",
-        host="https://workspace.example",
-        catalog="main",
-        schema="sales",
+    server = Server.model_validate(
+        {
+            "server": "production",
+            "type": "databricks",
+            "host": "https://workspace.example",
+            "catalog": "main",
+            "schema": "sales",
+        }
     )
     loader = _Loader(_contract(servers=[server]))
     provider = _Provider("databricks")
