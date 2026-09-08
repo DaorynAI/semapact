@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from semapact.exceptions import ValidationError
 from semapact.reconciliation import ReconciliationResult, RuntimeDriftStatus
 from semapact.services import reconciliation_service
 from semapact.services.reconciliation_service import ReconciliationService
@@ -18,11 +19,15 @@ def _result() -> ReconciliationResult:
     )
 
 
+def _single_schema_contract() -> SimpleNamespace:
+    return SimpleNamespace(schema_=[object()])
+
+
 def test_reconciliation_service_delegates_existing_m1_boundaries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: dict[str, object] = {}
-    contract = object()
+    contract = _single_schema_contract()
     observation = object()
     client = SimpleNamespace(config=SimpleNamespace(host="https://adb.example/"))
     result = _result()
@@ -89,6 +94,40 @@ def test_reconciliation_service_delegates_existing_m1_boundaries(
     assert analysis.status is RuntimeDriftStatus.DRIFT
 
 
+def test_reconciliation_service_rejects_multi_schema_contract_before_observation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Loader:
+        def __init__(self, runtime_context: str) -> None:
+            pass
+
+        def load(self, contract_path: str) -> SimpleNamespace:
+            return SimpleNamespace(schema_=[object(), object()])
+
+    client_called = False
+
+    def _create_client(**kwargs: str | None) -> object:
+        nonlocal client_called
+        client_called = True
+        return object()
+
+    monkeypatch.setattr(reconciliation_service, "ContractLoader", _Loader)
+    monkeypatch.setattr(
+        reconciliation_service, "create_databricks_workspace_client", _create_client
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="Single-table reconciliation currently requires exactly one governed schema",
+    ):
+        ReconciliationService().reconcile_databricks_table(
+            contract_path="contracts/orders.yaml",
+            table_fqn="main.sales.orders",
+        )
+
+    assert client_called is False
+
+
 def test_reconciliation_service_requires_sdk_resolved_workspace_host(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -96,8 +135,8 @@ def test_reconciliation_service_requires_sdk_resolved_workspace_host(
         def __init__(self, runtime_context: str) -> None:
             pass
 
-        def load(self, contract_path: str) -> object:
-            return object()
+        def load(self, contract_path: str) -> SimpleNamespace:
+            return _single_schema_contract()
 
     monkeypatch.setattr(reconciliation_service, "ContractLoader", _Loader)
     monkeypatch.setattr(
