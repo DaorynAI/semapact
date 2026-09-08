@@ -30,7 +30,9 @@ from semapact.interfaces.outcomes import (
     exit_code_from_outcome,
     outcome_from_exception,
     outcome_from_gate_result,
+    outcome_from_reconciliation_status,
 )
+from semapact.reconciliation import RuntimeDriftStatus
 
 
 def _make_dummy_decision(
@@ -59,17 +61,21 @@ def test_process_outcome_and_exit_code_mappings():
         ProcessOutcome.GOVERNANCE_BLOCKED: CliExitCode.GOVERNANCE_BLOCKED,
         ProcessOutcome.REVIEW_REQUIRED: CliExitCode.REVIEW_REQUIRED,
         ProcessOutcome.RUNTIME_ERROR: CliExitCode.RUNTIME_ERROR,
+        ProcessOutcome.RUNTIME_DRIFT: CliExitCode.RUNTIME_DRIFT,
+        ProcessOutcome.RUNTIME_INDETERMINATE: CliExitCode.RUNTIME_INDETERMINATE,
     }
 
     for outcome, expected_code in expected_mappings.items():
         assert exit_code_from_outcome(outcome) == expected_code
-        assert int(expected_code) in (0, 2, 3, 4, 5)
+        assert int(expected_code) in (0, 2, 3, 4, 5, 6, 7)
 
     assert int(CliExitCode.SUCCESS) == 0
     assert int(CliExitCode.VALIDATION_FAILED) == 2
     assert int(CliExitCode.GOVERNANCE_BLOCKED) == 3
     assert int(CliExitCode.REVIEW_REQUIRED) == 4
     assert int(CliExitCode.RUNTIME_ERROR) == 5
+    assert int(CliExitCode.RUNTIME_DRIFT) == 6
+    assert int(CliExitCode.RUNTIME_INDETERMINATE) == 7
 
 
 def test_outcome_from_gate_result():
@@ -88,6 +94,22 @@ def test_outcome_from_gate_result():
         allowed=False, reason="review_required", decision_id="d3"
     )
     assert outcome_from_gate_result(review_res) == ProcessOutcome.REVIEW_REQUIRED
+
+
+def test_outcome_from_reconciliation_status():
+    """Runtime assurance outcomes remain distinct from governance outcomes."""
+    assert (
+        outcome_from_reconciliation_status(RuntimeDriftStatus.IN_SYNC)
+        == ProcessOutcome.SUCCESS
+    )
+    assert (
+        outcome_from_reconciliation_status(RuntimeDriftStatus.DRIFT)
+        == ProcessOutcome.RUNTIME_DRIFT
+    )
+    assert (
+        outcome_from_reconciliation_status(RuntimeDriftStatus.INDETERMINATE)
+        == ProcessOutcome.RUNTIME_INDETERMINATE
+    )
 
 
 def test_outcome_from_exception_and_exit_code():
@@ -109,7 +131,6 @@ def test_outcome_from_exception_and_exit_code():
     release_val_exc = ReleaseValidationError("No version bump required")
     assert outcome_from_exception(release_val_exc) == ProcessOutcome.VALIDATION_FAILED
     assert exit_code_from_exception(release_val_exc) == 2
-
 
     # Runtime and infrastructure exceptions
     runtime_exc = RuntimeError("Database unreachable")
