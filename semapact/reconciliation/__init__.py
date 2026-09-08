@@ -1,5 +1,6 @@
 """Platform-neutral governed-desired-vs-observed reconciliation."""
 
+from semapact.reconciliation.binding import runtime_asset_specs_from_contract
 from semapact.reconciliation.engine import reconcile_governed_contract
 from semapact.reconciliation.models import (
     ReconciliationDifference,
@@ -23,5 +24,6 @@ __all__ = [
     "RuntimeReasonCode",
     "classify_reconciliation_status",
     "reconcile_governed_contract",
+    "runtime_asset_specs_from_contract",
     "serialize_reconciliation_result",
 ]
