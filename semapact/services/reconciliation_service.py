@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from semapact.core.loader import ContractLoader
 from semapact.observation import RuntimeAssetBinding, RuntimeProviderRegistry
+from semapact.platforms.runtime_registry import (
+    create_runtime_provider_registry,
+    resolve_runtime_location,
+)
 from semapact.reconciliation import (
     ReconciliationResult,
     RuntimeDriftStatus,
@@ -21,17 +26,19 @@ class RuntimeReconciliation:
 
     platform: str
     runtime_target: str
+    runtime_source: Literal["contract", "cli"]
+    server_name: str | None
     bindings: tuple[RuntimeAssetBinding, ...]
     result: ReconciliationResult
     status: RuntimeDriftStatus
 
 
 class ReconciliationService:
-    """Orchestrate load, bind, observe, reconcile, and classify exactly once."""
+    """Orchestrate load, runtime resolution, bind, observe, reconcile, and classify."""
 
     def __init__(
         self,
-        provider_registry: RuntimeProviderRegistry,
+        provider_registry: RuntimeProviderRegistry | None = None,
         *,
         contract_loader: ContractLoader | None = None,
     ) -> None:
@@ -42,15 +49,26 @@ class ReconciliationService:
         self,
         *,
         contract_path: str,
-        platform: str,
-        runtime_target: str,
+        server_name: str | None = None,
+        fallback_platform: str | None = None,
+        fallback_runtime_target: str | None = None,
     ) -> RuntimeReconciliation:
-        """Reconcile one governed data product against the selected runtime provider."""
+        """Reconcile one governed data product against its resolved runtime location."""
         contract = self._contract_loader.load(contract_path)
-        provider = self._provider_registry.get(platform)
+        location = resolve_runtime_location(
+            contract,
+            server_name=server_name,
+            fallback_platform=fallback_platform,
+            fallback_runtime_target=fallback_runtime_target,
+        )
+        registry = self._provider_registry or create_runtime_provider_registry(
+            location.platform,
+            contract_server=location.contract_server,
+        )
+        provider = registry.get(location.platform)
         asset_specs = runtime_asset_specs_from_contract(contract)
         bindings = provider.resolve_bindings(
-            runtime_target=runtime_target,
+            runtime_target=location.runtime_target,
             assets=asset_specs,
         )
         observation = provider.observe(bindings=bindings)
@@ -61,7 +79,9 @@ class ReconciliationService:
         )
         return RuntimeReconciliation(
             platform=provider.key,
-            runtime_target=runtime_target,
+            runtime_target=location.runtime_target,
+            runtime_source=location.source,
+            server_name=location.server_name,
             bindings=bindings,
             result=result,
             status=classify_reconciliation_status(result),
