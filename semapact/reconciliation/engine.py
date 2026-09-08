@@ -66,8 +66,8 @@ def reconcile_governed_contract(
 
     The caller is responsible for selecting the authoritative governed contract
     revision. Reconciliation reports deterministic runtime differences only; it
-    does not determine approval/authorization, classify drift cause or operational
-    status, or mutate either input.
+    does not determine approval/authorization, drift cause, operational status,
+    or mutate either input.
     """
     governed_assets = build_schema_index(contract)
     observed_assets = _build_observed_asset_index(observation)
