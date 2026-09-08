@@ -1,8 +1,8 @@
 """Platform-neutral reconciliation result models.
 
-Reconciliation reports raw desired-vs-observed differences. It does not infer
-drift cause, deployment state, or governance status; those classifications are
-separate downstream concerns.
+Reconciliation reports raw desired-vs-observed differences with a stable runtime
+reason code. It does not infer drift cause, deployment state, or governance status;
+those concerns remain separate downstream layers.
 """
 
 from __future__ import annotations
@@ -36,11 +36,23 @@ class ReconciliationSubject(str, Enum):
     NULLABILITY = "nullability"
 
 
+class RuntimeReasonCode(str, Enum):
+    """Stable semantic identifiers projected from supported raw differences."""
+
+    RUNTIME_SCHEMA_ADDED = "RUNTIME_SCHEMA_ADDED"
+    RUNTIME_SCHEMA_REMOVED = "RUNTIME_SCHEMA_REMOVED"
+    RUNTIME_PROPERTY_ADDED = "RUNTIME_PROPERTY_ADDED"
+    RUNTIME_PROPERTY_REMOVED = "RUNTIME_PROPERTY_REMOVED"
+    RUNTIME_PHYSICAL_TYPE_CHANGED = "RUNTIME_PHYSICAL_TYPE_CHANGED"
+    RUNTIME_REQUIRED_CHANGED = "RUNTIME_REQUIRED_CHANGED"
+
+
 class ReconciliationDifference(ReconciliationModel):
-    """One deterministic raw difference between desired and observed state."""
+    """One deterministic difference between governed and observed state."""
 
     difference_type: ReconciliationDifferenceType
     subject: ReconciliationSubject
+    reason_code: RuntimeReasonCode
     path: str
     asset_identity: str
     property_identity: str | None = None
@@ -49,7 +61,7 @@ class ReconciliationDifference(ReconciliationModel):
 
 
 class ReconciliationResult(ReconciliationModel):
-    """Raw desired-vs-observed comparison result."""
+    """Governed desired-vs-observed comparison result."""
 
     contract_id: str
     contract_version: str
@@ -59,7 +71,7 @@ class ReconciliationResult(ReconciliationModel):
 
     @property
     def has_differences(self) -> bool:
-        """Return whether any raw differences were found."""
+        """Return whether any runtime differences were found."""
         return bool(self.differences)
 
 

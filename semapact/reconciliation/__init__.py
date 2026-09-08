@@ -6,6 +6,7 @@ from semapact.reconciliation.models import (
     ReconciliationDifferenceType,
     ReconciliationResult,
     ReconciliationSubject,
+    RuntimeReasonCode,
     serialize_reconciliation_result,
 )
 
@@ -14,6 +15,7 @@ __all__ = [
     "ReconciliationDifferenceType",
     "ReconciliationResult",
     "ReconciliationSubject",
+    "RuntimeReasonCode",
     "reconcile_governed_contract",
     "serialize_reconciliation_result",
 ]

@@ -18,6 +18,7 @@ from semapact.reconciliation.models import (
     ReconciliationDifferenceType,
     ReconciliationResult,
     ReconciliationSubject,
+    RuntimeReasonCode,
 )
 
 _SUBJECT_ORDER = {
@@ -25,6 +26,35 @@ _SUBJECT_ORDER = {
     ReconciliationSubject.PROPERTY: 1,
     ReconciliationSubject.PHYSICAL_TYPE: 2,
     ReconciliationSubject.NULLABILITY: 3,
+}
+
+_REASON_CODE_BY_RAW_DIFFERENCE: dict[
+    tuple[ReconciliationDifferenceType, ReconciliationSubject], RuntimeReasonCode
+] = {
+    (
+        ReconciliationDifferenceType.UNEXPECTED,
+        ReconciliationSubject.ASSET,
+    ): RuntimeReasonCode.RUNTIME_SCHEMA_ADDED,
+    (
+        ReconciliationDifferenceType.MISSING,
+        ReconciliationSubject.ASSET,
+    ): RuntimeReasonCode.RUNTIME_SCHEMA_REMOVED,
+    (
+        ReconciliationDifferenceType.UNEXPECTED,
+        ReconciliationSubject.PROPERTY,
+    ): RuntimeReasonCode.RUNTIME_PROPERTY_ADDED,
+    (
+        ReconciliationDifferenceType.MISSING,
+        ReconciliationSubject.PROPERTY,
+    ): RuntimeReasonCode.RUNTIME_PROPERTY_REMOVED,
+    (
+        ReconciliationDifferenceType.MISMATCH,
+        ReconciliationSubject.PHYSICAL_TYPE,
+    ): RuntimeReasonCode.RUNTIME_PHYSICAL_TYPE_CHANGED,
+    (
+        ReconciliationDifferenceType.MISMATCH,
+        ReconciliationSubject.NULLABILITY,
+    ): RuntimeReasonCode.RUNTIME_REQUIRED_CHANGED,
 }
 
 
@@ -35,9 +65,9 @@ def reconcile_governed_contract(
     """Compare governed ODCS desired state with platform-neutral observed state.
 
     The caller is responsible for selecting the authoritative governed contract
-    revision. Reconciliation reports raw differences only; it does not determine
-    approval/authorization, classify drift cause or operational status, or mutate
-    either input.
+    revision. Reconciliation reports deterministic runtime differences only; it
+    does not determine approval/authorization, drift cause, operational status,
+    or mutate either input.
     """
     governed_assets = build_schema_index(contract)
     observed_assets = _build_observed_asset_index(observation)
@@ -232,6 +262,10 @@ def _difference(
     return ReconciliationDifference(
         difference_type=difference_type,
         subject=subject,
+        reason_code=_runtime_reason_code(
+            difference_type=difference_type,
+            subject=subject,
+        ),
         path=_difference_path(
             subject=subject,
             asset_identity=asset_identity,
@@ -242,6 +276,20 @@ def _difference(
         expected=expected,
         observed=observed,
     )
+
+
+def _runtime_reason_code(
+    *,
+    difference_type: ReconciliationDifferenceType,
+    subject: ReconciliationSubject,
+) -> RuntimeReasonCode:
+    reason_code = _REASON_CODE_BY_RAW_DIFFERENCE.get((difference_type, subject))
+    if reason_code is None:
+        raise ValueError(
+            "Unsupported runtime difference combination: "
+            f"{difference_type.value}/{subject.value}"
+        )
+    return reason_code
 
 
 def _difference_path(
