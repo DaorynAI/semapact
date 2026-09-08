@@ -2,7 +2,7 @@
 
 Reconciliation reports raw desired-vs-observed differences with a stable runtime
 reason code. It does not infer drift cause, deployment state, or governance status;
-those classifications are separate downstream concerns.
+those concerns remain separate downstream layers.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ class ReconciliationSubject(str, Enum):
 
 
 class RuntimeReasonCode(str, Enum):
-    """Stable semantic identifiers for supported runtime differences."""
+    """Stable semantic identifiers projected from supported raw differences."""
 
     RUNTIME_SCHEMA_ADDED = "RUNTIME_SCHEMA_ADDED"
     RUNTIME_SCHEMA_REMOVED = "RUNTIME_SCHEMA_REMOVED"
