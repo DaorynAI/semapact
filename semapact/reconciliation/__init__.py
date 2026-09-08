@@ -9,13 +9,19 @@ from semapact.reconciliation.models import (
     RuntimeReasonCode,
     serialize_reconciliation_result,
 )
+from semapact.reconciliation.status import (
+    RuntimeDriftStatus,
+    classify_reconciliation_status,
+)
 
 __all__ = [
     "ReconciliationDifference",
     "ReconciliationDifferenceType",
     "ReconciliationResult",
     "ReconciliationSubject",
+    "RuntimeDriftStatus",
     "RuntimeReasonCode",
+    "classify_reconciliation_status",
     "reconcile_governed_contract",
     "serialize_reconciliation_result",
 ]
