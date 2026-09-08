@@ -18,8 +18,8 @@ from semapact.reconciliation.models import (
     ReconciliationDifferenceType,
     ReconciliationResult,
     ReconciliationSubject,
+    RuntimeReasonCode,
 )
-from semapact.reconciliation.reasons import RuntimeReasonCode
 
 _SUBJECT_ORDER = {
     ReconciliationSubject.ASSET: 0,
