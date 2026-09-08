@@ -316,6 +316,28 @@ def _build_parser() -> argparse.ArgumentParser:
     release_prs_parser.add_argument("--pat-token")
     release_prs_parser.add_argument("--push", action="store_true")
 
+    reconcile_parser = subparsers.add_parser(
+        "reconcile",
+        help="Compare a governed data product with a selected runtime provider",
+    )
+    reconcile_parser.add_argument(
+        "--contract", required=True, help="Path or URL to the governed ODCS contract"
+    )
+    reconcile_parser.add_argument(
+        "--platform", required=True, help="Runtime provider key (for example: databricks)"
+    )
+    reconcile_parser.add_argument(
+        "--runtime",
+        required=True,
+        help="Provider-local runtime product target",
+    )
+    reconcile_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
     return parser
 
 
@@ -405,6 +427,14 @@ def main() -> int:
             payload = run_create_pr(args)
             print(json.dumps(payload, indent=2, sort_keys=True))
             return 0
+
+        if args.command == "reconcile":
+            from semapact.interfaces.commands.reconcile_cmd import run_reconcile
+            from semapact.interfaces.outcomes import exit_code_from_outcome
+
+            result = run_reconcile(args)
+            print(result.output)
+            return int(exit_code_from_outcome(result.outcome))
 
         if args.command == "release":
             from semapact.interfaces.commands.release_cmd import (
