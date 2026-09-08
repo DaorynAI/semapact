@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
-from open_data_contract_standard.model import OpenDataContractStandard
+from open_data_contract_standard.model import OpenDataContractStandard, Server
 
 from semapact.exceptions import ValidationError
 from semapact.platforms.runtime_registry import resolve_runtime_location
 
 
-def _contract(*servers: object) -> OpenDataContractStandard:
+def _contract(*servers: Server) -> OpenDataContractStandard:
     return OpenDataContractStandard.model_construct(
         id="sales-product",
         version="1.0.0",
@@ -18,19 +16,24 @@ def _contract(*servers: object) -> OpenDataContractStandard:
     )
 
 
-def _databricks_server(name: str, *, catalog: str, schema: str) -> object:
-    return SimpleNamespace(
-        server=name,
-        type="databricks",
-        host="https://workspace.example",
-        catalog=catalog,
-        schema=schema,
+def _databricks_server(name: str, *, catalog: str, schema: str) -> Server:
+    return Server.model_validate(
+        {
+            "server": name,
+            "type": "databricks",
+            "host": "https://workspace.example",
+            "catalog": catalog,
+            "schema": schema,
+        }
     )
 
 
 def test_single_contract_server_is_authoritative_over_cli_fallback() -> None:
+    server = _databricks_server("production", catalog="main", schema="sales")
+    assert server.schema_ == "sales"
+
     location = resolve_runtime_location(
-        _contract(_databricks_server("production", catalog="main", schema="sales")),
+        _contract(server),
         fallback_platform="snowflake",
         fallback_runtime_target="ignored.target",
     )
@@ -39,7 +42,7 @@ def test_single_contract_server_is_authoritative_over_cli_fallback() -> None:
     assert location.runtime_target == "main.sales"
     assert location.source == "contract"
     assert location.server_name == "production"
-    assert location.contract_server is not None
+    assert location.contract_server is server
 
 
 def test_multiple_contract_servers_require_explicit_server_selection() -> None:
