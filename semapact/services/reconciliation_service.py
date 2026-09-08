@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from semapact.core.loader import ContractLoader, RuntimeContext
+from semapact.exceptions import ValidationError
 from semapact.observation.databricks import observe_databricks_table
 from semapact.platforms.databricks.client import create_databricks_workspace_client
 from semapact.reconciliation import (
@@ -38,8 +39,15 @@ class ReconciliationService:
         profile: str | None = None,
         runtime_context: RuntimeContext = "auto",
     ) -> ReconciliationAnalysis:
-        """Reconcile one governed contract against one Unity Catalog table."""
+        """Reconcile one single-schema contract against one Unity Catalog table."""
         contract = ContractLoader(runtime_context=runtime_context).load(contract_path)
+        schemas = list(contract.schema_ or [])
+        if len(schemas) != 1:
+            raise ValidationError(
+                "Single-table reconciliation currently requires exactly one governed schema; "
+                "multi-schema reconciliation is not yet supported"
+            )
+
         client = create_databricks_workspace_client(
             workspace_url=workspace_url,
             token=token,
