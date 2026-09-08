@@ -1,8 +1,8 @@
 """Platform-neutral reconciliation result models.
 
-Reconciliation reports raw desired-vs-observed differences with stable runtime
-reason metadata. It does not infer drift cause, deployment state, or governance
-status; those classifications are separate downstream concerns.
+Reconciliation reports raw desired-vs-observed differences with a stable runtime
+reason code. It does not infer drift cause, deployment state, or governance status;
+those classifications are separate downstream concerns.
 """
 
 from __future__ import annotations
@@ -12,10 +12,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
 
-from semapact.reconciliation.reasons import (
-    RuntimeDifferenceClassification,
-    RuntimeReasonCode,
-)
+from semapact.reconciliation.reasons import RuntimeReasonCode
 
 
 class ReconciliationModel(BaseModel):
@@ -47,8 +44,6 @@ class ReconciliationDifference(ReconciliationModel):
     difference_type: ReconciliationDifferenceType
     subject: ReconciliationSubject
     reason_code: RuntimeReasonCode
-    classification: RuntimeDifferenceClassification
-    message: str
     path: str
     asset_identity: str
     property_identity: str | None = None
