@@ -65,13 +65,14 @@ def reconcile_governed_contract(
     """Compare governed ODCS desired state with platform-neutral observed state.
 
     The caller is responsible for selecting the authoritative governed contract
-    revision. Reconciliation reports deterministic runtime differences only; it
-    does not determine approval/authorization, drift cause, operational status,
-    or mutate either input.
+    revision. Reconciliation reports deterministic runtime differences and raw
+    evidence gaps only; it does not determine approval/authorization, drift cause,
+    operational status, or mutate either input.
     """
     governed_assets = build_schema_index(contract)
     observed_assets = _build_observed_asset_index(observation)
     differences: list[ReconciliationDifference] = []
+    unverified_paths: list[str] = []
 
     governed_keys = set(governed_assets)
     observed_keys = set(observed_assets)
@@ -97,13 +98,13 @@ def reconcile_governed_contract(
     for asset_key in sorted(governed_keys & observed_keys):
         governed_schema = governed_assets[asset_key]
         observed_asset = observed_assets[asset_key]
-        differences.extend(
-            _reconcile_properties(
-                asset_key=asset_key,
-                governed_properties=list(governed_schema.properties or []),
-                observed_asset=observed_asset,
-            )
+        property_differences, property_unverified_paths = _reconcile_properties(
+            asset_key=asset_key,
+            governed_properties=list(governed_schema.properties or []),
+            observed_asset=observed_asset,
         )
+        differences.extend(property_differences)
+        unverified_paths.extend(property_unverified_paths)
 
     ordered = tuple(sorted(differences, key=_difference_sort_key))
     return ReconciliationResult(
@@ -116,6 +117,7 @@ def reconcile_governed_contract(
             observation.fingerprint or fingerprint_observed_state(observation)
         ),
         differences=ordered,
+        unverified_paths=tuple(sorted(unverified_paths)),
     )
 
 
@@ -124,10 +126,11 @@ def _reconcile_properties(
     asset_key: str,
     governed_properties: list[SchemaProperty],
     observed_asset: ObservedAsset,
-) -> list[ReconciliationDifference]:
+) -> tuple[list[ReconciliationDifference], list[str]]:
     governed = build_property_index(asset_key, governed_properties)
     observed = _build_observed_property_index(asset_key, observed_asset)
     differences: list[ReconciliationDifference] = []
+    unverified_paths: list[str] = []
 
     governed_keys = set(governed)
     observed_keys = set(observed)
@@ -153,16 +156,16 @@ def _reconcile_properties(
         )
 
     for prop_key in sorted(governed_keys & observed_keys):
-        differences.extend(
-            _reconcile_matching_property(
-                asset_key=asset_key,
-                property_key=prop_key,
-                governed=governed[prop_key],
-                observed=observed[prop_key],
-            )
+        property_differences, property_unverified_paths = _reconcile_matching_property(
+            asset_key=asset_key,
+            property_key=prop_key,
+            governed=governed[prop_key],
+            observed=observed[prop_key],
         )
+        differences.extend(property_differences)
+        unverified_paths.extend(property_unverified_paths)
 
-    return differences
+    return differences, unverified_paths
 
 
 def _reconcile_matching_property(
@@ -171,46 +174,63 @@ def _reconcile_matching_property(
     property_key: PropertyIdentity,
     governed: SchemaProperty,
     observed: ObservedProperty,
-) -> list[ReconciliationDifference]:
+) -> tuple[list[ReconciliationDifference], list[str]]:
     differences: list[ReconciliationDifference] = []
+    unverified_paths: list[str] = []
     property_identity = property_key[1]
 
     expected_physical = _optional_text(getattr(governed, "physicalType", None))
     observed_physical = _optional_text(observed.physical_type)
-    if (
-        expected_physical is not None
-        and observed_physical is not None
-        and _normalize_comparable_text(expected_physical)
-        != _normalize_comparable_text(observed_physical)
-    ):
-        differences.append(
-            _difference(
-                difference_type=ReconciliationDifferenceType.MISMATCH,
-                subject=ReconciliationSubject.PHYSICAL_TYPE,
-                asset_identity=asset_key,
-                property_identity=property_identity,
-                expected=expected_physical,
-                observed=observed_physical,
+    if expected_physical is not None:
+        if observed_physical is None:
+            unverified_paths.append(
+                _difference_path(
+                    subject=ReconciliationSubject.PHYSICAL_TYPE,
+                    asset_identity=asset_key,
+                    property_identity=property_identity,
+                )
             )
-        )
-
-    required = getattr(governed, "required", None)
-    nullable = observed.nullable
-    if isinstance(required, bool) and isinstance(nullable, bool):
-        expected_nullable = not required
-        if expected_nullable != nullable:
+        elif (
+            _normalize_comparable_text(expected_physical)
+            != _normalize_comparable_text(observed_physical)
+        ):
             differences.append(
                 _difference(
                     difference_type=ReconciliationDifferenceType.MISMATCH,
-                    subject=ReconciliationSubject.NULLABILITY,
+                    subject=ReconciliationSubject.PHYSICAL_TYPE,
                     asset_identity=asset_key,
                     property_identity=property_identity,
-                    expected=expected_nullable,
-                    observed=nullable,
+                    expected=expected_physical,
+                    observed=observed_physical,
                 )
             )
 
-    return differences
+    required = getattr(governed, "required", None)
+    nullable = observed.nullable
+    if isinstance(required, bool):
+        if not isinstance(nullable, bool):
+            unverified_paths.append(
+                _difference_path(
+                    subject=ReconciliationSubject.NULLABILITY,
+                    asset_identity=asset_key,
+                    property_identity=property_identity,
+                )
+            )
+        else:
+            expected_nullable = not required
+            if expected_nullable != nullable:
+                differences.append(
+                    _difference(
+                        difference_type=ReconciliationDifferenceType.MISMATCH,
+                        subject=ReconciliationSubject.NULLABILITY,
+                        asset_identity=asset_key,
+                        property_identity=property_identity,
+                        expected=expected_nullable,
+                        observed=nullable,
+                    )
+                )
+
+    return differences, unverified_paths
 
 
 def _build_observed_asset_index(
