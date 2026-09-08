@@ -153,20 +153,19 @@ def test_explicit_bindings_reconcile_multi_asset_product_without_name_equality()
 
 def test_missing_bound_runtime_asset_reports_logical_governed_asset() -> None:
     contract = _contract(
-        SchemaObject(name="orders", properties=[]),
-        SchemaObject(name="customers", properties=[]),
+        SchemaObject.model_construct(name="orders", properties=[]),
+        SchemaObject.model_construct(name="customers", properties=[]),
     )
-    observation = _observation(
-        _observed_asset(namespace=("main", "sales"), name="orders")
+    orders_identity = ObservedAssetIdentity(
+        platform="databricks",
+        namespace=("main", "sales"),
+        asset="orders",
     )
+    observation = _observation(ObservedAsset(identity=orders_identity, properties=()))
     bindings = (
         RuntimeAssetBinding(
             governed_asset="orders",
-            observed_asset=ObservedAssetIdentity(
-                platform="databricks",
-                namespace=("main", "sales"),
-                asset="orders",
-            ),
+            observed_asset=orders_identity,
         ),
         RuntimeAssetBinding(
             governed_asset="customers",
@@ -193,8 +192,8 @@ def test_missing_bound_runtime_asset_reports_logical_governed_asset() -> None:
 
 def test_runtime_bindings_must_cover_exact_governed_product() -> None:
     contract = _contract(
-        SchemaObject(name="orders", properties=[]),
-        SchemaObject(name="customers", properties=[]),
+        SchemaObject.model_construct(name="orders", properties=[]),
+        SchemaObject.model_construct(name="customers", properties=[]),
     )
     observation = _observation()
     bindings = (
