@@ -28,11 +28,12 @@ def build_change_set(
     """Build one immutable proposal without re-diffing governed contracts.
 
     ``changes`` must already be authoritative M0 governance changes. Construction is
-    pure: it sorts those changes canonically, derives a UUID5 from proposal-semantic
-    inputs, and does not inspect files, Git, clocks, or deployment state.
+    pure: it sorts those changes canonically, derives a UUID5 from the complete stable
+    proposal record, and does not inspect files, Git, clocks, or deployment state.
 
-    ``source`` and ``actor_reference`` are provenance only and intentionally do not
-    participate in proposal identity.
+    Source and actor references are proposal provenance, not governance inputs. They
+    therefore do not affect the upstream GovernanceDecision, but they do participate
+    in ChangeSet identity so one ID always represents one immutable serialized record.
     """
     canonical_changes = tuple(sorted(tuple(changes), key=governance_change_sort_key))
     cleaned_contract_id = _required_text(contract_id, "contract_id")
@@ -41,6 +42,8 @@ def build_change_set(
         candidate_revision_ref,
         "candidate_revision_ref",
     )
+    cleaned_source = _optional_text(source)
+    cleaned_actor_reference = _optional_text(actor_reference)
 
     identity_payload = {
         "contract_id": cleaned_contract_id,
@@ -48,6 +51,8 @@ def build_change_set(
         "candidate_revision_ref": cleaned_candidate_ref,
         "context": context.model_dump(mode="json"),
         "changes": [change.model_dump(mode="json") for change in canonical_changes],
+        "source": cleaned_source,
+        "actor_reference": cleaned_actor_reference,
     }
     canonical_payload = json.dumps(
         identity_payload,
@@ -64,8 +69,8 @@ def build_change_set(
         candidate_revision_ref=cleaned_candidate_ref,
         changes=canonical_changes,
         context=context,
-        source=source,
-        actor_reference=actor_reference,
+        source=cleaned_source,
+        actor_reference=cleaned_actor_reference,
     )
 
 
@@ -96,3 +101,12 @@ def _required_text(value: str, field_name: str) -> str:
     if not cleaned:
         raise ValueError(f"{field_name} must not be empty")
     return cleaned
+
+
+def _optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("optional provenance values must be strings")
+    cleaned = value.strip()
+    return cleaned or None
