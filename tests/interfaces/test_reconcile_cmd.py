@@ -52,13 +52,36 @@ def _analysis() -> RuntimeReconciliation:
     return RuntimeReconciliation(
         platform="warehouse",
         runtime_target="analytics",
+        runtime_source="cli",
+        server_name=None,
         bindings=(binding,),
         result=result,
         status=RuntimeDriftStatus.DRIFT,
     )
 
 
-def test_reconcile_parser_is_product_and_provider_scoped() -> None:
+def test_reconcile_parser_allows_contract_owned_runtime_metadata() -> None:
+    args = cli._build_parser().parse_args(
+        [
+            "reconcile",
+            "--contract",
+            "contracts/sales.yaml",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert args.command == "reconcile"
+    assert args.contract == "contracts/sales.yaml"
+    assert args.server is None
+    assert args.platform is None
+    assert args.runtime is None
+    assert args.output == "json"
+    assert not hasattr(args, "workspace_url")
+    assert not hasattr(args, "token")
+
+
+def test_reconcile_parser_accepts_explicit_runtime_fallback() -> None:
     args = cli._build_parser().parse_args(
         [
             "reconcile",
@@ -68,18 +91,11 @@ def test_reconcile_parser_is_product_and_provider_scoped() -> None:
             "warehouse",
             "--runtime",
             "analytics",
-            "--output",
-            "json",
         ]
     )
 
-    assert args.command == "reconcile"
-    assert args.contract == "contracts/sales.yaml"
     assert args.platform == "warehouse"
     assert args.runtime == "analytics"
-    assert args.output == "json"
-    assert not hasattr(args, "workspace_url")
-    assert not hasattr(args, "token")
 
 
 def test_json_output_is_deterministic_and_product_scoped() -> None:
@@ -87,6 +103,8 @@ def test_json_output_is_deterministic_and_product_scoped() -> None:
 
     assert payload["platform"] == "warehouse"
     assert payload["runtimeTarget"] == "analytics"
+    assert payload["runtimeSource"] == "cli"
+    assert payload["server"] is None
     assert payload["status"] == "DRIFT"
     assert payload["bindings"][0]["governedAsset"] == "orders"
     difference = payload["reconciliation"]["differences"][0]
@@ -121,10 +139,6 @@ def test_main_preserves_runtime_assurance_exit_semantics(
             "reconcile",
             "--contract",
             "contracts/sales.yaml",
-            "--platform",
-            "warehouse",
-            "--runtime",
-            "analytics",
         ],
     )
 
