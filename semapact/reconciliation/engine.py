@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from open_data_contract_standard.model import OpenDataContractStandard, SchemaProperty
 
 from semapact.exceptions import ValidationError
@@ -13,6 +15,7 @@ from semapact.lifecycle.identity import (
 )
 from semapact.observation.fingerprint import fingerprint_observed_state
 from semapact.observation.models import ObservedAsset, ObservedPlatformState, ObservedProperty
+from semapact.observation.providers import RuntimeAssetBinding
 from semapact.reconciliation.models import (
     ReconciliationDifference,
     ReconciliationDifferenceType,
@@ -61,16 +64,26 @@ _REASON_CODE_BY_RAW_DIFFERENCE: dict[
 def reconcile_governed_contract(
     contract: OpenDataContractStandard,
     observation: ObservedPlatformState,
+    *,
+    asset_bindings: Sequence[RuntimeAssetBinding] | None = None,
 ) -> ReconciliationResult:
     """Compare governed ODCS desired state with platform-neutral observed state.
 
-    The caller is responsible for selecting the authoritative governed contract
-    revision. Reconciliation reports deterministic runtime differences and raw
-    evidence gaps only; it does not determine approval/authorization, drift cause,
-    operational status, or mutate either input.
+    ``asset_bindings`` explicitly maps governed logical schema identity to
+    provider-local observed asset identity. Operational runtime-product flows
+    should provide bindings so physical names never redefine governed identity.
+    The legacy name-matching path remains available for existing library callers.
     """
     governed_assets = build_schema_index(contract)
-    observed_assets = _build_observed_asset_index(observation)
+    if asset_bindings is None:
+        observed_assets = _build_observed_asset_index(observation)
+    else:
+        observed_assets = _build_bound_observed_asset_index(
+            observation=observation,
+            governed_keys=set(governed_assets),
+            bindings=asset_bindings,
+        )
+
     differences: list[ReconciliationDifference] = []
     unverified_paths: list[str] = []
 
@@ -244,6 +257,66 @@ def _build_observed_asset_index(
                 f"Duplicate canonical observed asset identity found: '{key}'"
             )
         index[key] = asset
+    return index
+
+
+def _build_bound_observed_asset_index(
+    *,
+    observation: ObservedPlatformState,
+    governed_keys: set[str],
+    bindings: Sequence[RuntimeAssetBinding],
+) -> dict[str, ObservedAsset]:
+    binding_by_governed: dict[str, RuntimeAssetBinding] = {}
+    bound_runtime_keys: set[tuple[str, ...]] = set()
+
+    for binding in bindings:
+        governed_key = normalize_identity_name(
+            binding.governed_asset, "Runtime binding governed asset"
+        )
+        if governed_key in binding_by_governed:
+            raise ValidationError(
+                f"Duplicate runtime binding for governed asset: '{governed_key}'"
+            )
+        if binding.observed_asset.platform.casefold() != observation.platform.casefold():
+            raise ValidationError(
+                "Runtime binding platform must match observed platform state"
+            )
+        runtime_key = binding.observed_asset.canonical_key
+        if runtime_key in bound_runtime_keys:
+            raise ValidationError("Multiple governed assets cannot bind to one runtime asset")
+        bound_runtime_keys.add(runtime_key)
+        binding_by_governed[governed_key] = binding
+
+    binding_keys = set(binding_by_governed)
+    if binding_keys != governed_keys:
+        missing = sorted(governed_keys - binding_keys)
+        unexpected = sorted(binding_keys - governed_keys)
+        raise ValidationError(
+            "Runtime bindings must cover exactly the governed data-product assets; "
+            f"missing={missing}, unexpected={unexpected}"
+        )
+
+    observed_by_runtime: dict[tuple[str, ...], ObservedAsset] = {}
+    for asset in observation.assets:
+        runtime_key = asset.identity.canonical_key
+        if runtime_key in observed_by_runtime:
+            raise ValidationError(
+                "Duplicate canonical observed runtime asset identity found: "
+                f"{runtime_key}"
+            )
+        observed_by_runtime[runtime_key] = asset
+
+    unbound_runtime = sorted(set(observed_by_runtime) - bound_runtime_keys)
+    if unbound_runtime:
+        raise ValidationError(
+            "Observed state contains assets outside the explicit runtime product bindings"
+        )
+
+    index: dict[str, ObservedAsset] = {}
+    for governed_key, binding in binding_by_governed.items():
+        observed_asset = observed_by_runtime.get(binding.observed_asset.canonical_key)
+        if observed_asset is not None:
+            index[governed_key] = observed_asset
     return index
 
 
