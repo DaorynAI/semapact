@@ -15,6 +15,12 @@ from semapact.observation.models import (
     ObservedPropertyIdentity,
     serialize_observed_state,
 )
+from semapact.observation.providers import (
+    RuntimeAssetBinding,
+    RuntimeAssetSpec,
+    RuntimeProvider,
+    RuntimeProviderRegistry,
+)
 
 __all__ = [
     "OBSERVED_STATE_FINGERPRINT_ALGORITHM",
@@ -24,6 +30,10 @@ __all__ = [
     "ObservedPlatformState",
     "ObservedProperty",
     "ObservedPropertyIdentity",
+    "RuntimeAssetBinding",
+    "RuntimeAssetSpec",
+    "RuntimeProvider",
+    "RuntimeProviderRegistry",
     "canonical_observed_state_payload",
     "fingerprint_observed_state",
     "serialize_observed_state",
