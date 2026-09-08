@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
+from semapact.exceptions import ValidationError
 from semapact.observation.databricks import observe_databricks_table
 from semapact.observation.fingerprint import with_observed_state_fingerprint
 from semapact.observation.models import ObservedAssetIdentity, ObservedPlatformState
@@ -86,7 +87,7 @@ class DatabricksRuntimeProvider:
 def _parse_runtime_target(value: str) -> tuple[str, str]:
     parts = tuple(part.strip() for part in value.split("."))
     if len(parts) != 2 or not all(parts):
-        raise ValueError(
+        raise ValidationError(
             "Databricks runtime target must use catalog.schema format for a data product"
         )
     return parts[0], parts[1]
