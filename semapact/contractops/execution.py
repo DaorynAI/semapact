@@ -16,10 +16,10 @@ from semapact.contractops.models import (
     ReleasePlan,
     VersionResolution,
 )
-from semapact.core.release import normalize_semver
 from semapact.exceptions import ContractOpsAuthorizationError, ReleaseValidationError
 from semapact.governance.gate import GovernanceOperation
 from semapact.governance.models import GovernanceDecision
+from semapact.versioning import normalize_semver
 
 
 SEMAPACT_APPLIED_RELEASE_NAMESPACE = uuid.UUID(
