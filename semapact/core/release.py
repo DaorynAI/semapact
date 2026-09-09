@@ -257,6 +257,12 @@ def parse_release_tag_version(release_tag: str) -> str:
     return match.group("version")
 
 
+def normalize_semver(version: str) -> str:
+    """Validate and return the canonical ``major.minor.patch`` representation."""
+    major, minor, patch = _parse_semver(version)
+    return f"{major}.{minor}.{patch}"
+
+
 def classify_version_bump(
     current_version: str, target_version: str
 ) -> ActualVersionBump:
@@ -304,12 +310,11 @@ def suggest_release_version(
     - required bump stays `major`
     - suggested release version stays `2.0.0`, not `2.1.0`
     """
-    major, minor, patch = _parse_semver(current_version)
     if required_bump == "major":
         return increment_version(current_version, "major")
     if required_bump == "minor":
         return increment_version(current_version, "minor")
-    return f"{major}.{minor}.{patch}"
+    return normalize_semver(current_version)
 
 
 def _parse_semver(version: str) -> tuple[int, int, int]:
