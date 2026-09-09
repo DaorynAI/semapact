@@ -1,4 +1,4 @@
-"""Provider-neutral immutable deployment planning artifacts."""
+"""Provider-neutral immutable deployment planning and authorization artifacts."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ from enum import Enum
 from typing import Literal
 
 from open_data_contract_standard.model import SchemaObject
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from semapact.lifecycle.identity import normalize_identity_name
 
 
 class DeploymentModel(BaseModel):
-    """Shared immutable base for deployment planning artifacts."""
+    """Shared immutable base for deployment domain artifacts."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -132,3 +132,26 @@ class DeploymentPlan(DeploymentModel):
         if len(governed_assets) != len(set(governed_assets)):
             raise ValueError("DeploymentPlan cannot contain duplicate governed assets")
         return self
+
+
+class DeploymentAuthorization(DeploymentModel):
+    """Authorization bound to one exact DeploymentPlan and applied release."""
+
+    deployment_authorization_id: str
+    contract_ops_authorization_id: str
+    deployment_plan_id: str
+    applied_release_id: str
+    allowed: bool = Field(strict=True)
+
+    @field_validator(
+        "deployment_authorization_id",
+        "contract_ops_authorization_id",
+        "deployment_plan_id",
+        "applied_release_id",
+    )
+    @classmethod
+    def _require_authorization_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("value must not be empty")
+        return cleaned
