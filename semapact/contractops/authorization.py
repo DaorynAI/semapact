@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 
 from semapact.contractops.context import validate_release_context
@@ -17,6 +16,7 @@ from semapact.contractops.models import (
 )
 from semapact.governance.gate import GovernanceOperation, evaluate_governance_gate
 from semapact.governance.models import GovernanceDecision
+from semapact.utils.deterministic import deterministic_uuid5
 
 
 SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE = uuid.UUID(
@@ -200,14 +200,9 @@ def _build_authorization(
         "evidence_reference": evidence_reference,
         "evidence_action": evidence_action.value if evidence_action is not None else None,
     }
-    canonical_payload = json.dumps(
+    authorization_id = deterministic_uuid5(
+        SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE,
         stable_record,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    authorization_id = str(
-        uuid.uuid5(SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE, canonical_payload)
     )
 
     return ContractOpsAuthorization(
