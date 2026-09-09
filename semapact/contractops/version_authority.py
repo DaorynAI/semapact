@@ -12,14 +12,15 @@ from semapact.contractops.models import (
     VersionAuthorityConfig,
     VersionResolution,
 )
-from semapact.core.release import (
+from semapact.exceptions import ReleaseValidationError
+from semapact.versioning import (
     ActualVersionBump,
     RequiredBump,
     classify_version_bump,
     increment_version,
     normalize_semver,
+    version_bump_satisfies,
 )
-from semapact.exceptions import ReleaseValidationError
 
 
 SEMAPACT_VERSION_RESOLUTION_NAMESPACE = uuid.UUID(
@@ -190,11 +191,7 @@ def _validate_minimum_bump(
     *,
     selected_version: str,
 ) -> None:
-    insufficient = (
-        (required_bump == "major" and actual_bump != "major")
-        or (required_bump == "minor" and actual_bump == "patch")
-    )
-    if insufficient:
+    if not version_bump_satisfies(actual_bump, required_bump):
         raise ReleaseValidationError(
             f"Resolved version '{selected_version}' applies a {actual_bump} bump, "
             f"but release requires at least a {required_bump} bump"
