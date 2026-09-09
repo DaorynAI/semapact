@@ -9,6 +9,7 @@ from typing import Sequence
 from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.change_context import ChangeContext
+from semapact.contractops import ChangeSet, build_change_set_from_decision
 from semapact.governance.evaluator import evaluate_governance_decision
 from semapact.governance.models import GovernanceDecision
 from semapact.lifecycle.merge_engine import ContractMergeEngine, MergeConflict, MergeResult
@@ -20,6 +21,14 @@ class GovernanceAnalysis:
 
     context: ChangeContext
     merge_result: MergeResult
+    decision: GovernanceDecision
+
+
+@dataclass(frozen=True)
+class GovernanceProposal:
+    """One evaluated proposal represented by a ChangeSet and its decision."""
+
+    change_set: ChangeSet
     decision: GovernanceDecision
 
 
@@ -59,6 +68,38 @@ class GovernanceService:
             candidate_contract,
             context=context,
             merge_conflicts=merge_conflicts,
+        )
+
+    def evaluate_proposal(
+        self,
+        base_contract: OpenDataContractStandard,
+        candidate_contract: OpenDataContractStandard,
+        *,
+        effective_date: date | str,
+        base_revision_ref: str,
+        candidate_revision_ref: str,
+        merge_conflicts: Sequence[MergeConflict] = (),
+        source: str | None = None,
+        actor_reference: str | None = None,
+    ) -> GovernanceProposal:
+        """Evaluate once and project the authoritative decision changes into a ChangeSet."""
+        context = self.create_context(effective_date)
+        decision = evaluate_governance_decision(
+            base_contract,
+            candidate_contract,
+            context=context,
+            merge_conflicts=merge_conflicts,
+        )
+        change_set = build_change_set_from_decision(
+            decision,
+            base_revision_ref=base_revision_ref,
+            candidate_revision_ref=candidate_revision_ref,
+            source=source,
+            actor_reference=actor_reference,
+        )
+        return GovernanceProposal(
+            change_set=change_set,
+            decision=decision,
         )
 
     def merge_and_evaluate(
