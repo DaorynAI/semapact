@@ -1,13 +1,18 @@
 """M2 ContractOps domain."""
 
+from semapact.contractops.authorization import authorize_contract_operation
 from semapact.contractops.changeset import (
     build_change_set,
     build_change_set_from_decision,
 )
 from semapact.contractops.models import (
+    AuthorizationReason,
     ChangeSet,
+    ContractOpsAuthorization,
     ReleasePlan,
     ReleasePrecondition,
+    ReviewAuthorizationEvidence,
+    ReviewEvidenceAction,
     VersionAuthority,
     VersionAuthorityConfig,
     VersionResolution,
@@ -19,12 +24,17 @@ from semapact.contractops.version_authority import (
 )
 
 __all__ = [
+    "AuthorizationReason",
     "ChangeSet",
+    "ContractOpsAuthorization",
     "ReleasePlan",
     "ReleasePrecondition",
+    "ReviewAuthorizationEvidence",
+    "ReviewEvidenceAction",
     "VersionAuthority",
     "VersionAuthorityConfig",
     "VersionResolution",
+    "authorize_contract_operation",
     "build_change_set",
     "build_change_set_from_decision",
     "build_release_plan",
