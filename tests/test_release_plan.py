@@ -26,7 +26,7 @@ CONTEXT = ChangeContext(effective_date=date(2026, 9, 9))
 def _contract(
     *,
     contract_id: str = "orders-product",
-    description: str | None = None,
+    contract_name: str | None = None,
     include_created_at: bool = False,
 ) -> OpenDataContractStandard:
     properties = [
@@ -50,8 +50,7 @@ def _contract(
         apiVersion="v3.1.0",
         kind="DataContract",
         id=contract_id,
-        name=contract_id,
-        description=description,
+        name=contract_name or contract_id,
         version="1.0.0",
         status="active",
         schema=[SchemaObject(name="orders", properties=properties)],
@@ -77,8 +76,8 @@ def _proposal(
 
 
 def test_allow_release_plan_is_deterministic_and_has_no_review_precondition() -> None:
-    base = _contract(description="old")
-    candidate = _contract(description="new")
+    base = _contract(contract_name="orders-old")
+    candidate = _contract(contract_name="orders-new")
     change_set, decision = _proposal(base, candidate)
 
     assert decision.decision is DecisionResult.ALLOW
@@ -142,7 +141,7 @@ def test_release_plan_rejects_no_change_proposal() -> None:
 def test_release_plan_fails_closed_for_mismatched_proposal_artifacts() -> None:
     base = _contract()
     review_candidate = _contract(include_created_at=True)
-    metadata_candidate = _contract(description="changed")
+    metadata_candidate = _contract(contract_name="orders-changed")
 
     review_change_set, review_decision = _proposal(base, review_candidate)
     metadata_change_set, _ = _proposal(base, metadata_candidate)
@@ -156,8 +155,8 @@ def test_release_plan_fails_closed_for_mismatched_proposal_artifacts() -> None:
 
 
 def test_release_plan_identity_changes_with_exact_release_revision() -> None:
-    base = _contract(description="old")
-    candidate = _contract(description="new")
+    base = _contract(contract_name="orders-old")
+    candidate = _contract(contract_name="orders-new")
     first_change_set, first_decision = _proposal(
         base,
         candidate,
@@ -177,8 +176,8 @@ def test_release_plan_identity_changes_with_exact_release_revision() -> None:
 
 
 def test_release_plan_is_immutable() -> None:
-    base = _contract(description="old")
-    candidate = _contract(description="new")
+    base = _contract(contract_name="orders-old")
+    candidate = _contract(contract_name="orders-new")
     change_set, decision = _proposal(base, candidate)
     plan = build_release_plan(change_set, decision)
 
