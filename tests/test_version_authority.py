@@ -107,7 +107,7 @@ def test_semapact_authority_rejects_external_reference() -> None:
         )
 
 
-def test_git_authority_uses_exact_repository_release_version() -> None:
+def test_git_authority_uses_exact_product_repository_release_version() -> None:
     resolution = resolve_release_version(
         _plan("minor"),
         current_version="1.2.3",
