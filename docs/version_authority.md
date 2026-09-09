@@ -18,6 +18,72 @@ explicit ContractOps authorization / APPLY / PUBLISH
 
 `VersionResolution` is read-only planning output. Resolving a version does not mutate the ODCS contract, write Git state, or publish anything.
 
+## Recommended usage
+
+Choose version authority from the **release topology**, not simply from whether the contract files are stored in Git.
+
+| Repository / release topology | Recommended authority | Version owner |
+| --- | --- | --- |
+| A contracts repository contains many independently governed contracts | `semapact` | Each contract owns its own ODCS version |
+| A contract lives with the data product/code it describes and they are released together | `git` | The product/repository Git release tag owns the version |
+
+### Recommended default: `semapact`
+
+Use SemaPact-managed authority when contracts are centrally governed and their lifecycles are independent, even when all contract files are stored in one Git repository.
+
+```text
+contracts/
+├── orders.yaml      version: 1.3.0
+├── customers.yaml   version: 4.7.3
+└── payments.yaml    version: 3.0.0
+```
+
+The Git repository is the storage and collaboration boundary; it is **not** the version boundary. Each contract can receive a different semantic-version bump from its own governed changes.
+
+Do not choose Git-managed authority merely because the contracts repository uses Git or CI/CD.
+
+### Recommended co-versioning case: `git`
+
+Use Git-managed authority when one repository represents a releasable data product and contains both the product implementation and its contract.
+
+```text
+orders-data-product/
+├── src/...
+├── pipelines/...
+├── contract.yaml
+└── deployment/...
+
+Git release: v1.4.0
+```
+
+In this topology the product and contract are intentionally co-versioned:
+
+```text
+Git tag v1.4.0
+    ↓
+data product release = 1.4.0
+    ↓
+contract.version = 1.4.0
+```
+
+SemaPact does not calculate a competing contract version. It validates that the Git-selected version satisfies the contract's governance-required minimum bump.
+
+### Decision rule
+
+```text
+Does the contract have an independent lifecycle/version from the code or product it describes?
+
+YES
+→ use semapact
+→ version each contract independently
+
+NO, the contract and data product are deliberately released as one versioned unit
+→ use git
+→ let the Git/data-product release tag select the contract version
+```
+
+If the repository topology is ambiguous, prefer `semapact` until the product and contract have an explicit co-versioning policy. This avoids accidentally coupling otherwise independent contract lifecycles to a repository-wide release number.
+
 ## SemaPact-managed versions
 
 This is the default mode for a contract repository that can contain many governed contracts while each contract retains its own independent ODCS lifecycle and version.
