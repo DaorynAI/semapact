@@ -20,7 +20,7 @@ explicit ContractOps authorization / APPLY / PUBLISH
 
 ## SemaPact-managed versions
 
-This is the default mode and is intended for contract repositories where multiple governed contracts may live together while each contract retains its own independent ODCS lifecycle/version.
+This is the default mode for a contract repository that can contain many governed contracts while each contract retains its own independent ODCS lifecycle and version.
 
 ```yaml
 release:
@@ -48,7 +48,7 @@ Their versions are not coupled merely because they are stored in the same Git re
 
 ## Git-managed versions
 
-Git-managed mode is intended for the case where a data product implementation and its contract are versioned and released together from the same repository. The Git release/tag owns the version; the contract follows that product/repository release version.
+Git-managed mode is intended for a different repository topology: the data product implementation and its contract live and release together in the same repository. The product/repository Git tag owns the release version, and the contract follows that version.
 
 ```yaml
 release:
@@ -59,11 +59,11 @@ release:
 For example:
 
 ```text
-repo/data-product tag = v1.4.0
+contract + data product repo tag = v1.4.0
         ↓
-Git-selected version = 1.4.0
+Git-selected release version = 1.4.0
         ↓
-SemaPact validates 1.4.0 against this contract's requiredVersionBump
+SemaPact validates 1.4.0 against the contract's requiredVersionBump
         ↓
 VersionResolution.selectedVersion = 1.4.0
 ```
@@ -72,7 +72,7 @@ SemaPact does not calculate a competing contract version in Git-managed mode. Th
 
 The release reference is repository/workflow provenance, not a per-contract tag convention. SemaPact therefore does not derive tag names from `contractId`.
 
-A repository can use a literal product-specific prefix when that is its release convention:
+A repository can use a literal product-specific prefix when that is its own release convention:
 
 ```yaml
 release:
