@@ -35,12 +35,12 @@ def resolve_release_version(
     config: VersionAuthorityConfig,
     authority_reference: str | None = None,
 ) -> VersionResolution:
-    """Resolve the actual release version without mutating the governed contract.
+    """Resolve one contract's release version without mutating governed state.
 
-    SemaPact-managed authority selects the next deterministic contract version.
-    Git-managed authority consumes a release reference selected by the repository
-    release process and only validates that version against this contract's
-    governance minimum. Governance classification is never recalculated here.
+    SemaPact-managed authority independently versions the contract. Git-managed
+    authority is for a contract co-versioned with its data product/repository and
+    consumes that repository's explicit release reference. Governance
+    classification is never recalculated here.
     """
     if not isinstance(release_plan, ReleasePlan):
         raise TypeError(
@@ -133,10 +133,10 @@ def extract_version_from_release_reference(
     *,
     tag_pattern: str,
 ) -> str:
-    """Extract a semantic version from a repository release reference pattern.
+    """Extract a semantic version from a configured literal Git tag pattern.
 
-    The pattern is repository/workflow configuration, not a contract naming scheme.
-    It contains exactly one ``{version}`` placeholder; all other text is literal.
+    The only supported placeholder is ``{version}``. All other pattern text is
+    literal repository/workflow convention rather than ContractOps domain data.
     """
     cleaned_reference = str(reference or "").strip()
     cleaned_pattern = str(tag_pattern or "").strip()
@@ -147,7 +147,8 @@ def extract_version_from_release_reference(
 
     _validate_tag_pattern(cleaned_pattern)
 
-    regex = re.escape(cleaned_pattern).replace(
+    regex = re.escape(cleaned_pattern)
+    regex = regex.replace(
         re.escape(_VERSION_TOKEN),
         r"(?P<version>\d+\.\d+\.\d+)",
     )
