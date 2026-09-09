@@ -15,7 +15,7 @@ from semapact.deployment.models import (
     DeploymentTarget,
 )
 from semapact.lifecycle.identity import normalize_identity_name
-from semapact.reconciliation.binding import runtime_asset_specs_from_contract
+from semapact.runtime import runtime_asset_specs_from_contract
 
 
 SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE = uuid.UUID(
