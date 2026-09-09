@@ -10,9 +10,12 @@ from typing import Any, Sequence
 from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.change_context import ChangeContext
-from semapact.core.release import ContractChangeAssessment, classify_contract_change
 from semapact.core.validator import ContractValidator
 from semapact.exceptions import ValidationError
+from semapact.governance.change_classification import (
+    ContractChangeAssessment,
+    classify_contract_change,
+)
 from semapact.governance.models import (
     ChangeEvidence,
     DecisionResult,
@@ -378,8 +381,6 @@ def _determine_decision(
         return DecisionResult.REVIEW
 
     return DecisionResult.ALLOW
-
-
 
 
 def _generate_decision_id(
