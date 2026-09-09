@@ -153,3 +153,16 @@ class VersionResolution(ContractOpsModel):
             return None
         cleaned = value.strip()
         return cleaned or None
+
+    @model_validator(mode="after")
+    def _validate_authority_reference(self) -> VersionResolution:
+        if self.authority is VersionAuthority.GIT and self.authority_reference is None:
+            raise ValueError("git version resolution requires authority_reference")
+        if (
+            self.authority is VersionAuthority.SEMAPACT
+            and self.authority_reference is not None
+        ):
+            raise ValueError(
+                "SemaPact version resolution must not contain authority_reference"
+            )
+        return self
