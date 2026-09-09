@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 
 from open_data_contract_standard.model import SchemaObject
@@ -16,6 +15,7 @@ from semapact.deployment.models import (
 )
 from semapact.lifecycle.identity import normalize_identity_name
 from semapact.runtime import runtime_asset_specs_from_contract
+from semapact.utils.deterministic import canonical_compact_json, deterministic_uuid5
 
 
 SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE = uuid.UUID(
@@ -74,16 +74,9 @@ def build_deployment_plan(
         "actions": [action.model_dump(mode="json") for action in ordered_actions],
         "plan_version": "1",
     }
-    deployment_plan_id = str(
-        uuid.uuid5(
-            SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
-            json.dumps(
-                stable_record,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-            ),
-        )
+    deployment_plan_id = deterministic_uuid5(
+        SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
+        stable_record,
     )
 
     return DeploymentPlan(
@@ -100,9 +93,4 @@ def build_deployment_plan(
 
 def _canonical_schema_json(schema: SchemaObject) -> str:
     payload = schema.model_dump(mode="json", by_alias=True, exclude_none=True)
-    return json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
+    return canonical_compact_json(payload)
