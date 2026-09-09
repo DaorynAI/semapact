@@ -7,9 +7,9 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from semapact.change_context import ChangeContext
-from semapact.core.release import ActualVersionBump, RequiredBump
 from semapact.governance.gate import GovernanceOperation
 from semapact.lifecycle.changes import GovernanceChange
+from semapact.versioning import ActualVersionBump, RequiredBump
 
 
 class ContractOpsModel(BaseModel):
