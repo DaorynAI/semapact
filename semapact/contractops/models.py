@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from semapact.change_context import ChangeContext
-from semapact.core.release import RequiredBump
+from semapact.core.release import ActualVersionBump, RequiredBump
 from semapact.lifecycle.changes import GovernanceChange
 
 
@@ -85,3 +85,71 @@ class ReleasePlan(ContractOpsModel):
         if not cleaned:
             raise ValueError("value must not be empty")
         return cleaned
+
+
+class VersionAuthority(str, Enum):
+    """Authority that selects the actual released ODCS semantic version."""
+
+    SEMAPACT = "semapact"
+    GIT = "git"
+
+
+class VersionAuthorityConfig(ContractOpsModel):
+    """Typed configuration for resolving one ReleasePlan version."""
+
+    authority: VersionAuthority = VersionAuthority.SEMAPACT
+    tag_pattern: str | None = None
+
+    @field_validator("tag_pattern")
+    @classmethod
+    def _normalize_tag_pattern(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def _validate_authority_configuration(self) -> VersionAuthorityConfig:
+        if self.authority is VersionAuthority.GIT and self.tag_pattern is None:
+            raise ValueError("git version authority requires tag_pattern")
+        if self.authority is VersionAuthority.SEMAPACT and self.tag_pattern is not None:
+            raise ValueError("tag_pattern is only valid for git version authority")
+        return self
+
+
+class VersionResolution(ContractOpsModel):
+    """Pure resolution of the actual release version for one ReleasePlan."""
+
+    version_resolution_id: str
+    release_plan_id: str
+    contract_id: str
+    release_revision_ref: str
+    authority: VersionAuthority
+    current_version: str
+    required_version_bump: RequiredBump
+    selected_version: str
+    actual_bump: ActualVersionBump
+    authority_reference: str | None = None
+
+    @field_validator(
+        "version_resolution_id",
+        "release_plan_id",
+        "contract_id",
+        "release_revision_ref",
+        "current_version",
+        "selected_version",
+    )
+    @classmethod
+    def _require_version_resolution_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("value must not be empty")
+        return cleaned
+
+    @field_validator("authority_reference")
+    @classmethod
+    def _normalize_authority_reference(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
