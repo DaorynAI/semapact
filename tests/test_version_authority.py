@@ -57,6 +57,23 @@ def test_semapact_authority_selects_smallest_valid_release_version(
     assert resolution.authority_reference is None
 
 
+def test_semapact_authority_versions_contracts_independently() -> None:
+    orders = resolve_release_version(
+        _plan("minor", contract_id="orders", release_plan_id="release-orders"),
+        current_version="1.2.3",
+        config=VersionAuthorityConfig(),
+    )
+    customers = resolve_release_version(
+        _plan("none", contract_id="customers", release_plan_id="release-customers"),
+        current_version="4.7.2",
+        config=VersionAuthorityConfig(),
+    )
+
+    assert orders.selected_version == "1.3.0"
+    assert customers.selected_version == "4.7.3"
+    assert orders.version_resolution_id != customers.version_resolution_id
+
+
 def test_semapact_version_resolution_is_deterministic() -> None:
     plan = _plan("minor")
     config = VersionAuthorityConfig(authority=VersionAuthority.SEMAPACT)
@@ -120,30 +137,6 @@ def test_git_authority_allows_repository_specific_literal_tag_prefix() -> None:
 
     assert resolution.selected_version == "2.1.0"
     assert resolution.actual_bump == "major"
-
-
-def test_git_release_version_selection_is_independent_of_contract_identity() -> None:
-    config = VersionAuthorityConfig(
-        authority=VersionAuthority.GIT,
-        tag_pattern="v{version}",
-    )
-
-    orders = resolve_release_version(
-        _plan("minor", contract_id="orders", release_plan_id="release-orders"),
-        current_version="1.2.3",
-        config=config,
-        authority_reference="v1.4.0",
-    )
-    customers = resolve_release_version(
-        _plan("minor", contract_id="customers", release_plan_id="release-customers"),
-        current_version="1.2.3",
-        config=config,
-        authority_reference="v1.4.0",
-    )
-
-    assert orders.selected_version == "1.4.0"
-    assert customers.selected_version == "1.4.0"
-    assert orders.version_resolution_id != customers.version_resolution_id
 
 
 def test_git_authority_rejects_insufficient_bump() -> None:
