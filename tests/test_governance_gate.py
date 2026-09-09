@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+
 import pytest
 
 from semapact.exceptions import GovernanceBlockedError, GovernanceReviewRequiredError
@@ -78,15 +79,16 @@ def _make_decision(result: DecisionResult) -> GovernanceDecision:
         (DecisionResult.ALLOW, GovernanceOperation.PROPOSE, True, "allowed"),
         (DecisionResult.REVIEW, GovernanceOperation.PROPOSE, True, "allowed"),
         (DecisionResult.BLOCK, GovernanceOperation.PROPOSE, False, "blocked"),
-        # APPLY operation: ALLOW is allowed; REVIEW requires review; BLOCK is blocked
+        # Side-effect operations: ALLOW; REVIEW requires review; BLOCK is blocked
         (DecisionResult.ALLOW, GovernanceOperation.APPLY, True, "allowed"),
         (DecisionResult.REVIEW, GovernanceOperation.APPLY, False, "review_required"),
         (DecisionResult.BLOCK, GovernanceOperation.APPLY, False, "blocked"),
-        # PUBLISH operation: ALLOW is allowed; REVIEW requires review; BLOCK is blocked
         (DecisionResult.ALLOW, GovernanceOperation.PUBLISH, True, "allowed"),
         (DecisionResult.REVIEW, GovernanceOperation.PUBLISH, False, "review_required"),
         (DecisionResult.BLOCK, GovernanceOperation.PUBLISH, False, "blocked"),
-        # CI operation: ALLOW is allowed; REVIEW requires review; BLOCK is blocked
+        (DecisionResult.ALLOW, GovernanceOperation.DEPLOY, True, "allowed"),
+        (DecisionResult.REVIEW, GovernanceOperation.DEPLOY, False, "review_required"),
+        (DecisionResult.BLOCK, GovernanceOperation.DEPLOY, False, "blocked"),
         (DecisionResult.ALLOW, GovernanceOperation.CI, True, "allowed"),
         (DecisionResult.REVIEW, GovernanceOperation.CI, False, "review_required"),
         (DecisionResult.BLOCK, GovernanceOperation.CI, False, "blocked"),
@@ -98,7 +100,7 @@ def test_evaluate_governance_gate_matrix(
     expected_allowed: bool,
     expected_reason: str,
 ):
-    """Verify all 15 combinations of DecisionResult x GovernanceOperation."""
+    """Verify all DecisionResult x GovernanceOperation combinations."""
     decision = _make_decision(decision_result)
     result = evaluate_governance_gate(decision, operation)
 
@@ -111,22 +113,18 @@ def test_evaluate_governance_gate_type_checks():
     """Verify evaluate_governance_gate rejects non-pydantic decision objects or raw string operations."""
     decision = _make_decision(DecisionResult.ALLOW)
 
-    # Rejects dict input for decision
     with pytest.raises(TypeError, match="evaluate_governance_gate requires GovernanceDecision"):
         evaluate_governance_gate({"decision": "ALLOW"}, GovernanceOperation.CI)  # type: ignore
 
-    # Rejects raw string input for operation
     with pytest.raises(TypeError, match="evaluate_governance_gate requires GovernanceOperation"):
         evaluate_governance_gate(decision, "CI")  # type: ignore
 
 
 def test_governance_gate_result_invariants():
-    """Verify GovernanceGateResult model invariants: allowed=True <-> reason='allowed'."""
-    # allowed=True with reason='blocked' should fail
+    """Verify GovernanceGateResult model invariants."""
     with pytest.raises(ValueError, match="GovernanceGateResult invariant violation"):
         GovernanceGateResult(allowed=True, reason="blocked", decision_id="dec-1")
 
-    # allowed=False with reason='allowed' should fail
     with pytest.raises(ValueError, match="GovernanceGateResult invariant violation"):
         GovernanceGateResult(allowed=False, reason="allowed", decision_id="dec-1")
 
@@ -147,15 +145,15 @@ def test_enforce_governance_gate_raises_blocked_error():
 
 
 def test_enforce_governance_gate_raises_review_required_error():
-    """Verify enforce_governance_gate raises GovernanceReviewRequiredError on REVIEW decision for APPLY/CI."""
+    """Verify REVIEW remains gated for side-effect operations."""
     decision = _make_decision(DecisionResult.REVIEW)
 
     with pytest.raises(GovernanceReviewRequiredError) as exc_info:
-        enforce_governance_gate(decision, GovernanceOperation.APPLY)
+        enforce_governance_gate(decision, GovernanceOperation.DEPLOY)
 
     err = exc_info.value
     assert err.decision == decision
-    assert err.operation == GovernanceOperation.APPLY
+    assert err.operation == GovernanceOperation.DEPLOY
     assert "Governance decision REVIEW required" in str(err)
 
 
