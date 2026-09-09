@@ -61,7 +61,7 @@ def test_service_reads_git_authority_from_config(sample_odcs_model) -> None:
         {
             "release": {
                 "versionAuthority": "git",
-                "tagPattern": "{contractId}/v{version}",
+                "tagPattern": "v{version}",
             }
         }
     )
@@ -69,12 +69,12 @@ def test_service_reads_git_authority_from_config(sample_odcs_model) -> None:
     resolution = VersionAuthorityService(config).resolve(
         _plan("minor"),
         _released_contract(sample_odcs_model),
-        authority_reference="orders-product/v1.4.0",
+        authority_reference="v1.4.0",
     )
 
     assert resolution.authority is VersionAuthority.GIT
     assert resolution.selected_version == "1.4.0"
-    assert resolution.authority_reference == "orders-product/v1.4.0"
+    assert resolution.authority_reference == "v1.4.0"
 
 
 def test_service_environment_overrides_file_authority(
