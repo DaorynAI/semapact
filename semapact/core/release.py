@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
-from semapact.governance.change_classification import (
+from semapact.lifecycle.change_classification import (
     ContractChangeAssessment,
     classify_contract_change,
 )
@@ -107,8 +108,8 @@ def apply_release_candidate(
 
 
 def prepare_release_candidate(
-    base_contract: OpenDataContractStandard | dict[str, object],
-    candidate_contract: OpenDataContractStandard | dict[str, object],
+    base_contract: OpenDataContractStandard | dict[str, Any],
+    candidate_contract: OpenDataContractStandard | dict[str, Any],
     release_tag: str,
 ) -> PromotionResult:
     """Prepare a promoted contract candidate through the legacy compatibility path."""
