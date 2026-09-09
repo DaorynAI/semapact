@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from collections.abc import Sequence
 
@@ -10,6 +9,7 @@ from semapact.change_context import ChangeContext
 from semapact.contractops.models import ChangeSet
 from semapact.governance.models import GovernanceDecision
 from semapact.lifecycle.changes import GovernanceChange, governance_change_sort_key
+from semapact.utils.deterministic import deterministic_uuid5
 
 
 SEMAPACT_CHANGESET_NAMESPACE = uuid.UUID("3ea0f6d8-28ca-4bb4-94f5-ea1f0f48cb84")
@@ -54,13 +54,7 @@ def build_change_set(
         "source": cleaned_source,
         "actor_reference": cleaned_actor_reference,
     }
-    canonical_payload = json.dumps(
-        identity_payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    change_set_id = str(uuid.uuid5(SEMAPACT_CHANGESET_NAMESPACE, canonical_payload))
+    change_set_id = deterministic_uuid5(SEMAPACT_CHANGESET_NAMESPACE, identity_payload)
 
     return ChangeSet(
         change_set_id=change_set_id,
