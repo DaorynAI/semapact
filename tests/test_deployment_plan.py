@@ -204,4 +204,4 @@ def test_deployment_models_are_immutable() -> None:
     plan = build_deployment_plan(_release(), _target())
 
     with pytest.raises(PydanticValidationError):
-        plan.selected_version = "9.9.9"  # type: ignore[misc]
+        setattr(plan, "selected_version", "9.9.9")
