@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from semapact.contractops.execution_models import AppliedContractRelease
-from semapact.contractops.models import ContractOpsAuthorization
+from semapact.contractops.models import AuthorizationReason, ContractOpsAuthorization
 from semapact.deployment.models import DeploymentAuthorization, DeploymentPlan
 from semapact.exceptions import ReleaseValidationError
 from semapact.governance.gate import GovernanceOperation
@@ -24,10 +24,10 @@ def authorize_deployment(
 ) -> DeploymentAuthorization:
     """Bind one DEPLOY authorization to the exact deployment target/plan.
 
-    The upstream ContractOps authorization remains responsible for governance and
-    review semantics. This layer only verifies exact release provenance and binds
-    that authorization to ``deployment_plan_id``, whose identity includes the
-    deployment target and desired-state actions.
+    Upstream ContractOps remains authoritative for governance/review semantics.
+    Review-based DEPLOY authorization must carry ``scope_reference`` equal to this
+    exact ``deployment_plan_id``; governance-ALLOW paths need no synthetic review
+    scope but are still bound here before an adapter may execute the plan.
     """
     if not isinstance(plan, DeploymentPlan):
         raise TypeError(f"plan must be DeploymentPlan, got {type(plan).__name__}")
@@ -48,6 +48,15 @@ def authorize_deployment(
 
     _validate_plan_release_context(plan, release)
     _validate_authorization_release_context(authorization, release)
+
+    if (
+        authorization.allowed
+        and authorization.reason is AuthorizationReason.ALLOWED_BY_REVIEW
+        and authorization.scope_reference != plan.deployment_plan_id
+    ):
+        raise ReleaseValidationError(
+            "Review-based DEPLOY authorization is not scoped to this DeploymentPlan"
+        )
 
     stable_record = {
         "contract_ops_authorization_id": authorization.authorization_id,
