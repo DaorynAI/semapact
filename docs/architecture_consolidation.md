@@ -45,9 +45,10 @@ physicalName    → runtime/deployment binding hint
 ## Versioning ownership
 
 Pure semantic-version types and operations live in `semapact.versioning`.
-Governance owns change classification. Legacy `semapact.core.release` remains a
-compatibility release workflow and re-exports the historical names, but canonical
-Governance/ContractOps code must not depend on that legacy workflow module.
+Lifecycle owns governed release change classification because it is derived from
+lifecycle changes/policy. Legacy `semapact.core.release` remains a compatibility
+release workflow and re-exports the historical names, but canonical Governance and
+ContractOps code must not depend on that legacy workflow module.
 
 ## Deployment authorization
 
