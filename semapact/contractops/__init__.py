@@ -5,6 +5,15 @@ from semapact.contractops.changeset import (
     build_change_set,
     build_change_set_from_decision,
 )
+from semapact.contractops.execution import (
+    ContractReleasePublisher,
+    apply_contract_release,
+    publish_contract_release,
+)
+from semapact.contractops.execution_models import (
+    AppliedContractRelease,
+    PublicationResult,
+)
 from semapact.contractops.models import (
     AuthorizationReason,
     ChangeSet,
@@ -24,9 +33,12 @@ from semapact.contractops.version_authority import (
 )
 
 __all__ = [
+    "AppliedContractRelease",
     "AuthorizationReason",
     "ChangeSet",
     "ContractOpsAuthorization",
+    "ContractReleasePublisher",
+    "PublicationResult",
     "ReleasePlan",
     "ReleasePrecondition",
     "ReviewAuthorizationEvidence",
@@ -34,10 +46,12 @@ __all__ = [
     "VersionAuthority",
     "VersionAuthorityConfig",
     "VersionResolution",
+    "apply_contract_release",
     "authorize_contract_operation",
     "build_change_set",
     "build_change_set_from_decision",
     "build_release_plan",
     "extract_version_from_release_reference",
+    "publish_contract_release",
     "resolve_release_version",
 ]
