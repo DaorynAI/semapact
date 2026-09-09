@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import uuid
 
+from open_data_contract_standard.model import SchemaObject
+
 from semapact.contractops.execution_models import AppliedContractRelease
 from semapact.deployment.models import (
     DeploymentAction,
@@ -52,13 +54,12 @@ def build_deployment_plan(
             raise RuntimeError("Governed schema identity unexpectedly missing")
         governed_asset = normalize_identity_name(str(raw_name), "Schema")
         spec = specs_by_asset[governed_asset]
-        desired_state_json = _canonical_schema_json(schema)
         actions.append(
             DeploymentAction(
                 kind=DeploymentActionKind.ENSURE_ASSET_STATE,
                 governed_asset=governed_asset,
                 physical_name=spec.physical_name,
-                desired_state_json=desired_state_json,
+                desired_state_json=_canonical_schema_json(schema),
             )
         )
 
@@ -97,11 +98,8 @@ def build_deployment_plan(
     )
 
 
-def _canonical_schema_json(schema: object) -> str:
-    model_dump = getattr(schema, "model_dump", None)
-    if not callable(model_dump):
-        raise TypeError("released schema must provide model_dump()")
-    payload = model_dump(mode="json", by_alias=True, exclude_none=True)
+def _canonical_schema_json(schema: SchemaObject) -> str:
+    payload = schema.model_dump(mode="json", by_alias=True, exclude_none=True)
     return json.dumps(
         payload,
         sort_keys=True,
