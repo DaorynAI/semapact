@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 
 from semapact.contractops.context import validate_proposal_context
@@ -14,6 +13,7 @@ from semapact.governance.gate import (
     evaluate_governance_gate,
 )
 from semapact.governance.models import GovernanceDecision
+from semapact.utils.deterministic import deterministic_uuid5
 
 
 SEMAPACT_RELEASE_PLAN_NAMESPACE = uuid.UUID("7d2ad1de-c196-4f12-b1af-fdf79105eb04")
@@ -66,15 +66,7 @@ def build_release_plan(
         "required_version_bump": decision.required_version_bump,
         "preconditions": [item.value for item in preconditions],
     }
-    canonical_payload = json.dumps(
-        stable_record,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    release_plan_id = str(
-        uuid.uuid5(SEMAPACT_RELEASE_PLAN_NAMESPACE, canonical_payload)
-    )
+    release_plan_id = deterministic_uuid5(SEMAPACT_RELEASE_PLAN_NAMESPACE, stable_record)
 
     return ReleasePlan(
         release_plan_id=release_plan_id,
