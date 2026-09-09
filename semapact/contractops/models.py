@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from enum import Enum
+
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from semapact.change_context import ChangeContext
+from semapact.core.release import RequiredBump
 from semapact.lifecycle.changes import GovernanceChange
 
 
@@ -50,3 +53,35 @@ class ChangeSet(ContractOpsModel):
             return None
         cleaned = value.strip()
         return cleaned or None
+
+
+class ReleasePrecondition(str, Enum):
+    """Explicit prerequisite that must be satisfied before release publication."""
+
+    REVIEW_AUTHORIZATION_REQUIRED = "REVIEW_AUTHORIZATION_REQUIRED"
+
+
+class ReleasePlan(ContractOpsModel):
+    """Pure plan for releasing the exact candidate revision from a ChangeSet."""
+
+    release_plan_id: str
+    contract_id: str
+    change_set_id: str
+    decision_id: str
+    release_revision_ref: str
+    required_version_bump: RequiredBump
+    preconditions: tuple[ReleasePrecondition, ...] = ()
+
+    @field_validator(
+        "release_plan_id",
+        "contract_id",
+        "change_set_id",
+        "decision_id",
+        "release_revision_ref",
+    )
+    @classmethod
+    def _require_release_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("value must not be empty")
+        return cleaned
