@@ -26,7 +26,6 @@ SEMAPACT_VERSION_RESOLUTION_NAMESPACE = uuid.UUID(
     "4a2bd29d-2e44-44a0-9fc9-a1f4c81a2108"
 )
 _VERSION_TOKEN = "{version}"
-_CONTRACT_ID_TOKEN = "{contractId}"
 
 
 def resolve_release_version(
@@ -38,9 +37,10 @@ def resolve_release_version(
 ) -> VersionResolution:
     """Resolve the actual release version without mutating the governed contract.
 
-    SemaPact-managed authority selects the next deterministic version. Git-managed
-    authority consumes an explicit external release reference and only validates it.
-    Governance classification is never recalculated here.
+    SemaPact-managed authority selects the next deterministic contract version.
+    Git-managed authority consumes a release reference selected by the repository
+    release process and only validates that version against this contract's
+    governance minimum. Governance classification is never recalculated here.
     """
     if not isinstance(release_plan, ReleasePlan):
         raise TypeError(
@@ -77,7 +77,6 @@ def resolve_release_version(
         selected_version = extract_version_from_release_reference(
             normalized_reference,
             tag_pattern=tag_pattern,
-            contract_id=release_plan.contract_id,
         )
         try:
             actual_bump = classify_version_bump(
@@ -133,39 +132,30 @@ def extract_version_from_release_reference(
     reference: str,
     *,
     tag_pattern: str,
-    contract_id: str,
 ) -> str:
-    """Extract a semantic version from a configured literal Git tag pattern.
+    """Extract a semantic version from a repository release reference pattern.
 
-    Supported placeholders are exactly ``{version}`` and optional ``{contractId}``.
-    All other pattern text is treated literally rather than as a regular expression.
+    The pattern is repository/workflow configuration, not a contract naming scheme.
+    It contains exactly one ``{version}`` placeholder; all other text is literal.
     """
     cleaned_reference = str(reference or "").strip()
     cleaned_pattern = str(tag_pattern or "").strip()
-    cleaned_contract_id = str(contract_id or "").strip()
     if not cleaned_reference:
         raise ReleaseValidationError("Release reference must not be empty")
     if not cleaned_pattern:
         raise ReleaseValidationError("Tag pattern must not be empty")
-    if not cleaned_contract_id:
-        raise ReleaseValidationError("Contract ID must not be empty")
 
     _validate_tag_pattern(cleaned_pattern)
 
-    regex = re.escape(cleaned_pattern)
-    regex = regex.replace(
+    regex = re.escape(cleaned_pattern).replace(
         re.escape(_VERSION_TOKEN),
         r"(?P<version>\d+\.\d+\.\d+)",
-    )
-    regex = regex.replace(
-        re.escape(_CONTRACT_ID_TOKEN),
-        re.escape(cleaned_contract_id),
     )
     match = re.fullmatch(regex, cleaned_reference)
     if match is None:
         raise ReleaseValidationError(
             f"Release reference '{cleaned_reference}' does not match tag pattern "
-            f"'{cleaned_pattern}' for contract '{cleaned_contract_id}'"
+            f"'{cleaned_pattern}'"
         )
     return match.group("version")
 
@@ -215,13 +205,9 @@ def _validate_tag_pattern(tag_pattern: str) -> None:
         raise ReleaseValidationError(
             "Tag pattern must contain exactly one {version} placeholder"
         )
-    if tag_pattern.count(_CONTRACT_ID_TOKEN) > 1:
-        raise ReleaseValidationError(
-            "Tag pattern may contain at most one {contractId} placeholder"
-        )
 
-    remaining = tag_pattern.replace(_VERSION_TOKEN, "").replace(_CONTRACT_ID_TOKEN, "")
+    remaining = tag_pattern.replace(_VERSION_TOKEN, "")
     if "{" in remaining or "}" in remaining:
         raise ReleaseValidationError(
-            "Tag pattern supports only {version} and {contractId} placeholders"
+            "Tag pattern supports only the {version} placeholder"
         )
