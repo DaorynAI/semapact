@@ -68,11 +68,15 @@ def resolve_release_version(
             raise ReleaseValidationError(
                 "Git version authority requires an explicit release reference"
             )
-        assert config.tag_pattern is not None  # guaranteed by VersionAuthorityConfig
+        tag_pattern = config.tag_pattern
+        if tag_pattern is None:
+            raise RuntimeError(
+                "VersionAuthorityConfig invariant violation: git authority requires tag_pattern"
+            )
         normalized_reference = authority_reference.strip()
         selected_version = extract_version_from_release_reference(
             normalized_reference,
-            tag_pattern=config.tag_pattern,
+            tag_pattern=tag_pattern,
             contract_id=release_plan.contract_id,
         )
         try:
