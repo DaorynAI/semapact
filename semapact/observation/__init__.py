@@ -17,10 +17,10 @@ from semapact.observation.models import (
 )
 from semapact.observation.providers import (
     RuntimeAssetBinding,
-    RuntimeAssetSpec,
     RuntimeProvider,
     RuntimeProviderRegistry,
 )
+from semapact.runtime import RuntimeAssetSpec
 
 __all__ = [
     "OBSERVED_STATE_FINGERPRINT_ALGORITHM",
