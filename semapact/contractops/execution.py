@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from typing import Protocol
 
@@ -19,6 +18,7 @@ from semapact.contractops.models import (
 from semapact.exceptions import ContractOpsAuthorizationError, ReleaseValidationError
 from semapact.governance.gate import GovernanceOperation
 from semapact.governance.models import GovernanceDecision
+from semapact.utils.deterministic import canonical_compact_json, deterministic_uuid5
 from semapact.versioning import normalize_semver
 
 
@@ -116,16 +116,9 @@ def apply_contract_release(
         "authorization_id": authorization.authorization_id,
         "released_contract_json": released_contract_json,
     }
-    applied_release_id = str(
-        uuid.uuid5(
-            SEMAPACT_APPLIED_RELEASE_NAMESPACE,
-            json.dumps(
-                stable_record,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-            ),
-        )
+    applied_release_id = deterministic_uuid5(
+        SEMAPACT_APPLIED_RELEASE_NAMESPACE,
+        stable_record,
     )
 
     return AppliedContractRelease(
@@ -177,16 +170,9 @@ def publish_contract_release(
         "authorization_id": authorization.authorization_id,
         "publication_reference": publication_reference,
     }
-    publication_id = str(
-        uuid.uuid5(
-            SEMAPACT_PUBLICATION_NAMESPACE,
-            json.dumps(
-                stable_record,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-            ),
-        )
+    publication_id = deterministic_uuid5(
+        SEMAPACT_PUBLICATION_NAMESPACE,
+        stable_record,
     )
     return PublicationResult(
         publication_id=publication_id,
@@ -270,9 +256,4 @@ def _canonical_version(version: str, *, field_name: str) -> str:
 
 def _canonical_contract_json(contract: OpenDataContractStandard) -> str:
     payload = contract.model_dump(mode="json", by_alias=True, exclude_none=True)
-    return json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
+    return canonical_compact_json(payload)
