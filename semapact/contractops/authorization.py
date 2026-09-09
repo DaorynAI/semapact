@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 
+from semapact.contractops.context import validate_release_context
 from semapact.contractops.models import (
     AuthorizationReason,
     ChangeSet,
@@ -14,7 +15,6 @@ from semapact.contractops.models import (
     ReviewEvidenceAction,
     VersionResolution,
 )
-from semapact.exceptions import ReleaseValidationError
 from semapact.governance.gate import GovernanceOperation, evaluate_governance_gate
 from semapact.governance.models import GovernanceDecision
 
@@ -47,7 +47,7 @@ def authorize_contract_operation(
         operation,
         evidence,
     )
-    _validate_release_context(decision, change_set, release_plan, version_resolution)
+    validate_release_context(decision, change_set, release_plan, version_resolution)
 
     gate = evaluate_governance_gate(decision, operation)
 
@@ -154,61 +154,6 @@ def _validate_types(
         raise TypeError(
             "evidence must be ReviewAuthorizationEvidence or None, "
             f"got {type(evidence).__name__}"
-        )
-
-
-def _validate_release_context(
-    decision: GovernanceDecision,
-    change_set: ChangeSet,
-    release_plan: ReleasePlan,
-    version_resolution: VersionResolution,
-) -> None:
-    """Fail closed when immutable artifacts do not describe one release context."""
-    if change_set.contract_id != decision.contract_id:
-        raise ReleaseValidationError(
-            "ChangeSet and GovernanceDecision contract IDs do not match"
-        )
-    if change_set.context != decision.context:
-        raise ReleaseValidationError(
-            "ChangeSet and GovernanceDecision governance contexts do not match"
-        )
-    if change_set.changes != decision.changes:
-        raise ReleaseValidationError(
-            "ChangeSet changes do not match authoritative GovernanceDecision changes"
-        )
-
-    if release_plan.contract_id != change_set.contract_id:
-        raise ReleaseValidationError("ReleasePlan and ChangeSet contract IDs do not match")
-    if release_plan.change_set_id != change_set.change_set_id:
-        raise ReleaseValidationError("ReleasePlan does not reference the supplied ChangeSet")
-    if release_plan.decision_id != decision.decision_id:
-        raise ReleaseValidationError(
-            "ReleasePlan does not reference the supplied GovernanceDecision"
-        )
-    if release_plan.release_revision_ref != change_set.candidate_revision_ref:
-        raise ReleaseValidationError(
-            "ReleasePlan release revision does not match ChangeSet candidate revision"
-        )
-    if release_plan.required_version_bump != decision.required_version_bump:
-        raise ReleaseValidationError(
-            "ReleasePlan required version bump does not match GovernanceDecision"
-        )
-
-    if version_resolution.release_plan_id != release_plan.release_plan_id:
-        raise ReleaseValidationError(
-            "VersionResolution does not reference the supplied ReleasePlan"
-        )
-    if version_resolution.contract_id != release_plan.contract_id:
-        raise ReleaseValidationError(
-            "VersionResolution and ReleasePlan contract IDs do not match"
-        )
-    if version_resolution.release_revision_ref != release_plan.release_revision_ref:
-        raise ReleaseValidationError(
-            "VersionResolution release revision does not match ReleasePlan"
-        )
-    if version_resolution.required_version_bump != release_plan.required_version_bump:
-        raise ReleaseValidationError(
-            "VersionResolution required version bump does not match ReleasePlan"
         )
 
 
