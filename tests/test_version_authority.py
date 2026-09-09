@@ -10,11 +10,12 @@ from semapact.contractops import (
     extract_version_from_release_reference,
     resolve_release_version,
 )
+from semapact.core.release import ActualVersionBump, RequiredBump
 from semapact.exceptions import ReleaseValidationError
 
 
 def _plan(
-    required_bump: str,
+    required_bump: RequiredBump,
     *,
     contract_id: str = "orders-product",
     release_plan_id: str = "release-plan-1",
@@ -38,9 +39,9 @@ def _plan(
     ],
 )
 def test_semapact_authority_selects_smallest_valid_release_version(
-    required_bump: str,
+    required_bump: RequiredBump,
     expected_version: str,
-    expected_actual_bump: str,
+    expected_actual_bump: ActualVersionBump,
 ) -> None:
     resolution = resolve_release_version(
         _plan(required_bump),
@@ -255,4 +256,4 @@ def test_version_resolution_is_immutable() -> None:
     )
 
     with pytest.raises(PydanticValidationError):
-        resolution.selected_version = "9.9.9"  # type: ignore[misc]
+        resolution.selected_version = "9.9.9"
