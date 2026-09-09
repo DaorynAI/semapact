@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 
+from semapact.contractops.context import validate_proposal_context
 from semapact.contractops.models import ChangeSet, ReleasePlan, ReleasePrecondition
 from semapact.exceptions import ReleaseValidationError
 from semapact.governance.gate import (
@@ -38,7 +39,7 @@ def build_release_plan(
             f"decision must be GovernanceDecision, got {type(decision).__name__}"
         )
 
-    _validate_proposal_consistency(change_set, decision)
+    validate_proposal_context(decision, change_set)
 
     # Release planning is a pure PROPOSE operation. Reuse the authoritative M0 gate
     # rather than duplicating ALLOW/REVIEW/BLOCK mapping in ContractOps.
@@ -84,22 +85,3 @@ def build_release_plan(
         required_version_bump=decision.required_version_bump,
         preconditions=preconditions,
     )
-
-
-def _validate_proposal_consistency(
-    change_set: ChangeSet,
-    decision: GovernanceDecision,
-) -> None:
-    """Fail closed when artifacts do not describe the same evaluated proposal."""
-    if change_set.contract_id != decision.contract_id:
-        raise ReleaseValidationError(
-            "ChangeSet and GovernanceDecision contract IDs do not match"
-        )
-    if change_set.context != decision.context:
-        raise ReleaseValidationError(
-            "ChangeSet and GovernanceDecision governance contexts do not match"
-        )
-    if change_set.changes != decision.changes:
-        raise ReleaseValidationError(
-            "ChangeSet changes do not match authoritative GovernanceDecision changes"
-        )
