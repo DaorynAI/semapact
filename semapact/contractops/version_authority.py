@@ -17,7 +17,7 @@ from semapact.core.release import (
     RequiredBump,
     classify_version_bump,
     increment_version,
-    suggest_release_version,
+    normalize_semver,
 )
 from semapact.exceptions import ReleaseValidationError
 
@@ -172,9 +172,7 @@ def extract_version_from_release_reference(
 
 def _canonical_current_version(current_version: str) -> str:
     try:
-        # Existing helper returns the canonical current semantic version for a
-        # required bump of ``none`` without changing legacy release behavior.
-        return suggest_release_version(current_version, "none")
+        return normalize_semver(current_version)
     except ValueError as exc:
         raise ReleaseValidationError(str(exc)) from exc
 
