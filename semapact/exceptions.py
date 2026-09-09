@@ -26,12 +26,16 @@ class ValidationError(SemaPactError, ValueError):
     pass
 
 
-
 class ReleaseValidationError(ValidationError):
     """Raised when release candidate validation fails (e.g. insufficient version bump or no changes to release)."""
 
     pass
 
+
+class ContractOpsAuthorizationError(SemaPactError):
+    """Raised when an explicit ContractOps side effect is not authorized."""
+
+    pass
 
 
 class MergeConflictError(SemaPactError):
