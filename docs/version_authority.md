@@ -20,14 +20,14 @@ explicit ContractOps authorization / APPLY / PUBLISH
 
 ## SemaPact-managed versions
 
-This is the default mode:
+This is the default mode and is intended for contract repositories where multiple governed contracts may live together while each contract retains its own independent ODCS lifecycle/version.
 
 ```yaml
 release:
   versionAuthority: semapact
 ```
 
-SemaPact selects the smallest valid next release version from the current released ODCS version:
+SemaPact selects the smallest valid next release version separately for each contract from that contract's current released ODCS version:
 
 | Governance minimum | Current | Selected |
 | --- | --- | --- |
@@ -35,11 +35,20 @@ SemaPact selects the smallest valid next release version from the current releas
 | `minor` | `1.2.3` | `1.3.0` |
 | `major` | `1.2.3` | `2.0.0` |
 
+For example, two contracts in the same repository can evolve independently:
+
+```text
+orders     1.2.3 + minor → 1.3.0
+customers  4.7.2 + none  → 4.7.3
+```
+
+Their versions are not coupled merely because they are stored in the same Git repository.
+
 `none` means governance does not require a minor or major bump. When an already-planned governed revision is explicitly released, the smallest distinct release version is therefore a patch bump.
 
 ## Git-managed versions
 
-Git-managed mode delegates version selection to the repository or data-product release process. This is a natural fit when the data product implementation and its contract are released from the same repository.
+Git-managed mode is intended for the case where a data product implementation and its contract are versioned and released together from the same repository. The Git release/tag owns the version; the contract follows that product/repository release version.
 
 ```yaml
 release:
@@ -47,11 +56,23 @@ release:
   tagPattern: "v{version}"
 ```
 
-For example, a repository release/tag `v1.4.0` selects release version `1.4.0`. SemaPact does not calculate a competing contract version. It validates the Git-selected version against this contract's `ReleasePlan.requiredVersionBump` and later APPLY can synchronize the selected value into canonical ODCS `version`.
+For example:
 
-The release reference is repository/workflow provenance, not a per-contract tag convention. SemaPact therefore does not derive tag names from `contractId` or prescribe how a repository separates multiple products.
+```text
+repo/data-product tag = v1.4.0
+        ↓
+Git-selected version = 1.4.0
+        ↓
+SemaPact validates 1.4.0 against this contract's requiredVersionBump
+        ↓
+VersionResolution.selectedVersion = 1.4.0
+```
 
-A repository can still use a literal product-specific prefix when that is its release convention:
+SemaPact does not calculate a competing contract version in Git-managed mode. The later APPLY boundary can synchronize the Git-selected value into canonical ODCS `version`.
+
+The release reference is repository/workflow provenance, not a per-contract tag convention. SemaPact therefore does not derive tag names from `contractId`.
+
+A repository can use a literal product-specific prefix when that is its release convention:
 
 ```yaml
 release:
@@ -64,10 +85,6 @@ The only supported placeholder is:
 - `{version}` — required exactly once
 
 All other pattern text is literal. Unknown placeholders fail closed.
-
-If one repository releases multiple contracts/data products under one repository version, the same Git release version can be validated independently against each contract's governance minimum. The resulting `VersionResolution` remains per-contract because governance and release authorization remain contract-scoped, even though Git selected the shared release version.
-
-If a monorepo independently releases different products, the repository workflow is responsible for supplying the correct release reference/configuration for the product being released. SemaPact does not invent per-contract Git tags.
 
 ## Configuration precedence
 
