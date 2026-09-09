@@ -90,7 +90,7 @@ def test_semapact_authority_rejects_external_reference() -> None:
         )
 
 
-def test_git_authority_uses_exact_external_version_without_selecting_another() -> None:
+def test_git_authority_uses_exact_repository_release_version() -> None:
     resolution = resolve_release_version(
         _plan("minor"),
         current_version="1.2.3",
@@ -107,19 +107,43 @@ def test_git_authority_uses_exact_external_version_without_selecting_another() -
     assert resolution.authority_reference == "v1.4.0"
 
 
-def test_git_authority_supports_contract_scoped_tag_pattern() -> None:
+def test_git_authority_allows_repository_specific_literal_tag_prefix() -> None:
     resolution = resolve_release_version(
         _plan("major"),
         current_version="1.2.3",
         config=VersionAuthorityConfig(
             authority=VersionAuthority.GIT,
-            tag_pattern="{contractId}/v{version}",
+            tag_pattern="orders-data-product/v{version}",
         ),
-        authority_reference="orders-product/v2.1.0",
+        authority_reference="orders-data-product/v2.1.0",
     )
 
     assert resolution.selected_version == "2.1.0"
     assert resolution.actual_bump == "major"
+
+
+def test_git_release_version_selection_is_independent_of_contract_identity() -> None:
+    config = VersionAuthorityConfig(
+        authority=VersionAuthority.GIT,
+        tag_pattern="v{version}",
+    )
+
+    orders = resolve_release_version(
+        _plan("minor", contract_id="orders", release_plan_id="release-orders"),
+        current_version="1.2.3",
+        config=config,
+        authority_reference="v1.4.0",
+    )
+    customers = resolve_release_version(
+        _plan("minor", contract_id="customers", release_plan_id="release-customers"),
+        current_version="1.2.3",
+        config=config,
+        authority_reference="v1.4.0",
+    )
+
+    assert orders.selected_version == "1.4.0"
+    assert customers.selected_version == "1.4.0"
+    assert orders.version_resolution_id != customers.version_resolution_id
 
 
 def test_git_authority_rejects_insufficient_bump() -> None:
@@ -178,12 +202,11 @@ def test_git_authority_requires_explicit_release_reference() -> None:
         )
 
 
-def test_release_reference_pattern_is_literal_and_contract_scoped() -> None:
+def test_release_reference_pattern_treats_non_version_text_as_literal() -> None:
     assert (
         extract_version_from_release_reference(
             "orders.product/v1.2.3",
-            tag_pattern="{contractId}/v{version}",
-            contract_id="orders.product",
+            tag_pattern="orders.product/v{version}",
         )
         == "1.2.3"
     )
@@ -191,17 +214,21 @@ def test_release_reference_pattern_is_literal_and_contract_scoped() -> None:
     with pytest.raises(ReleaseValidationError, match="does not match tag pattern"):
         extract_version_from_release_reference(
             "ordersXproduct/v1.2.3",
-            tag_pattern="{contractId}/v{version}",
-            contract_id="orders.product",
+            tag_pattern="orders.product/v{version}",
         )
 
 
-def test_release_reference_rejects_unknown_pattern_placeholders() -> None:
+def test_release_reference_rejects_contract_or_unknown_pattern_placeholders() -> None:
+    with pytest.raises(ReleaseValidationError, match="supports only"):
+        extract_version_from_release_reference(
+            "orders-product/v1.2.3",
+            tag_pattern="{contractId}/v{version}",
+        )
+
     with pytest.raises(ReleaseValidationError, match="supports only"):
         extract_version_from_release_reference(
             "main/v1.2.3",
             tag_pattern="{repo}/v{version}",
-            contract_id="orders-product",
         )
 
 
