@@ -39,7 +39,7 @@ SemaPact selects the smallest valid next release version from the current releas
 
 ## Git-managed versions
 
-Git-managed mode makes an external release reference authoritative for the actual version:
+Git-managed mode delegates version selection to the repository or data-product release process. This is a natural fit when the data product implementation and its contract are released from the same repository.
 
 ```yaml
 release:
@@ -47,22 +47,27 @@ release:
   tagPattern: "v{version}"
 ```
 
-or a contract-scoped tag:
+For example, a repository release/tag `v1.4.0` selects release version `1.4.0`. SemaPact does not calculate a competing contract version. It validates the Git-selected version against this contract's `ReleasePlan.requiredVersionBump` and later APPLY can synchronize the selected value into canonical ODCS `version`.
+
+The release reference is repository/workflow provenance, not a per-contract tag convention. SemaPact therefore does not derive tag names from `contractId` or prescribe how a repository separates multiple products.
+
+A repository can still use a literal product-specific prefix when that is its release convention:
 
 ```yaml
 release:
   versionAuthority: git
-  tagPattern: "{contractId}/v{version}"
+  tagPattern: "orders-data-product/v{version}"
 ```
 
-The caller supplies the exact release reference, for example `v1.4.0` or `orders-product/v2.0.0`. SemaPact extracts that version and validates it against `ReleasePlan.requiredVersionBump`; it never substitutes a different version in Git-managed mode.
-
-Supported tag-pattern placeholders are exactly:
+The only supported placeholder is:
 
 - `{version}` — required exactly once
-- `{contractId}` — optional, at most once
 
-All other pattern text is matched literally. Unknown placeholders fail closed.
+All other pattern text is literal. Unknown placeholders fail closed.
+
+If one repository releases multiple contracts/data products under one repository version, the same Git release version can be validated independently against each contract's governance minimum. The resulting `VersionResolution` remains per-contract because governance and release authorization remain contract-scoped, even though Git selected the shared release version.
+
+If a monorepo independently releases different products, the repository workflow is responsible for supplying the correct release reference/configuration for the product being released. SemaPact does not invent per-contract Git tags.
 
 ## Configuration precedence
 
