@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import uuid
 
@@ -13,6 +12,7 @@ from semapact.contractops.models import (
     VersionResolution,
 )
 from semapact.exceptions import ReleaseValidationError
+from semapact.utils.deterministic import deterministic_uuid5
 from semapact.versioning import (
     ActualVersionBump,
     RequiredBump,
@@ -105,14 +105,9 @@ def resolve_release_version(
         "actual_bump": actual_bump,
         "authority_reference": normalized_reference,
     }
-    canonical_payload = json.dumps(
+    version_resolution_id = deterministic_uuid5(
+        SEMAPACT_VERSION_RESOLUTION_NAMESPACE,
         stable_record,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    version_resolution_id = str(
-        uuid.uuid5(SEMAPACT_VERSION_RESOLUTION_NAMESPACE, canonical_payload)
     )
 
     return VersionResolution(
