@@ -66,14 +66,7 @@ semapact reconcile \
 
 For the Databricks provider, the runtime target currently uses `catalog.schema`. Each governed schema is bound to its physical Unity Catalog asset using contract `physicalName` when present, otherwise the governed schema name.
 
-`--runtime` is provider-local. Core SemaPact does not define it as a table FQN. A future provider can interpret the fallback differently, for example:
-
-```bash
-semapact reconcile \
-  --contract sales.yaml \
-  --platform snowflake \
-  --runtime ANALYTICS.SALES
-```
+`--runtime` is provider-local. Core SemaPact does not define it as a table FQN; another provider may interpret the target using its own platform-local addressing convention.
 
 ## Authentication
 
@@ -108,7 +101,7 @@ Runtime assurance uses additive process outcomes and does not reuse governance b
 | `DRIFT` | `6` |
 | `INDETERMINATE` | `7` |
 
-Existing M0 exit codes remain unchanged: validation `2`, governance blocked `3`, review required `4`, and runtime/infrastructure error `5`.
+Governance and validation exit codes remain unchanged: validation `2`, governance blocked `3`, review required `4`, and runtime/infrastructure error `5`.
 
 Missing or ambiguous runtime location is a validation failure. Examples include multiple contract servers without `--server`, or a contract with no servers and an incomplete CLI fallback.
 
