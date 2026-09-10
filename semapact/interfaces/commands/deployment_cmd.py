@@ -10,6 +10,7 @@ import sys
 from typing import TypeVar
 
 from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
 
 from semapact.contractops import AppliedContractRelease
 from semapact.deployment import (
@@ -18,10 +19,12 @@ from semapact.deployment import (
     DeploymentPreview,
     DeploymentTarget,
 )
+from semapact.exceptions import ValidationError
 from semapact.interfaces.outcomes import (
     ProcessOutcome,
     outcome_from_reconciliation_status,
 )
+from semapact.observation import RuntimeProvider
 from semapact.reconciliation import classify_reconciliation_status
 from semapact.services.deployment_service import DeploymentService
 
@@ -123,7 +126,7 @@ def run_deployment_verify(args: argparse.Namespace) -> DeploymentCommandResult:
     )
 
 
-def _runtime_provider(plan: DeploymentPlan):
+def _runtime_provider(plan: DeploymentPlan) -> RuntimeProvider:
     from semapact.platforms.runtime_registry import create_runtime_provider_registry
 
     registry = create_runtime_provider_registry(plan.target.platform)
@@ -131,8 +134,17 @@ def _runtime_provider(plan: DeploymentPlan):
 
 
 def _load_model(path: str, model_type: type[_ModelT]) -> _ModelT:
-    raw = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
-    return model_type.model_validate_json(raw)
+    try:
+        raw = (
+            sys.stdin.read()
+            if path == "-"
+            else Path(path).read_text(encoding="utf-8")
+        )
+        return model_type.model_validate_json(raw)
+    except (OSError, PydanticValidationError) as exc:
+        raise ValidationError(
+            f"Invalid {model_type.__name__} artifact '{path}': {exc}"
+        ) from exc
 
 
 def _model_json(model: BaseModel) -> str:
@@ -161,7 +173,10 @@ def _verification_text(status: str, result: BaseModel) -> str:
     unverified_paths = getattr(result, "unverified_paths")
     lines = [
         f"Status: {status}",
-        f"Contract: {getattr(result, 'contract_id')}@{getattr(result, 'contract_version')}",
+        (
+            f"Contract: {getattr(result, 'contract_id')}@"
+            f"{getattr(result, 'contract_version')}"
+        ),
         f"Observation source: {getattr(result, 'observation_source_identifier')}",
         f"Observation fingerprint: {getattr(result, 'observation_fingerprint')}",
     ]
