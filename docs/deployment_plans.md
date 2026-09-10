@@ -10,7 +10,9 @@ AppliedContractRelease
         ↓
 DeploymentPlan
         ↓
-platform adapter validate / preview / publish
+DeploymentAuthorization
+        ↓
+platform adapter validate / preview / execute
         ↓
 runtime
         ↓
@@ -37,11 +39,11 @@ Planning sees released desired state only. Without observed runtime state SemaPa
 
 Likewise, an object that exists in runtime but is absent from one contract must not be interpreted as safe to drop. The contract may not own that object.
 
-Concrete provider-native operations therefore begin at the platform adapter boundary, where `validate` and `preview` can combine the DeploymentPlan with actual provider semantics and, where required, runtime evidence.
+Concrete provider-native operations therefore begin at the platform adapter boundary, where validation and preview can combine the DeploymentPlan with provider semantics and, where required, runtime evidence.
 
 ## Identity and physical binding
 
-The same rule used by M1 reconciliation applies on the write side:
+The same governed identity rule applies on both deployment and reconciliation paths:
 
 ```text
 schema.name
@@ -78,6 +80,14 @@ DeploymentTarget
 
 The plan does not contain credentials, workspace clients, SQL connections, or provider sessions.
 
+## Authorization scope
+
+Runtime deployment is a separate protected operation from publishing a contract release artifact.
+
+A `ContractOpsAuthorization(operation=DEPLOY)` establishes release-context authorization. Before runtime mutation, it must be bound to the exact `DeploymentPlan` as a `DeploymentAuthorization`.
+
+For review-required changes, structured review evidence may carry an opaque `scopeReference`. Deployment requires that scope to match the exact `deploymentPlanId`, so an approval for one target cannot be reused for another target.
+
 ## Determinism
 
 `deploymentPlanId` is UUID5-derived from the full stable plan record:
@@ -95,15 +105,8 @@ Action ordering is canonical even when schemas appear in a different order in so
 
 DeploymentPlan intentionally does not contain generic `preconditions`, `adapterKey`, or guessed platform-specific operations.
 
-The next boundary is responsible for explicit support:
-
-```text
-DeploymentAdapter
-├── validate(plan)
-├── preview(plan)
-└── publish(plan, authorization)
-```
+A deployment adapter is responsible for explicit provider support and execution semantics. It receives an already-built DeploymentPlan and an allowed DeploymentAuthorization; it does not construct or reinterpret governance artifacts.
 
 A provider adapter must explicitly report unsupported ODCS-to-platform mappings. It must never silently ignore unsupported governed state.
 
-A successful plan or publish call is also not proof of convergence. Runtime convergence is verified separately through SemaPact reconciliation.
+A successful execution call is also not proof of convergence. Runtime convergence is verified separately through SemaPact reconciliation.
