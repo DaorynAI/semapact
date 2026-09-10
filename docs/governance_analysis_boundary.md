@@ -13,11 +13,11 @@ Analyze
 Apply
   explicit local/candidate mutation
 
-Publish
-  explicit external side effects
+Publish / Deploy / CI
+  explicit protected side effects
 ```
 
-M0 establishes and protects the analysis boundary. Full ContractOps phase modeling belongs to later milestones.
+Governance analysis remains upstream of all mutation-capable workflows. Later phases consume its result rather than recomputing governance semantics.
 
 ## Analysis Entry Points
 
@@ -80,7 +80,7 @@ policy.valid = false
 decision = REVIEW
 ```
 
-This means the lifecycle policy found breaking evidence, not that every operation is prohibited. For example, analysis remains readable while a CI or publish operation may require review before side effects are allowed.
+This means the lifecycle policy found breaking evidence, not that every operation is prohibited. For example, analysis remains readable while a CI, publish, or deploy operation may require review before side effects are allowed.
 
 External consumers must use `GovernanceDecision` and the operation-specific governance gate for authorization. They must not use `policy.valid`, `breaking`, or individual reason codes as independent permission checks.
 
@@ -95,7 +95,7 @@ GovernanceDecision
         ↓
 GovernanceOperation gate
         ↓
-explicit Apply / Publish / CI side effect
+explicit APPLY / PUBLISH / DEPLOY / CI boundary
 ```
 
 A client or adapter must not independently reinterpret breaking changes, validation, lifecycle policy, or version requirements to bypass the authoritative decision.
