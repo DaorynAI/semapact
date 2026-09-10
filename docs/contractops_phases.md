@@ -21,6 +21,10 @@ APPLY
 
 PUBLISH
 → PublicationResult
+
+DEPLOY
+→ DeploymentPlan + DeploymentAuthorization
+→ runtime mutation through a platform adapter
 ```
 
 Each phase consumes artifacts from the previous phases. Later phases do not recalculate earlier decisions.
@@ -45,7 +49,7 @@ PLAN remains pure.
 
 AUTHORIZE evaluates whether one exact operation can cross a side-effect boundary.
 
-An authorization is scoped to:
+A release-context authorization is scoped to:
 
 ```text
 decisionId
@@ -53,11 +57,12 @@ changeSetId
 releasePlanId
 versionResolutionId
 operation
+scopeReference?
 ```
 
 `GovernanceDecision(REVIEW)` remains `REVIEW` after approval. Matching explicit review evidence produces an allowed `ContractOpsAuthorization`; it does not rewrite governance history.
 
-APPLY and PUBLISH require separate operation-scoped authorizations.
+APPLY, PUBLISH, and DEPLOY are distinct operation scopes. Runtime DEPLOY additionally binds authorization to the exact `DeploymentPlan` before mutation.
 
 ## APPLY
 
@@ -78,7 +83,7 @@ This also covers metadata-only governed releases: `requiredVersionBump=none` may
 
 ## PUBLISH
 
-PUBLISH is the first explicit external publication boundary.
+PUBLISH publishes an applied contract release or release artifact. It is distinct from runtime deployment.
 
 It requires an allowed `ContractOpsAuthorization(operation=PUBLISH)` matching the exact applied release context before the publisher adapter is invoked. An APPLY authorization cannot authorize PUBLISH.
 
@@ -94,7 +99,15 @@ opaque publication reference
 PublicationResult
 ```
 
-Git, storage, deployment, and platform-specific publication behavior belongs in adapters rather than the ContractOps domain.
+Git, storage, and other release-artifact publication behavior belongs in adapters rather than the ContractOps domain.
+
+## DEPLOY
+
+DEPLOY mutates a runtime toward a provider-neutral `DeploymentPlan` and is separate from release publication.
+
+A release-context `ContractOpsAuthorization(operation=DEPLOY)` is not enough on its own. Runtime execution also requires a `DeploymentAuthorization` bound to the exact deployment plan, including its target. A review approval scoped to one deployment plan therefore cannot be rebound to another target.
+
+Platform-specific execution belongs behind a deployment adapter. The adapter must not recompute governance, version authority, release planning, or approval semantics.
 
 ## Failure semantics
 
@@ -102,16 +115,12 @@ ContractOps distinguishes invalid context from denied authorization:
 
 - mismatched revision/artifact/operation context → `ReleaseValidationError`;
 - a valid context whose explicit authorization is denied → `ContractOpsAuthorizationError`;
-- a publisher is never invoked when authorization validation fails.
+- external publishers or runtime adapters are never invoked when authorization validation fails.
 
 Unexpected publisher/runtime failures are not converted into governance decisions; they propagate as execution failures.
 
-## Legacy release helpers
+## Compatibility helpers
 
 `semapact.core.release.prepare_release_candidate()` remains a backward-compatible helper and is not the canonical ContractOps APPLY path because it may classify changes itself.
 
 New ContractOps flows consume the existing authoritative `GovernanceDecision`, `ReleasePlan`, and `VersionResolution` instead of recomputing them.
-
-## Deployment boundary
-
-`AppliedContractRelease` is the released contract state that downstream deployment planning can consume. `DeploymentPlan` and platform deployment adapters are intentionally handled by later M2 work and are not part of the contract-release phase implementation.
