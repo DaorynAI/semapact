@@ -52,7 +52,7 @@ SemaPact strictly differentiates between **declared lifecycle** and **effective 
 ### Declared Lifecycle
 - The status explicitly annotated on an individual entity (`customProperties.lifecycleStatus`).
 - Resolved via `resolve_declared_entity_lifecycle(entity)`.
-- Used for release change classification (`_has_new_deprecations`) to determine if an entity was newly marked deprecated.
+- Used for release change classification to determine if an entity was newly marked deprecated.
 
 ### Effective Governance Lifecycle
 - The status of an entity taking into account parent governance scope and hierarchy.
@@ -149,11 +149,8 @@ Any semantic mutation against a retired base contract must be authoritatively bl
 | Release PR Creation | `semapact release create-pr` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
 | Batch Release Manifest | `semapact release build-manifest` | `PROPOSE` | ❌ Skipped from manifest tasks |
 | Automation Pipeline | `ContractPipeline.run()` | `CI` | ❌ Blocked (`GovernanceBlockedError`) |
-| Future Draft Submission | `DraftService.submit()` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
 
 ### Lifecycle Transitions & Reactivations:
 - **Transition into Retired**: `ACTIVE / DEPRECATED / DRAFT -> RETIRED` produces `DecisionResult.REVIEW` with `GovernanceReasonCode.CONTRACT_RETIRED_TRANSITION`. This is a valid lifecycle transition requiring review, not a mutation of an already-retired contract.
 - **Reactivation**: `RETIRED -> ACTIVE / DRAFT / DEPRECATED` produces `DecisionResult.BLOCK` with `GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED`. No unretire/reactivation semantics exist.
 - **Unchanged Retired Contracts**: `retired base == retired candidate` produces `DecisionResult.ALLOW` (when no other violation exists), preserving history, export, and verification workflows.
-
-

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 
+from semapact.contractops.context import validate_proposal_context
 from semapact.contractops.models import ChangeSet, ReleasePlan, ReleasePrecondition
 from semapact.exceptions import ReleaseValidationError
 from semapact.governance.gate import (
@@ -13,6 +13,7 @@ from semapact.governance.gate import (
     evaluate_governance_gate,
 )
 from semapact.governance.models import GovernanceDecision
+from semapact.utils.deterministic import deterministic_uuid5
 
 
 SEMAPACT_RELEASE_PLAN_NAMESPACE = uuid.UUID("7d2ad1de-c196-4f12-b1af-fdf79105eb04")
@@ -38,7 +39,7 @@ def build_release_plan(
             f"decision must be GovernanceDecision, got {type(decision).__name__}"
         )
 
-    _validate_proposal_consistency(change_set, decision)
+    validate_proposal_context(decision, change_set)
 
     # Release planning is a pure PROPOSE operation. Reuse the authoritative M0 gate
     # rather than duplicating ALLOW/REVIEW/BLOCK mapping in ContractOps.
@@ -65,15 +66,7 @@ def build_release_plan(
         "required_version_bump": decision.required_version_bump,
         "preconditions": [item.value for item in preconditions],
     }
-    canonical_payload = json.dumps(
-        stable_record,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    release_plan_id = str(
-        uuid.uuid5(SEMAPACT_RELEASE_PLAN_NAMESPACE, canonical_payload)
-    )
+    release_plan_id = deterministic_uuid5(SEMAPACT_RELEASE_PLAN_NAMESPACE, stable_record)
 
     return ReleasePlan(
         release_plan_id=release_plan_id,
@@ -84,22 +77,3 @@ def build_release_plan(
         required_version_bump=decision.required_version_bump,
         preconditions=preconditions,
     )
-
-
-def _validate_proposal_consistency(
-    change_set: ChangeSet,
-    decision: GovernanceDecision,
-) -> None:
-    """Fail closed when artifacts do not describe the same evaluated proposal."""
-    if change_set.contract_id != decision.contract_id:
-        raise ReleaseValidationError(
-            "ChangeSet and GovernanceDecision contract IDs do not match"
-        )
-    if change_set.context != decision.context:
-        raise ReleaseValidationError(
-            "ChangeSet and GovernanceDecision governance contexts do not match"
-        )
-    if change_set.changes != decision.changes:
-        raise ReleaseValidationError(
-            "ChangeSet changes do not match authoritative GovernanceDecision changes"
-        )

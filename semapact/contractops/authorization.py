@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 
 from semapact.contractops.context import validate_release_context
@@ -17,6 +16,7 @@ from semapact.contractops.models import (
 )
 from semapact.governance.gate import GovernanceOperation, evaluate_governance_gate
 from semapact.governance.models import GovernanceDecision
+from semapact.utils.deterministic import deterministic_uuid5
 
 
 SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE = uuid.UUID(
@@ -37,7 +37,9 @@ def authorize_contract_operation(
 
     M0 governance remains authoritative for decision-level semantics. This function
     only satisfies a ``review_required`` gate result with explicit, exact approval
-    evidence. It never mutates or reinterprets the GovernanceDecision.
+    evidence. It never mutates or reinterprets the GovernanceDecision. Optional
+    downstream scope provenance is preserved opaquely for the owning domain to
+    validate later.
     """
     _validate_types(
         decision,
@@ -188,6 +190,7 @@ def _build_authorization(
 ) -> ContractOpsAuthorization:
     evidence_reference = evidence.evidence_reference if evidence is not None else None
     evidence_action = evidence.action if evidence is not None else None
+    scope_reference = evidence.scope_reference if evidence is not None else None
 
     stable_record = {
         "decision_id": decision.decision_id,
@@ -200,14 +203,14 @@ def _build_authorization(
         "evidence_reference": evidence_reference,
         "evidence_action": evidence_action.value if evidence_action is not None else None,
     }
-    canonical_payload = json.dumps(
+    # Preserve all pre-#122 authorization IDs byte-for-byte when no downstream
+    # scope was supplied. Scoped authorizations intentionally gain a new identity.
+    if scope_reference is not None:
+        stable_record["scope_reference"] = scope_reference
+
+    authorization_id = deterministic_uuid5(
+        SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE,
         stable_record,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    authorization_id = str(
-        uuid.uuid5(SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE, canonical_payload)
     )
 
     return ContractOpsAuthorization(
@@ -221,4 +224,5 @@ def _build_authorization(
         reason=reason,
         evidence_reference=evidence_reference,
         evidence_action=evidence_action,
+        scope_reference=scope_reference,
     )

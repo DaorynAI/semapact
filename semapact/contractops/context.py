@@ -1,4 +1,4 @@
-"""Shared fail-closed validation for one ContractOps release context."""
+"""Shared fail-closed validation for ContractOps artifact contexts."""
 
 from __future__ import annotations
 
@@ -7,13 +7,11 @@ from semapact.exceptions import ReleaseValidationError
 from semapact.governance.models import GovernanceDecision
 
 
-def validate_release_context(
+def validate_proposal_context(
     decision: GovernanceDecision,
     change_set: ChangeSet,
-    release_plan: ReleasePlan,
-    version_resolution: VersionResolution,
 ) -> None:
-    """Fail closed unless immutable artifacts describe one exact release context."""
+    """Fail closed unless ChangeSet exactly projects one GovernanceDecision."""
     if change_set.contract_id != decision.contract_id:
         raise ReleaseValidationError(
             "ChangeSet and GovernanceDecision contract IDs do not match"
@@ -26,6 +24,16 @@ def validate_release_context(
         raise ReleaseValidationError(
             "ChangeSet changes do not match authoritative GovernanceDecision changes"
         )
+
+
+def validate_release_context(
+    decision: GovernanceDecision,
+    change_set: ChangeSet,
+    release_plan: ReleasePlan,
+    version_resolution: VersionResolution,
+) -> None:
+    """Fail closed unless immutable artifacts describe one exact release context."""
+    validate_proposal_context(decision, change_set)
 
     if release_plan.contract_id != change_set.contract_id:
         raise ReleaseValidationError("ReleasePlan and ChangeSet contract IDs do not match")

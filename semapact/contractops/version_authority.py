@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import uuid
 
@@ -12,14 +11,16 @@ from semapact.contractops.models import (
     VersionAuthorityConfig,
     VersionResolution,
 )
-from semapact.core.release import (
+from semapact.exceptions import ReleaseValidationError
+from semapact.utils.deterministic import deterministic_uuid5
+from semapact.versioning import (
     ActualVersionBump,
     RequiredBump,
     classify_version_bump,
     increment_version,
     normalize_semver,
+    version_bump_satisfies,
 )
-from semapact.exceptions import ReleaseValidationError
 
 
 SEMAPACT_VERSION_RESOLUTION_NAMESPACE = uuid.UUID(
@@ -104,14 +105,9 @@ def resolve_release_version(
         "actual_bump": actual_bump,
         "authority_reference": normalized_reference,
     }
-    canonical_payload = json.dumps(
+    version_resolution_id = deterministic_uuid5(
+        SEMAPACT_VERSION_RESOLUTION_NAMESPACE,
         stable_record,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    version_resolution_id = str(
-        uuid.uuid5(SEMAPACT_VERSION_RESOLUTION_NAMESPACE, canonical_payload)
     )
 
     return VersionResolution(
@@ -190,11 +186,7 @@ def _validate_minimum_bump(
     *,
     selected_version: str,
 ) -> None:
-    insufficient = (
-        (required_bump == "major" and actual_bump != "major")
-        or (required_bump == "minor" and actual_bump == "patch")
-    )
-    if insufficient:
+    if not version_bump_satisfies(actual_bump, required_bump):
         raise ReleaseValidationError(
             f"Resolved version '{selected_version}' applies a {actual_bump} bump, "
             f"but release requires at least a {required_bump} bump"

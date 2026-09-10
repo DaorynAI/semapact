@@ -7,17 +7,11 @@ from typing import Protocol, Sequence
 from pydantic import BaseModel, ConfigDict
 
 from semapact.observation.models import ObservedAssetIdentity, ObservedPlatformState
+from semapact.runtime import RuntimeAssetSpec
 
 
 class RuntimeProviderModel(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
-
-
-class RuntimeAssetSpec(RuntimeProviderModel):
-    """Governed logical asset plus its physical-name hint."""
-
-    governed_asset: str
-    physical_name: str
 
 
 class RuntimeAssetBinding(RuntimeProviderModel):

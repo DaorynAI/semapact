@@ -7,9 +7,9 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from semapact.change_context import ChangeContext
-from semapact.core.release import ActualVersionBump, RequiredBump
 from semapact.governance.gate import GovernanceOperation
 from semapact.lifecycle.changes import GovernanceChange
+from semapact.versioning import ActualVersionBump, RequiredBump
 
 
 class ContractOpsModel(BaseModel):
@@ -178,7 +178,12 @@ class ReviewEvidenceAction(str, Enum):
 
 
 class ReviewAuthorizationEvidence(ContractOpsModel):
-    """Opaque review evidence projected onto one exact version-resolved action."""
+    """Opaque review evidence projected onto one exact version-resolved action.
+
+    ``scope_reference`` is optional downstream scope provenance. ContractOps preserves
+    but does not interpret it. For example, deployment review can bind the evidence
+    to an exact ``DeploymentPlan`` without making ContractOps depend on deployment.
+    """
 
     evidence_reference: str
     decision_id: str
@@ -187,6 +192,7 @@ class ReviewAuthorizationEvidence(ContractOpsModel):
     version_resolution_id: str
     operation: GovernanceOperation
     action: ReviewEvidenceAction
+    scope_reference: str | None = None
 
     @field_validator(
         "evidence_reference",
@@ -201,6 +207,14 @@ class ReviewAuthorizationEvidence(ContractOpsModel):
         if not cleaned:
             raise ValueError("value must not be empty")
         return cleaned
+
+    @field_validator("scope_reference")
+    @classmethod
+    def _normalize_scope_reference(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class AuthorizationReason(str, Enum):
@@ -227,6 +241,7 @@ class ContractOpsAuthorization(ContractOpsModel):
     reason: AuthorizationReason
     evidence_reference: str | None = None
     evidence_action: ReviewEvidenceAction | None = None
+    scope_reference: str | None = None
 
     @field_validator(
         "authorization_id",
@@ -242,9 +257,12 @@ class ContractOpsAuthorization(ContractOpsModel):
             raise ValueError("value must not be empty")
         return cleaned
 
-    @field_validator("evidence_reference")
+    @field_validator("evidence_reference", "scope_reference")
     @classmethod
-    def _normalize_evidence_reference(cls, value: str | None) -> str | None:
+    def _normalize_optional_authorization_reference(
+        cls,
+        value: str | None,
+    ) -> str | None:
         if value is None:
             return None
         cleaned = value.strip()
@@ -269,7 +287,11 @@ class ContractOpsAuthorization(ContractOpsModel):
                 raise ValueError(
                     "ContractOpsAuthorization evidence reason requires evidence provenance"
                 )
-        elif self.evidence_reference is not None or self.evidence_action is not None:
+        elif (
+            self.evidence_reference is not None
+            or self.evidence_action is not None
+            or self.scope_reference is not None
+        ):
             raise ValueError(
                 "ContractOpsAuthorization non-evidence reason must not contain evidence provenance"
             )

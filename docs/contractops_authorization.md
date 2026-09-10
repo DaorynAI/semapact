@@ -24,10 +24,10 @@ GovernanceDecision
 → ReleasePlan
 → VersionResolution
 → ContractOpsAuthorization
-→ APPLY / PUBLISH
+→ APPLY / PUBLISH / DEPLOY
 ```
 
-Review evidence is therefore scoped to all of:
+Review evidence is scoped to all of:
 
 ```text
 decisionId
@@ -35,9 +35,10 @@ changeSetId
 releasePlanId
 versionResolutionId
 operation
+scopeReference?   # optional downstream scope
 ```
 
-Changing the proposal, release plan, selected version, or requested operation invalidates the evidence for that new action.
+Changing the proposal, release plan, selected version, requested operation, or an explicitly bound downstream scope invalidates the evidence for that new action.
 
 ## Decision behavior
 
@@ -50,11 +51,11 @@ Changing the proposal, release plan, selected version, or requested operation in
 | `review_required` | stale or mismatched | denied |
 | `blocked` | any | denied; review cannot override BLOCK |
 
-M0 `GovernanceGateResult` remains authoritative for whether the operation is already allowed, requires review, or is blocked. ContractOps authorization only satisfies `review_required`; it does not re-run policy.
+`GovernanceGateResult` remains authoritative for whether the operation is already allowed, requires review, or is blocked. ContractOps authorization only satisfies `review_required`; it does not re-run policy.
 
 ## Explicit evidence, not comment parsing
 
-M2 consumes structured evidence:
+ContractOps consumes structured evidence:
 
 ```text
 ReviewAuthorizationEvidence
@@ -64,12 +65,13 @@ ReviewAuthorizationEvidence
 ├── releasePlanId
 ├── versionResolutionId
 ├── operation
+├── scopeReference?
 └── action
 ```
 
-`evidenceReference` is opaque. This layer does not store approvals or infer approval from human comments, PR text, Slack messages, or similar free-form content.
+`evidenceReference` is opaque. `scopeReference`, when present, is also opaque to ContractOps and may be used by a downstream boundary to bind approval to an exact target-specific artifact such as a deployment plan.
 
-Future durable review history belongs to M3. A persisted `ApprovalRecord` can later be resolved/projected into `ReviewAuthorizationEvidence` without changing the ContractOps authorization semantics.
+This layer does not store approvals or infer approval from human comments, PR text, Slack messages, or similar free-form content. Durable review history and reviewer workflow are separate persistence/application concerns and can project structured evidence into this boundary without changing its authorization semantics.
 
 ## Operation scope
 
@@ -78,9 +80,12 @@ Approval is not a generic bypass token.
 ```text
 approval for APPLY
 ≠ approval for PUBLISH
+≠ approval for DEPLOY
 ```
 
 Likewise, approval for one `VersionResolution` does not authorize a different selected version.
+
+Runtime deployment adds another scope boundary: a review-required deployment must bind approval to the exact `DeploymentPlan`, so approval for one runtime target cannot be rebound to another target.
 
 ## Invalid context vs denied authorization
 
@@ -90,7 +95,7 @@ If `GovernanceDecision`, `ChangeSet`, `ReleasePlan`, and `VersionResolution` do 
 
 If the release context is valid but evidence is missing, rejected, stale, or mismatched, SemaPact returns a deterministic `ContractOpsAuthorization` with `allowed=false` and a machine-readable reason.
 
-This lets later APPLY/PUBLISH boundaries consume one authoritative authorization result without implementing their own approval rules.
+This lets APPLY, PUBLISH, and DEPLOY boundaries consume one authoritative release-context authorization result without implementing their own approval rules.
 
 ## Non-goals
 

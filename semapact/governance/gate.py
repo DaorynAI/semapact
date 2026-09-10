@@ -23,6 +23,7 @@ class GovernanceOperation(str, Enum):
     PROPOSE = "PROPOSE"
     APPLY = "APPLY"
     PUBLISH = "PUBLISH"
+    DEPLOY = "DEPLOY"
     CI = "CI"
 
 
@@ -54,18 +55,24 @@ def evaluate_governance_gate(
 
     decision_id = decision.decision_id
 
-    # 1. ANALYZE operation is always allowed (displays decision and reasons without mutation/side-effects)
+    # ANALYZE is observational and always allowed.
     if operation == GovernanceOperation.ANALYZE:
         return GovernanceGateResult(allowed=True, reason="allowed", decision_id=decision_id)
 
-    # 2. PROPOSE operation allows ALLOW and REVIEW (e.g. producing candidate YAML/PR), but blocks BLOCK
+    # PROPOSE may create candidate/planning artifacts for ALLOW or REVIEW, never BLOCK.
     if operation == GovernanceOperation.PROPOSE:
         if decision.decision in (DecisionResult.ALLOW, DecisionResult.REVIEW):
             return GovernanceGateResult(allowed=True, reason="allowed", decision_id=decision_id)
         return GovernanceGateResult(allowed=False, reason="blocked", decision_id=decision_id)
 
-    # 3. APPLY, PUBLISH, and CI operations allow only ALLOW; REVIEW is gated, and BLOCK is forbidden
-    if operation in (GovernanceOperation.APPLY, GovernanceOperation.PUBLISH, GovernanceOperation.CI):
+    # Side-effect-capable operations require ALLOW or explicit review satisfaction
+    # at the downstream authorization layer. BLOCK is never overrideable.
+    if operation in (
+        GovernanceOperation.APPLY,
+        GovernanceOperation.PUBLISH,
+        GovernanceOperation.DEPLOY,
+        GovernanceOperation.CI,
+    ):
         if decision.decision == DecisionResult.ALLOW:
             return GovernanceGateResult(allowed=True, reason="allowed", decision_id=decision_id)
         if decision.decision == DecisionResult.REVIEW:
