@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
-from semapact.exceptions import ValidationError
 from semapact.observation.databricks import observe_databricks_table
 from semapact.observation.fingerprint import with_observed_state_fingerprint
 from semapact.observation.models import ObservedAssetIdentity, ObservedPlatformState
 from semapact.observation.providers import RuntimeAssetBinding, RuntimeAssetSpec
+from semapact.platforms.databricks.target import parse_databricks_runtime_target
 
 
 class DatabricksRuntimeProvider:
@@ -30,7 +30,7 @@ class DatabricksRuntimeProvider:
         assets: Sequence[RuntimeAssetSpec],
     ) -> tuple[RuntimeAssetBinding, ...]:
         """Resolve ``catalog.schema`` plus asset physical names into UC identities."""
-        namespace = _parse_runtime_target(runtime_target)
+        namespace = parse_databricks_runtime_target(runtime_target)
         bindings = tuple(
             RuntimeAssetBinding(
                 governed_asset=asset.governed_asset,
@@ -58,11 +58,11 @@ class DatabricksRuntimeProvider:
             identity = binding.observed_asset
             if identity.platform.casefold() != self.key:
                 raise ValueError("Databricks provider received a non-Databricks binding")
-            table_fqn = ".".join((*identity.namespace, identity.asset))
             if len(identity.namespace) != 2:
                 raise ValueError(
                     "Databricks runtime asset identity requires catalog and schema namespace"
                 )
+            table_fqn = ".".join((*identity.namespace, identity.asset))
             try:
                 observed = observe_databricks_table(
                     client=self._client,
@@ -82,15 +82,6 @@ class DatabricksRuntimeProvider:
             fingerprint=None,
         )
         return with_observed_state_fingerprint(state)
-
-
-def _parse_runtime_target(value: str) -> tuple[str, str]:
-    parts = tuple(part.strip() for part in value.split("."))
-    if len(parts) != 2 or not all(parts):
-        raise ValidationError(
-            "Databricks runtime target must use catalog.schema format for a data product"
-        )
-    return parts[0], parts[1]
 
 
 def _load_databricks_not_found_error() -> type[BaseException]:

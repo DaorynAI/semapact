@@ -7,6 +7,7 @@ from typing import Literal
 
 from open_data_contract_standard.model import OpenDataContractStandard, Server
 
+from semapact.deployment.adapters import DeploymentAdapter
 from semapact.exceptions import ValidationError
 from semapact.observation import RuntimeProvider, RuntimeProviderRegistry
 
@@ -77,6 +78,42 @@ def create_runtime_provider_registry(
         )
     raise ValidationError(
         f"Unsupported runtime provider '{platform}'. Supported providers: databricks"
+    )
+
+
+def create_deployment_adapter(
+    platform: str,
+    *,
+    warehouse_id: str,
+    contract_server: Server | None = None,
+) -> DeploymentAdapter:
+    """Compose the selected write adapter and provider clients lazily."""
+    normalized = platform.strip().casefold()
+    if normalized != "databricks":
+        raise ValidationError(
+            f"Unsupported deployment adapter '{platform}'. Supported adapters: databricks"
+        )
+
+    from semapact.platforms.databricks import (
+        DatabricksDeploymentAdapter,
+        DatabricksRuntimeProvider,
+        create_databricks_workspace_client,
+    )
+
+    client = create_databricks_workspace_client(
+        workspace_url=_clean(contract_server.host) if contract_server else None
+    )
+    source_identifier = getattr(getattr(client, "config", None), "host", None)
+    if not isinstance(source_identifier, str) or not source_identifier.strip():
+        raise RuntimeError("Databricks SDK did not resolve a workspace host")
+    runtime_provider = DatabricksRuntimeProvider(
+        client=client,
+        source_identifier=source_identifier,
+    )
+    return DatabricksDeploymentAdapter(
+        client=client,
+        runtime_provider=runtime_provider,
+        warehouse_id=warehouse_id,
     )
 
 

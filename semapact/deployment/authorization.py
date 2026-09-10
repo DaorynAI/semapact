@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import uuid
-
 from semapact.contractops.execution_models import AppliedContractRelease
 from semapact.contractops.models import AuthorizationReason, ContractOpsAuthorization
-from semapact.deployment.models import DeploymentAuthorization, DeploymentPlan
+from semapact.deployment.models import (
+    DeploymentAuthorization,
+    DeploymentPlan,
+    compute_deployment_authorization_id,
+    validate_deployment_plan_identity,
+)
 from semapact.exceptions import ReleaseValidationError
 from semapact.governance.gate import GovernanceOperation
-from semapact.utils.deterministic import deterministic_uuid5
-
-
-SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE = uuid.UUID(
-    "c1dd6b40-cb67-44c1-b0f2-5f133ba6a3f5"
-)
 
 
 def authorize_deployment(
@@ -22,13 +19,7 @@ def authorize_deployment(
     release: AppliedContractRelease,
     authorization: ContractOpsAuthorization,
 ) -> DeploymentAuthorization:
-    """Bind one DEPLOY authorization to the exact deployment target/plan.
-
-    Upstream ContractOps remains authoritative for governance/review semantics.
-    Review-based DEPLOY authorization must carry ``scope_reference`` equal to this
-    exact ``deployment_plan_id``; governance-ALLOW paths need no synthetic review
-    scope but are still bound here before an adapter may execute the plan.
-    """
+    """Bind one DEPLOY authorization to the exact deployment target/plan."""
     if not isinstance(plan, DeploymentPlan):
         raise TypeError(f"plan must be DeploymentPlan, got {type(plan).__name__}")
     if not isinstance(release, AppliedContractRelease):
@@ -40,6 +31,8 @@ def authorize_deployment(
             "authorization must be ContractOpsAuthorization, "
             f"got {type(authorization).__name__}"
         )
+
+    validate_deployment_plan_identity(plan)
 
     if authorization.operation is not GovernanceOperation.DEPLOY:
         raise ReleaseValidationError(
@@ -58,17 +51,14 @@ def authorize_deployment(
             "Review-based DEPLOY authorization is not scoped to this DeploymentPlan"
         )
 
-    stable_record = {
-        "contract_ops_authorization_id": authorization.authorization_id,
-        "deployment_plan_id": plan.deployment_plan_id,
-        "applied_release_id": release.applied_release_id,
-        "allowed": authorization.allowed,
-    }
+    deployment_authorization_id = compute_deployment_authorization_id(
+        contract_ops_authorization_id=authorization.authorization_id,
+        deployment_plan_id=plan.deployment_plan_id,
+        applied_release_id=release.applied_release_id,
+        allowed=authorization.allowed,
+    )
     return DeploymentAuthorization(
-        deployment_authorization_id=deterministic_uuid5(
-            SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE,
-            stable_record,
-        ),
+        deployment_authorization_id=deployment_authorization_id,
         contract_ops_authorization_id=authorization.authorization_id,
         deployment_plan_id=plan.deployment_plan_id,
         applied_release_id=release.applied_release_id,
