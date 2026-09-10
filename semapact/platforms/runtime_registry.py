@@ -84,10 +84,15 @@ def create_runtime_provider_registry(
 def create_deployment_adapter(
     platform: str,
     *,
-    warehouse_id: str,
+    warehouse_id: str | None = None,
     contract_server: Server | None = None,
 ) -> DeploymentAdapter:
-    """Compose the selected write adapter and provider clients lazily."""
+    """Compose the selected write adapter and provider clients lazily.
+
+    A SQL warehouse is execution configuration, not a prerequisite for read-only
+    validation or preview. Databricks execution fails closed if mutation is attempted
+    without a warehouse ID.
+    """
     normalized = platform.strip().casefold()
     if normalized != "databricks":
         raise ValidationError(
