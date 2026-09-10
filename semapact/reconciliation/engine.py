@@ -34,30 +34,12 @@ _SUBJECT_ORDER = {
 _REASON_CODE_BY_RAW_DIFFERENCE: dict[
     tuple[ReconciliationDifferenceType, ReconciliationSubject], RuntimeReasonCode
 ] = {
-    (
-        ReconciliationDifferenceType.UNEXPECTED,
-        ReconciliationSubject.ASSET,
-    ): RuntimeReasonCode.RUNTIME_SCHEMA_ADDED,
-    (
-        ReconciliationDifferenceType.MISSING,
-        ReconciliationSubject.ASSET,
-    ): RuntimeReasonCode.RUNTIME_SCHEMA_REMOVED,
-    (
-        ReconciliationDifferenceType.UNEXPECTED,
-        ReconciliationSubject.PROPERTY,
-    ): RuntimeReasonCode.RUNTIME_PROPERTY_ADDED,
-    (
-        ReconciliationDifferenceType.MISSING,
-        ReconciliationSubject.PROPERTY,
-    ): RuntimeReasonCode.RUNTIME_PROPERTY_REMOVED,
-    (
-        ReconciliationDifferenceType.MISMATCH,
-        ReconciliationSubject.PHYSICAL_TYPE,
-    ): RuntimeReasonCode.RUNTIME_PHYSICAL_TYPE_CHANGED,
-    (
-        ReconciliationDifferenceType.MISMATCH,
-        ReconciliationSubject.NULLABILITY,
-    ): RuntimeReasonCode.RUNTIME_REQUIRED_CHANGED,
+    (ReconciliationDifferenceType.UNEXPECTED, ReconciliationSubject.ASSET): RuntimeReasonCode.RUNTIME_SCHEMA_ADDED,
+    (ReconciliationDifferenceType.MISSING, ReconciliationSubject.ASSET): RuntimeReasonCode.RUNTIME_SCHEMA_REMOVED,
+    (ReconciliationDifferenceType.UNEXPECTED, ReconciliationSubject.PROPERTY): RuntimeReasonCode.RUNTIME_PROPERTY_ADDED,
+    (ReconciliationDifferenceType.MISSING, ReconciliationSubject.PROPERTY): RuntimeReasonCode.RUNTIME_PROPERTY_REMOVED,
+    (ReconciliationDifferenceType.MISMATCH, ReconciliationSubject.PHYSICAL_TYPE): RuntimeReasonCode.RUNTIME_PHYSICAL_TYPE_CHANGED,
+    (ReconciliationDifferenceType.MISMATCH, ReconciliationSubject.NULLABILITY): RuntimeReasonCode.RUNTIME_REQUIRED_CHANGED,
 }
 
 
@@ -86,7 +68,6 @@ def reconcile_governed_contract(
 
     differences: list[ReconciliationDifference] = []
     unverified_paths: list[str] = []
-
     governed_keys = set(governed_assets)
     observed_keys = set(observed_assets)
 
@@ -122,13 +103,9 @@ def reconcile_governed_contract(
     ordered = tuple(sorted(differences, key=_difference_sort_key))
     return ReconciliationResult(
         contract_id=_required_contract_text(getattr(contract, "id", None), field="id"),
-        contract_version=_required_contract_text(
-            getattr(contract, "version", None), field="version"
-        ),
+        contract_version=_required_contract_text(getattr(contract, "version", None), field="version"),
         observation_source_identifier=observation.source_identifier,
-        observation_fingerprint=(
-            observation.fingerprint or fingerprint_observed_state(observation)
-        ),
+        observation_fingerprint=observation.fingerprint or fingerprint_observed_state(observation),
         differences=ordered,
         unverified_paths=tuple(sorted(unverified_paths)),
     )
@@ -141,10 +118,13 @@ def _reconcile_properties(
     observed_asset: ObservedAsset,
 ) -> tuple[list[ReconciliationDifference], list[str]]:
     governed = build_property_index(asset_key, governed_properties)
-    observed = _build_observed_property_index(asset_key, observed_asset)
+    observed = _build_observed_property_index(
+        asset_key,
+        observed_asset,
+        governed_properties=governed_properties,
+    )
     differences: list[ReconciliationDifference] = []
     unverified_paths: list[str] = []
-
     governed_keys = set(governed)
     observed_keys = set(observed)
 
@@ -203,10 +183,7 @@ def _reconcile_matching_property(
                     property_identity=property_identity,
                 )
             )
-        elif (
-            _normalize_comparable_text(expected_physical)
-            != _normalize_comparable_text(observed_physical)
-        ):
+        elif _normalize_comparable_text(expected_physical) != _normalize_comparable_text(observed_physical):
             differences.append(
                 _difference(
                     difference_type=ReconciliationDifferenceType.MISMATCH,
@@ -246,16 +223,12 @@ def _reconcile_matching_property(
     return differences, unverified_paths
 
 
-def _build_observed_asset_index(
-    observation: ObservedPlatformState,
-) -> dict[str, ObservedAsset]:
+def _build_observed_asset_index(observation: ObservedPlatformState) -> dict[str, ObservedAsset]:
     index: dict[str, ObservedAsset] = {}
     for asset in observation.assets:
         key = normalize_identity_name(asset.identity.asset, "Observed asset")
         if key in index:
-            raise ValidationError(
-                f"Duplicate canonical observed asset identity found: '{key}'"
-            )
+            raise ValidationError(f"Duplicate canonical observed asset identity found: '{key}'")
         index[key] = asset
     return index
 
@@ -270,17 +243,11 @@ def _build_bound_observed_asset_index(
     bound_runtime_keys: set[tuple[str, ...]] = set()
 
     for binding in bindings:
-        governed_key = normalize_identity_name(
-            binding.governed_asset, "Runtime binding governed asset"
-        )
+        governed_key = normalize_identity_name(binding.governed_asset, "Runtime binding governed asset")
         if governed_key in binding_by_governed:
-            raise ValidationError(
-                f"Duplicate runtime binding for governed asset: '{governed_key}'"
-            )
+            raise ValidationError(f"Duplicate runtime binding for governed asset: '{governed_key}'")
         if binding.observed_asset.platform.casefold() != observation.platform.casefold():
-            raise ValidationError(
-                "Runtime binding platform must match observed platform state"
-            )
+            raise ValidationError("Runtime binding platform must match observed platform state")
         runtime_key = binding.observed_asset.canonical_key
         if runtime_key in bound_runtime_keys:
             raise ValidationError("Multiple governed assets cannot bind to one runtime asset")
@@ -323,24 +290,49 @@ def _build_bound_observed_asset_index(
 def _build_observed_property_index(
     asset_key: str,
     asset: ObservedAsset,
+    *,
+    governed_properties: Sequence[SchemaProperty],
 ) -> dict[PropertyIdentity, ObservedProperty]:
+    physical_to_governed = _property_binding_index(governed_properties)
     index: dict[PropertyIdentity, ObservedProperty] = {}
     for prop in asset.properties:
         if prop.identity.asset != asset.identity:
-            raise ValidationError(
-                "Observed property asset identity must match its containing asset"
-            )
-        prop_name = normalize_identity_name(
-            prop.identity.property, "Observed property"
-        )
-        key: PropertyIdentity = (asset_key, prop_name)
+            raise ValidationError("Observed property asset identity must match its containing asset")
+        observed_name = normalize_identity_name(prop.identity.property, "Observed property")
+        governed_name = physical_to_governed.get(observed_name, observed_name)
+        key: PropertyIdentity = (asset_key, governed_name)
         if key in index:
             raise ValidationError(
-                f"Duplicate canonical observed property identity found: '{prop_name}'"
+                f"Duplicate canonical observed property identity found: '{governed_name}'"
                 f" in asset '{asset_key}'"
             )
         index[key] = prop
     return index
+
+
+def _property_binding_index(
+    governed_properties: Sequence[SchemaProperty],
+) -> dict[str, str]:
+    physical_to_governed: dict[str, str] = {}
+    for prop in governed_properties:
+        logical_raw = getattr(prop, "name", None)
+        if logical_raw is None:
+            raise ValidationError("Governed property name is required for runtime binding")
+        governed_name = normalize_identity_name(str(logical_raw), "Property")
+        physical_raw = getattr(prop, "physicalName", None)
+        physical_text = str(physical_raw).strip() if physical_raw is not None else ""
+        physical_name = normalize_identity_name(
+            physical_text or str(logical_raw),
+            "Property physical binding",
+        )
+        existing = physical_to_governed.get(physical_name)
+        if existing is not None and existing != governed_name:
+            raise ValidationError(
+                "Multiple governed properties cannot bind to one physical runtime property: "
+                f"'{physical_name}'"
+            )
+        physical_to_governed[physical_name] = governed_name
+    return physical_to_governed
 
 
 def _difference(
@@ -355,10 +347,7 @@ def _difference(
     return ReconciliationDifference(
         difference_type=difference_type,
         subject=subject,
-        reason_code=_runtime_reason_code(
-            difference_type=difference_type,
-            subject=subject,
-        ),
+        reason_code=_runtime_reason_code(difference_type=difference_type, subject=subject),
         path=_difference_path(
             subject=subject,
             asset_identity=asset_identity,
@@ -394,10 +383,8 @@ def _difference_path(
     asset_path = f"schema[{asset_identity}]"
     if subject is ReconciliationSubject.ASSET:
         return asset_path
-
     if property_identity is None:
         raise ValueError(f"property_identity is required for {subject.value}")
-
     property_path = f"{asset_path}.properties[{property_identity}]"
     if subject is ReconciliationSubject.PROPERTY:
         return property_path
@@ -406,9 +393,7 @@ def _difference_path(
     return f"{property_path}.nullability"
 
 
-def _difference_sort_key(
-    difference: ReconciliationDifference,
-) -> tuple[str, str, int, str]:
+def _difference_sort_key(difference: ReconciliationDifference) -> tuple[str, str, int, str]:
     return (
         difference.asset_identity,
         difference.property_identity or "",

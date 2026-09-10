@@ -13,6 +13,7 @@ from semapact.deployment.models import (
     NativeOperationKind,
 )
 from semapact.deployment.planner import build_deployment_plan
+from semapact.deployment.verification import verify_deployment_convergence
 
 __all__ = [
     "DeploymentAction",
@@ -26,4 +27,5 @@ __all__ = [
     "NativeOperationKind",
     "authorize_deployment",
     "build_deployment_plan",
+    "verify_deployment_convergence",
 ]
