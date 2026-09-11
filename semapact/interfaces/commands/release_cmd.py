@@ -3,11 +3,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+from semapact.application.services.governance import GovernanceService
+from semapact.application.services.release_planning import ReleasePlanningService
 from semapact.interfaces.commands.utils import (
     _build_git_config,
     _get_repo_path,
 )
-from semapact.services import GovernanceService, ReleasePlanningService
 
 
 def run_release_classify(args: argparse.Namespace) -> dict[str, Any]:
@@ -37,8 +38,6 @@ def run_release_classify(args: argparse.Namespace) -> dict[str, Any]:
     if decision.evidence.has_changes and required_bump in {"minor", "major"}:
         suggested_next_version = increment_version(current_version, required_bump)
     else:
-        # ``classify`` is analysis only. Metadata-only changes do not imply an
-        # actual release until canonical release planning is requested.
         suggested_next_version = current_version
 
     return {
@@ -132,9 +131,7 @@ def run_release_classify_repo(args: argparse.Namespace) -> dict[str, Any]:
         candidate_root=args.candidate_root,
         context=change_context,
     )
-    return {
-        "contracts": [repository_change_to_dict(item) for item in results],
-    }
+    return {"contracts": [repository_change_to_dict(item) for item in results]}
 
 
 def run_release_build_manifest(args: argparse.Namespace) -> dict[str, Any]:

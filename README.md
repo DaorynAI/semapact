@@ -365,7 +365,10 @@ semapact/
   contractops/      # deterministic release planning / authorization / apply / publish domain
   deployment/       # provider-neutral deployment plans, authorization, preview contracts
   runtime/          # provider-neutral governed runtime asset projection
-  services/         # thin application-facing orchestration boundaries
+  application/      # interface-independent use-case models + orchestration
+    models/         # application result DTOs; no domain authority
+    services/       # thin orchestration over canonical domain rules/ports
+  services/         # backward-compatible imports only
   observation/      # platform-neutral observed state + fingerprint
   reconciliation/   # governed desired vs observed comparison
   platforms/        # provider adapters such as Databricks
@@ -378,7 +381,9 @@ semapact/
 
 A central architectural rule is:
 
-> **Governance decides what contract evolution means. ContractOps carries exact governed artifacts across authorization boundaries. Platform adapters execute only explicitly supported runtime mutations. Reconciliation independently verifies observed state.**
+> **Interfaces parse and render. Application services orchestrate. Domain packages own business meaning. Platform adapters own provider-specific effects. Compatibility packages do not become new owners.**
+
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for package/model placement rules.
 
 ## What SemaPact Does Not Try to Replace
 

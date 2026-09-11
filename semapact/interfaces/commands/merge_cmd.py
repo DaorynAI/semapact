@@ -1,9 +1,9 @@
 import argparse
 from pathlib import Path
 
+from semapact.application.services.governance import GovernanceService
 from semapact.core.loader import ContractLoader
 from semapact.governance import GovernanceOperation, enforce_governance_gate
-from semapact.services import GovernanceService
 from semapact.utils.schema_utils import contract_to_dict
 from semapact.utils.yaml_utils import dump_yaml
 
