@@ -62,19 +62,17 @@ class DatabricksDeploymentAdapter:
         *,
         client: Any,
         runtime_provider: RuntimeProvider,
-        warehouse_id: str,
+        warehouse_id: str | None = None,
         poll_interval_seconds: float = 1.0,
         max_poll_attempts: int = 300,
     ) -> None:
-        if not warehouse_id.strip():
-            raise ValueError("warehouse_id is required for Databricks deployment")
         if poll_interval_seconds < 0:
             raise ValueError("poll_interval_seconds must be non-negative")
         if max_poll_attempts < 1:
             raise ValueError("max_poll_attempts must be positive")
         self._client = client
         self._runtime_provider = runtime_provider
-        self._warehouse_id = warehouse_id.strip()
+        self._warehouse_id = warehouse_id.strip() if warehouse_id and warehouse_id.strip() else None
         self._poll_interval_seconds = poll_interval_seconds
         self._max_poll_attempts = max_poll_attempts
 
@@ -249,6 +247,10 @@ class DatabricksDeploymentAdapter:
         return self._runtime_provider.observe(bindings=bindings)
 
     def _execute_statement(self, statement: str) -> None:
+        if self._warehouse_id is None:
+            raise ValidationError(
+                "Databricks deployment execution requires a SQL warehouse_id"
+            )
         response = self._client.statement_execution.execute_statement(
             statement=statement,
             warehouse_id=self._warehouse_id,
