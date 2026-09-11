@@ -27,7 +27,11 @@ _SAFE_ARTIFACT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 class GitWorkingTreeHistoryRepository:
-    """Persist canonical history artifacts under a SemaPact-owned working-tree path."""
+    """Shared Git backend implementing narrow typed history capabilities.
+
+    Public methods satisfy artifact-specific repository protocols while the private
+    helpers below own the common JSON/file persistence mechanics.
+    """
 
     def __init__(
         self,
