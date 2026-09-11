@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import re
-import uuid
 
+from semapact.contractops.integrity import (
+    SEMAPACT_VERSION_RESOLUTION_NAMESPACE,
+    compute_version_resolution_id,
+)
 from semapact.contractops.models import (
     ReleasePlan,
     VersionAuthority,
@@ -12,7 +15,6 @@ from semapact.contractops.models import (
     VersionResolution,
 )
 from semapact.exceptions import ReleaseValidationError
-from semapact.utils.deterministic import deterministic_uuid5
 from semapact.versioning import (
     ActualVersionBump,
     RequiredBump,
@@ -23,9 +25,6 @@ from semapact.versioning import (
 )
 
 
-SEMAPACT_VERSION_RESOLUTION_NAMESPACE = uuid.UUID(
-    "4a2bd29d-2e44-44a0-9fc9-a1f4c81a2108"
-)
 _VERSION_TOKEN = "{version}"
 
 
@@ -94,20 +93,16 @@ def resolve_release_version(
     else:  # pragma: no cover - enum exhaustiveness guard
         raise RuntimeError(f"Unsupported version authority: {config.authority}")
 
-    stable_record = {
-        "release_plan_id": release_plan.release_plan_id,
-        "contract_id": release_plan.contract_id,
-        "release_revision_ref": release_plan.release_revision_ref,
-        "authority": config.authority.value,
-        "current_version": canonical_current,
-        "required_version_bump": release_plan.required_version_bump,
-        "selected_version": selected_version,
-        "actual_bump": actual_bump,
-        "authority_reference": normalized_reference,
-    }
-    version_resolution_id = deterministic_uuid5(
-        SEMAPACT_VERSION_RESOLUTION_NAMESPACE,
-        stable_record,
+    version_resolution_id = compute_version_resolution_id(
+        release_plan_id=release_plan.release_plan_id,
+        contract_id=release_plan.contract_id,
+        release_revision_ref=release_plan.release_revision_ref,
+        authority=config.authority,
+        current_version=canonical_current,
+        required_version_bump=release_plan.required_version_bump,
+        selected_version=selected_version,
+        actual_bump=actual_bump,
+        authority_reference=normalized_reference,
     )
 
     return VersionResolution(
