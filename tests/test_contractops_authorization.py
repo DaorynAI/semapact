@@ -21,6 +21,7 @@ from semapact.contractops import (
     build_release_plan,
     resolve_release_version,
 )
+from semapact.contractops.integrity import compute_release_plan_id
 from semapact.exceptions import ReleaseValidationError
 from semapact.governance import DecisionResult, evaluate_governance_decision
 from semapact.governance.gate import GovernanceOperation
@@ -84,16 +85,20 @@ def _release_context(kind: str):
     )
 
     if decision.decision is DecisionResult.BLOCK:
-        # BLOCK cannot normally produce a ReleasePlan. Constructing an internally
-        # associated plan here proves that explicit review evidence still cannot
-        # override the authoritative M0 BLOCK result.
+        # BLOCK cannot be emitted by the canonical planner. A structurally valid
+        # associated artifact is built only to preserve the authorization contract:
+        # explicit review evidence still cannot override authoritative BLOCK.
+        fields = {
+            "contract_id": change_set.contract_id,
+            "change_set_id": change_set.change_set_id,
+            "decision_id": decision.decision_id,
+            "release_revision_ref": change_set.candidate_revision_ref,
+            "required_version_bump": decision.required_version_bump,
+            "preconditions": (),
+        }
         release_plan = ReleasePlan(
-            release_plan_id="release-plan-block-test",
-            contract_id=change_set.contract_id,
-            change_set_id=change_set.change_set_id,
-            decision_id=decision.decision_id,
-            release_revision_ref=change_set.candidate_revision_ref,
-            required_version_bump=decision.required_version_bump,
+            release_plan_id=compute_release_plan_id(**fields),
+            **fields,
         )
     else:
         release_plan = build_release_plan(change_set, decision)
@@ -282,14 +287,17 @@ def test_block_cannot_be_overridden_by_approval_evidence() -> None:
 
 def test_invalid_release_context_fails_closed_before_authorization() -> None:
     decision, change_set, release_plan, version_resolution = _release_context("review")
+    fields = {
+        "contract_id": release_plan.contract_id,
+        "change_set_id": "change-set:other",
+        "decision_id": release_plan.decision_id,
+        "release_revision_ref": release_plan.release_revision_ref,
+        "required_version_bump": release_plan.required_version_bump,
+        "preconditions": release_plan.preconditions,
+    }
     invalid_plan = ReleasePlan(
-        release_plan_id=release_plan.release_plan_id,
-        contract_id=release_plan.contract_id,
-        change_set_id="change-set:other",
-        decision_id=release_plan.decision_id,
-        release_revision_ref=release_plan.release_revision_ref,
-        required_version_bump=release_plan.required_version_bump,
-        preconditions=release_plan.preconditions,
+        release_plan_id=compute_release_plan_id(**fields),
+        **fields,
     )
 
     with pytest.raises(ReleaseValidationError, match="supplied ChangeSet"):
