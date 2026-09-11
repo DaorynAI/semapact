@@ -1,61 +1,102 @@
 ---
 name: semapact-system
-description: Defines the core operating model, layered architecture boundaries, and change-driven workflow of SemaPact. Apply this skill when refactoring components, implementing new modules, or deciding boundary placement.
+description: Defines the core operating model, layered architecture boundaries, and change-driven workflow of SemaPact. Apply when refactoring components, implementing modules, or deciding package ownership.
 ---
 
 # SemaPact System Model & Architecture Rules
 
-SemaPact is an enterprise data contract control plane and governance platform. It follows a strict layered architecture and a change-driven operating model.
+SemaPact is a change-driven ODCS lifecycle-governance and production-assurance control plane.
 
-## 1. Core Workflow Principles
-- **Change-Driven System:** All UI edits must happen via drafts.
-  - Save = save draft copy.
-  - Publish/Promote = run governance checks and promote draft.
-- **Immutability of Main:** Main production contracts are immutable from direct UI edits. They are only updated via governed merge operations.
-- **Immutability of Identity:** The contract `id` is immutable once created.
-- **Release Gating:** Contract `version` is release-managed and only changes through an explicit release/promotion path.
+## 1. Core workflow principles
 
-## 2. Layered Architecture Boundaries (CRITICAL)
+- governed contract state is canonical ODCS;
+- main state is not directly overwritten from presentation paths;
+- contract identity is immutable once governed;
+- release version changes only through explicit release flow;
+- side effects are operation-scoped: APPLY, PUBLISH, and DEPLOY are distinct;
+- execution success is not convergence proof.
 
-### A. Ingestion / Import Layer
-- **Role:** Converts external data structures into Open Data Contract Standard (ODCS) models when a contract import is explicitly requested.
-- **Rules:**
-  - Must remain strictly stateless and idempotent.
-  - **NEVER** place merge, governance, or GitOps logic inside importers.
-  - Contract import is distinct from platform observation; observing a platform must not implicitly create or mutate an ODCS contract.
+## 2. Layered dependency direction
 
-### B. Governed Contract Model
-- **Role:** Single canonical representation of governed desired contract state.
-- **Rules:**
-  - The ODCS YAML/Pydantic model is the single source of truth for governed contract state.
-  - External platform state must not become governed truth merely because it was observed.
+```text
+interfaces (CLI/API/UI)
+        ↓
+application services
+        ↓
+domain packages and narrow ports
+        ↑
+platform/provider adapters
+```
 
-### C. Platform Observation Model
-- **Role:** Represents point-in-time external platform state for assurance and reconciliation workflows.
-- **Rules:**
-  - `ObservedPlatformState` is a read-side model, not an alternative canonical contract format.
-  - Core observation models must remain platform-neutral; provider hierarchy belongs in adapter-local mapping into a generic ordered `namespace`.
-  - Platform-local identity must remain distinct from ODCS contract identity.
-  - Provider adapters may reuse official platform SDK access, but must not route observation through ODCS import/projection.
-  - Observation must not invoke lifecycle merge, governance evaluation, release mutation, or platform writeback.
-  - Rich metadata, constraints, relationships, and lineage are evidence enrichments, not prerequisites for the minimal observed-state model.
-  - Converting observed state into an ODCS contract is an explicit import workflow, never an implicit observation side effect.
+Dependencies must not point from domain packages into application or presentation code.
 
-### D. Lifecycle Governance Layer
-- **Role:** Handles breaking change checks, deprecation rules, merge policies, and version bump calculations.
-- **Rules:**
-  - This is the **ONLY** place where contract lifecycle logic is allowed.
-  - It must remain fully decoupled from the UI, ingestion, and platform observation layers.
+### A. Import/ingestion
 
-### E. Export Layer
-- **Role:** Converts contracts to downstream assets (Great Expectations suites, Spark DDL, Graph cypher).
-- **Rules:**
-  - Exporters must be read-only and **NEVER** modify the original contracts.
+Converts external structures into ODCS only when explicit import is requested. Importers are stateless/idempotent and contain no lifecycle or CI/CD policy.
 
-### F. Orchestration Layer
-- **Role:** Coordinates multi-step workflows (e.g. import → merge → export → PR).
-- **Rules:**
-  - Coordinates execution paths but must NOT contain custom business logic.
+### B. Governed contract model
 
-### G. DevOps Layer
-- **Role:** Automates PR creation, version bumps, release manifest building, and metadata auditing.
+ODCS is authoritative desired contract state. External observations do not become governed truth implicitly.
+
+### C. Lifecycle/governance domain
+
+Owns identity, lifecycle semantics, breaking/deprecation policy, change classification, and deterministic governance decisions.
+
+### D. ContractOps domain
+
+Owns deterministic release artifacts, authorization, APPLY/PUBLISH contracts, and exact artifact association. Later phases consume earlier artifacts; they do not rerun governance/version classification.
+
+### E. Deployment/runtime domain
+
+Owns provider-neutral DeploymentPlan/authorization/preview contracts and neutral runtime asset projection. Provider-native operations belong behind deployment adapters.
+
+### F. Observation/reconciliation domain
+
+Owns platform-neutral observed state and deterministic desired-vs-observed comparison. Reconciliation does not infer deployment causality or mutate runtime.
+
+### G. Application layer
+
+Location: `semapact/application/`.
+
+- `application/models/` owns use-case result DTOs that compose domain artifacts;
+- `application/services/` owns thin interface-independent orchestration;
+- it may construct semantic context/configuration needed by a workflow;
+- it must not own lifecycle/governance/version/deployment/reconciliation rules.
+
+`semapact/services/` is compatibility-only and must not receive new implementation.
+
+### H. Interfaces
+
+Parse request values, validate/load external artifacts at the interface edge, call application/domain boundaries, render output, and map process outcomes. Interfaces do not own business rules.
+
+### I. Platform adapters
+
+Provider SDK/client and physical-platform translation live under `semapact/platforms/`. Concrete construction belongs in composition/application/platform code, never domain logic.
+
+## 3. Model ownership rule
+
+Do not organize models by the fact that they are "data". Organize them by meaning:
+
+```text
+ODCS governed contract                 → ODCS model
+GovernanceDecision / ReleasePlan       → owning domain package
+ReleasePlanningResult                  → application/models
+Databricks table/statement representation → platforms/databricks
+future deployment/history persistence  → its persistence/history boundary
+```
+
+Avoid generic root-level `schema`, `models`, or `data_models` dumping grounds.
+
+## 4. Interface/port rule
+
+Create interfaces only at genuine replaceable or side-effecting seams. Pure deterministic planners/value objects remain functions/models rather than acquiring ports for symmetry.
+
+## 5. Change discipline
+
+When moving ownership:
+
+1. establish the new canonical import path;
+2. migrate internal callers;
+3. retain a thin compatibility re-export when public/backward compatibility matters;
+4. add architecture/import tests so compatibility wrappers cannot become a second implementation;
+5. update contributor-facing architecture rules in the same change.

@@ -1,18 +1,5 @@
-"""Application-level result models for canonical release orchestration."""
+"""Compatibility import for the former release application-model module."""
 
-from __future__ import annotations
+from semapact.application.models.release import ReleasePlanningResult
 
-from dataclasses import dataclass
-
-from semapact.contractops import ChangeSet, ReleasePlan, VersionResolution
-from semapact.governance import GovernanceDecision
-
-
-@dataclass(frozen=True)
-class ReleasePlanningResult:
-    """Exact canonical artifacts produced by one release planning pass."""
-
-    change_set: ChangeSet
-    decision: GovernanceDecision
-    release_plan: ReleasePlan
-    version_resolution: VersionResolution
+__all__ = ["ReleasePlanningResult"]

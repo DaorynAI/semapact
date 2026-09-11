@@ -1,18 +1,20 @@
-"""UI-independent application services for SemaPact workflows."""
+"""Backward-compatible imports for the pre-application package layout.
 
-from semapact.services.deployment_service import DeploymentService
-from semapact.services.governance_service import (
+New code must import application services and application result models from
+``semapact.application``. This package owns no business logic or data models.
+"""
+
+from semapact.application.models import (
     GovernanceAnalysis,
     GovernanceProposal,
-    GovernanceService,
-)
-from semapact.services.reconciliation_service import (
-    ReconciliationService,
+    ReleasePlanningResult,
     RuntimeReconciliation,
 )
-from semapact.services.release_models import ReleasePlanningResult
-from semapact.services.release_planning_service import ReleasePlanningService
-from semapact.services.version_authority_service import VersionAuthorityService
+from semapact.application.services.deployment import DeploymentService
+from semapact.application.services.governance import GovernanceService
+from semapact.application.services.reconciliation import ReconciliationService
+from semapact.application.services.release_planning import ReleasePlanningService
+from semapact.application.services.version_authority import VersionAuthorityService
 
 __all__ = [
     "DeploymentService",
