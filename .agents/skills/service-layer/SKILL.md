@@ -56,7 +56,7 @@ Before creating a model, ask what it represents:
 - governed business/domain fact → owning domain package;
 - application use-case result/composition → `application/models`;
 - provider/physical representation → provider package under `platforms`;
-- persistence/history record → persistence/history owner when that boundary exists;
+- persistence/history record → dedicated persistence/history boundary;
 - presentation-only rendering state → interface package.
 
 Do not create a root `schema`, `models`, or `data_models` directory simply to collect unrelated types.
