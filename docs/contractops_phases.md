@@ -35,6 +35,17 @@ ANALYZE evaluates the candidate against the governed base contract and produces 
 
 It is pure. It does not write files, create Git branches or tags, update ODCS, or mutate a runtime platform.
 
+The CLI analysis surface is:
+
+```bash
+semapact release classify \
+  --base ./contracts/orders.yaml \
+  --candidate ./contracts/orders.candidate.yaml \
+  --effective-date 2026-09-11
+```
+
+`release classify` is analysis-only. It reports the governance decision and required version bump, but it does not create a `ChangeSet`, `ReleasePlan`, or `VersionResolution` and does not authorize a release.
+
 ## PLAN
 
 PLAN converts the authoritative decision into deterministic release artifacts:
@@ -44,6 +55,42 @@ PLAN converts the authoritative decision into deterministic release artifacts:
 - `VersionResolution` selects the actual release version according to the configured version authority.
 
 PLAN remains pure.
+
+The canonical CLI planning surface is:
+
+```bash
+semapact release plan \
+  --base ./contracts/orders.yaml \
+  --candidate ./contracts/orders.candidate.yaml \
+  --base-revision-ref git:abc123 \
+  --candidate-revision-ref git:def456 \
+  --effective-date 2026-09-11
+```
+
+The revision references are required because release artifacts must be bound to the exact base and candidate workflow revisions rather than to mutable file paths alone.
+
+When `release.versionAuthority=git`, provide the repository release reference explicitly:
+
+```bash
+semapact release plan \
+  --base ./contract.yaml \
+  --candidate ./contract.candidate.yaml \
+  --base-revision-ref git:abc123 \
+  --candidate-revision-ref git:def456 \
+  --authority-reference v1.4.0 \
+  --effective-date 2026-09-11
+```
+
+The JSON output is serialized directly from the canonical models and contains:
+
+```text
+governanceDecision
+changeSet
+releasePlan
+versionResolution
+```
+
+One planning pass evaluates governance once, then feeds the exact resulting artifacts forward. The CLI does not independently re-diff, reclassify, or reimplement version policy downstream.
 
 ## AUTHORIZE
 
@@ -109,6 +156,8 @@ A release-context `ContractOpsAuthorization(operation=DEPLOY)` is not enough on 
 
 Platform-specific execution belongs behind a deployment adapter. The adapter must not recompute governance, version authority, release planning, or approval semantics.
 
+See [`deployment_plans.md`](deployment_plans.md) for the deployment CLI, Databricks capability boundary, preview integrity checks, and convergence verification semantics.
+
 ## Failure semantics
 
 ContractOps distinguishes invalid context from denied authorization:
@@ -121,6 +170,8 @@ Unexpected publisher/runtime failures are not converted into governance decision
 
 ## Compatibility helpers
 
-`semapact.core.release.prepare_release_candidate()` remains a backward-compatible helper and is not the canonical ContractOps APPLY path because it may classify changes itself.
+`semapact release prepare` and `semapact release create-pr` remain compatibility workflows for existing Git-based release processes. They are not the canonical ContractOps PLAN/APPLY/PUBLISH path and should not be treated as equivalent to `release plan` plus explicit authorization.
 
-New ContractOps flows consume the existing authoritative `GovernanceDecision`, `ReleasePlan`, and `VersionResolution` instead of recomputing them.
+`semapact.core.release.prepare_release_candidate()` likewise remains a backward-compatible helper and is not the canonical ContractOps APPLY path because it may classify changes itself.
+
+New ContractOps flows consume the existing authoritative `GovernanceDecision`, `ChangeSet`, `ReleasePlan`, and `VersionResolution` instead of recomputing them.
