@@ -371,6 +371,11 @@ def _build_parser() -> argparse.ArgumentParser:
     deployment_plan_parser.add_argument("--release", required=True)
     deployment_plan_parser.add_argument("--platform", required=True)
     deployment_plan_parser.add_argument("--runtime", required=True)
+    deployment_plan_parser.add_argument(
+        "--source-reference",
+        required=True,
+        help="Stable runtime source identity (for Databricks, the workspace host; never credentials)",
+    )
     deployment_plan_parser.add_argument("--server")
 
     deployment_preview_parser = deployment_subparsers.add_parser(
@@ -386,8 +391,7 @@ def _build_parser() -> argparse.ArgumentParser:
     deployment_execute_parser.add_argument("--authorization", required=True)
     deployment_execute_parser.add_argument(
         "--warehouse-id",
-        required=True,
-        help="Databricks SQL warehouse used only for runtime mutation",
+        help="Databricks SQL warehouse required only when preview contains mutation operations",
     )
 
     deployment_verify_parser = deployment_subparsers.add_parser(
