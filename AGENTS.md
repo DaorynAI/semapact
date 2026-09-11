@@ -1,95 +1,74 @@
 # 🤖 SemaPact AI Agent Guidelines
 
-Welcome, AI Agent! You are working on **SemaPact**, an open-source, enterprise-level lifecycle governance platform for Open Data Contracts (ODCS).
-
-To ensure high-quality and consistent code generation, please adhere to the following rules:
+SemaPact is an open-source, enterprise lifecycle-governance and production-assurance platform for Open Data Contracts (ODCS).
 
 ## 1. Architectural Alignment
-SemaPact is a change-driven (not CRUD) system that enforces GitOps workflows, immutable main contracts, and user-scoped drafts.
-- **Always read [`ARCHITECTURE.md`](./ARCHITECTURE.md)** before designing new features, adding state, or modifying core modules.
+
+SemaPact is change-driven, not CRUD. Main governed contracts are not edited blindly; lifecycle, release, authorization, deployment, and reconciliation remain separate boundaries.
+
+- **Always read [`ARCHITECTURE.md`](./ARCHITECTURE.md)** before designing features, adding state, or moving code across packages.
+- Preserve canonical dependency direction: interfaces → application → domain/ports; platform adapters implement external/provider boundaries.
+
+### Package ownership rules
+
+Place code by semantic ownership, not by whichever caller happens to use it:
+
+- canonical domain artifacts and domain rules → their owning domain package (`governance/`, `contractops/`, `deployment/`, `reconciliation/`, `runtime/`, `lifecycle/`);
+- application/use-case result DTOs that compose domain artifacts → `semapact/application/models/`;
+- interface-independent workflow orchestration → `semapact/application/services/`;
+- CLI/API/UI parsing and rendering → `semapact/interfaces/`;
+- provider SDK/client mappings and physical platform behavior → `semapact/platforms/`;
+- `semapact/services/` is compatibility-only. **Do not add new logic or models there.**
+
+Do not create generic `schema/`, `models/`, or `data_models/` dumping grounds at the package root. A model belongs with its semantic owner. ODCS schema, domain artifacts, application DTOs, persistence records, and provider SDK representations are different concerns.
 
 ## 2. Load Your Skills
-We maintain specialized instructions for you in the `.agents/skills/` directory. 
-- **Always read [`.agents/README.md`](./.agents/README.md)** at the start of a session to understand the available skills.
-- Load the specific `SKILL.md` file relevant to your current task (e.g., if you are touching UI, read the `streamlit-ui` skill; if touching validation, read `lifecycle-policy`).
+
+- Read [`.agents/README.md`](./.agents/README.md) at the start of a coding session.
+- Load the task-specific `SKILL.md`, especially `semapact-system`, `service-layer`, `lifecycle-policy`, or UI/provider skills as applicable.
 
 ## 3. Core Principles
-1. **Defensive Coding**: All new code must be fully type-hinted and handle edge cases gracefully. Do not swallow exceptions silently.
-2. **Configuration over Environment Variables**: Favor adding user configuration to `ConfigManager` (which resolves from `.semapact.yaml`) rather than hardcoding `os.environ` reads, unless it's a dynamic CI runner variable.
-3. **Preserve Main Contracts**: Canonical contracts in `contracts-main` or the base path should never be overwritten blindly. Use the `merge_engine`.
+
+1. **Defensive Coding**: Fully type new code and fail closed where required evidence or authorization is incomplete.
+2. **Configuration over ad-hoc environment reads**: Prefer `ConfigManager` for product configuration; environment variables are explicit overrides or CI/runtime inputs.
+3. **Preserve canonical contracts**: Do not overwrite governed main contracts from interface code.
+4. **One authority per rule**: Interfaces and application services must not reimplement lifecycle, governance, versioning, deployment translation, or reconciliation semantics.
+5. **Exact artifacts cross side-effect boundaries**: Downstream phases consume the exact immutable artifacts produced upstream; do not silently reload mutable state and reinterpret it.
 
 ## 4. Agent Working Style
-As an AI contributing to an enterprise-grade open-source project, your execution must be flawless and maintainable:
-1. **Plan Before Code**: Always think through the architectural implications and edge cases before writing a single line of code. If a change is complex, propose an implementation plan to the user first.
-2. **Make It Simple**: Strive for elegant, minimalist solutions. Avoid over-engineering, unnecessary abstractions, or introducing heavy external dependencies unless absolutely required.
-3. **Double Check Your Work**: Never assume your code works on the first try. Always double-check your syntax, type hints, and logic. Where possible, write or run tests to verify your changes.
+
+1. **Plan before code**: inspect ownership and dependency direction before editing.
+2. **Keep it simple**: avoid speculative abstractions and duplicate façade layers.
+3. **Verify**: add or update tests for behavior and architecture boundaries; run the relevant suite/CI.
+4. **Surgical changes**: do not refactor unrelated areas. Remove only dead code introduced by your own change unless the task explicitly calls for broader cleanup.
 
 ## 5. Testing
-- If you modify business logic in `semapact/core` or `semapact/lifecycle`, you must ensure backward compatibility.
-- Ensure that the CLI (`semapact/interfaces/cli.py`) and TUI (`semapact/tui/app.py`) are kept in sync when introducing new configuration parameters.
 
-## 6. Behavioral Guidelines (CLAUDE.md)
+- Domain behavior changes require deterministic unit tests.
+- Application services should be tested with canonical models and fake/narrow ports rather than live providers.
+- Interface tests should prove parsing, rendering, and process outcomes without duplicating domain assertions.
+- When changing package ownership, add an architecture/import test so future agents do not regress the boundary.
+- Keep minimal-install import safety: optional provider dependencies must remain lazy until that provider is actually composed.
 
-Behavioral guidelines to reduce common LLM coding mistakes.
+## 6. Behavioral Guidelines
 
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+### Think before coding
 
-### 6.1 Think Before Coding
+Do not hide ambiguity. State assumptions and surface trade-offs before creating a new abstraction.
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+### Simplicity first
 
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
+Implement the minimum structure that gives one clear owner for each responsibility. Do not introduce an interface for a pure deterministic function merely for symmetry.
 
-### 6.2 Simplicity First
+### Goal-driven execution
 
-**Minimum code that solves the problem. Nothing speculative.**
+Translate work into verifiable outcomes, for example:
 
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-### 6.3 Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-### 6.4 Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
 ```text
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+1. move application orchestration → imports and behavior tests pass
+2. move application DTOs → module-ownership test passes
+3. preserve compatibility imports → legacy import identity tests pass
+4. update contributor rules → docs match the actual package tree
 ```
 
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
----
-
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+These rules are working when a contributor can tell where a new model or workflow belongs without inspecting every caller.

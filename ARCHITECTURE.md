@@ -2,450 +2,212 @@
 
 ## Purpose
 
-SemaPact is an ODCS-first contract governance platform.
+SemaPact is an ODCS-first, change-driven contract governance and production-assurance control plane. It separates governed contract semantics, release authorization, runtime mutation, and runtime verification so each concern has one authoritative owner.
 
-The current implementation focuses on:
-
-- canonical main contracts
-- user-scoped drafts
-- lifecycle governance analysis
-- contract quality export
-- deployment artifact export
-- CLI and automation interfaces
-
-SemaPact is not a CRUD system. It is a change-driven system:
-
-- edit -> save draft
-- analyze -> compare draft vs main
-- promote -> future GitOps workflow
-
-## Current Runtime Layers
-
-### 1. Core
-
-Location:
-
-- `semapact/core/`
-
-Responsibilities:
-
-- load canonical ODCS contracts from supported storage
-- validate ODCS contracts and quality rules
-- normalize user drafts so business edits do not overwrite technical fields
-
-Key modules:
-
-- `semapact/core/loader.py`
-- `semapact/core/validator.py`
-- `semapact/core/draft_normalizer.py`
-
-### 2. Lifecycle Governance
-
-Location:
-
-- `semapact/lifecycle/`
-
-Responsibilities:
-
-- analyze main vs source contract changes
-- detect breaking changes
-- determine auto-deprecations
-- apply lifecycle-aware merges
-
-Key modules:
-
-- `semapact/lifecycle/merge_engine.py`
-- `semapact/lifecycle/policy.py`
-
-### 3. Utilities
-
-Location:
-
-- `semapact/utils/`
-
-Responsibilities:
-
-- YAML file IO
-- YAML string parse/dump through ODCS model definitions
-- input normalization helpers
-
-Key modules:
-
-- `semapact/utils/yaml_utils.py`
-- `semapact/utils/schema_utils.py`
-
-### 4. Service Layer
-
-Location:
-
-- `semapact/services/`
-
-Responsibilities:
-
-- serve as the interface-independent application boundary into system logic
-- normalize interface request values into explicit domain inputs
-- own workflow-scoped governance context construction
-- delegate merge, lifecycle, validation, and governance rules to their owning layers
-
-Key module:
-
-- `semapact/services/governance_service.py`
-
-Important boundary:
-
-- CLI/UI/API may collect an `effective_date` request value
-- `GovernanceService` creates `ChangeContext`
-- lifecycle/governance lower layers consume that context and must not regenerate it
-
-### 5. Platform Observation
-
-Location:
-
-- `semapact/observation/`
-
-Responsibilities:
-
-- represent point-in-time external platform state independently from governed contracts
-- keep the core observed-state domain platform-neutral
-- map provider-local identity into `platform + ordered namespace + asset`
-- observe physical asset/property state without creating or mutating ODCS contracts
-
-Key modules:
-
-- `semapact/observation/models.py`
-- `semapact/observation/databricks.py`
-
-Important boundary:
-
-- `ObservedPlatformState` is read-side state, not governed truth
-- observed asset identity is platform-local and distinct from ODCS contract identity
-- provider-specific hierarchy such as Databricks `catalog/schema` belongs in the adapter, not the core model
-- Databricks observation consumes the official SDK `WorkspaceClient.tables.get(...) -> TableInfo` boundary instead of reimplementing the Unity Catalog REST transport
-- observation projects `TableInfo` directly into observed state; it must not route through datacontract-cli's ODCS projection
-- rich metadata, constraints, relationships, and lineage are follow-up evidence enrichments rather than prerequisites for the minimal observation model
-- observation must not invoke lifecycle merge, governance evaluation, release mutation, or platform writeback
-- explicit contract import remains a separate workflow
-
-### 6. Exporters
-
-Location:
-
-- `semapact/exporters/`
-- `semapact/quality/`
-
-Responsibilities:
-
-- generate Great Expectations suites from ODCS contracts
-- generate SQL deployment DDL
-- add limited Databricks-specific constraint enhancement where supported
-
-Key modules:
-
-- `semapact/quality/ge_exporter.py`
-- `semapact/exporters/sql_exporter.py`
-
-### 7. Orchestration
-
-Location:
-
-- `semapact/orchestrator/`
-
-Responsibilities:
-
-- coordinate non-interactive automation flows
-- import -> merge -> validate -> export
-
-Key module:
-
-- `semapact/orchestrator/pipeline.py`
-
-### 8. Interfaces
-
-Location:
-
-- `semapact/interfaces/`
-
-Responsibilities:
-
-- presentation/input adaptation only
-- collect user or automation inputs
-- display governance results
-- call service/application boundaries
-
-Current interface:
-
-- CLI in `semapact/interfaces/cli.py`
-- command adapters in `semapact/interfaces/commands/`
-
-## Governed Contract Model
-
-SemaPact assumes:
-
-- Open Data Contract Standard (ODCS) is the single canonical representation of governed desired contract state
-- `open_data_contract_standard.model.OpenDataContractStandard` is the canonical governed contract domain model
-
-The system may temporarily work with Python `dict` objects at contract boundaries, but contract normalization should converge back to ODCS objects or ODCS-shaped mappings.
-
-Platform observations are intentionally different. `ObservedPlatformState` is a non-canonical read-side model describing what an external platform reports at a point in time. It must not replace or mutate the governed ODCS contract.
-
-Conceptually:
+The canonical product flow is:
 
 ```text
-Approved ODCS Contract
-= desired governed state
-
-ObservedPlatformState
-= observed external platform state
+ODCS base + candidate
+        ↓
+lifecycle / governance
+        ↓
+GovernanceDecision
+        ↓
+ChangeSet → ReleasePlan → VersionResolution
+        ↓
+ContractOpsAuthorization
+        ↓
+AppliedContractRelease
+        ↓
+DeploymentPlan → DeploymentAuthorization
+        ↓
+DeploymentAdapter
+        ↓
+runtime
+        ↓
+observation / reconciliation
 ```
 
-Converting external metadata into a new ODCS contract is an explicit import workflow. Observing platform state does not implicitly perform that conversion.
+Later phases consume exact artifacts from earlier phases. They do not re-run governance, lifecycle classification, version authority, or approval semantics.
 
-## Root Contract Governance
+## Dependency Direction
 
-At the top level of the contract, SemaPact currently treats these fields specially:
+Application and domain boundaries follow this direction:
 
-- `id`
-  - immutable once the governed/main contract exists
-  - importer-generated IDs are only used when a contract is first created outside SemaPact
-- `version`
-  - release-managed
-  - must not change in the normal import/merge pipeline
-  - technical source versions such as Delta table versions must not overwrite the governed contract version
+```text
+interfaces (CLI / API / UI / CI)
+        ↓
+application services
+        ↓
+domain functions / models / ports
+        ↑
+platform and external-system adapters
+```
 
-Current behavior:
+Domain packages must not depend on `application` or `interfaces`. Provider-specific SDK/client construction stays outside domain logic.
 
-- `semapact.lifecycle.merge_engine` preserves governed `id` and `version`
-- `semapact.lifecycle.policy` flags root `id` changes as `id_violation`
-- `semapact.lifecycle.policy` flags root version changes as `version_violation`
-- `semapact.orchestrator.pipeline` blocks on `id_violation` and `version_violation`
+## Package Ownership
 
-This means SemaPact currently supports:
+### Domain packages
 
-- technical schema refresh through import/merge
-- governed metadata preservation
+Domain models live with the rules that give them meaning:
 
-It does not yet implement:
+- `semapact/lifecycle/` — canonical identity, lifecycle policy, merge/change semantics;
+- `semapact/governance/` — `GovernanceDecision`, reason codes, centralized gate;
+- `semapact/contractops/` — `ChangeSet`, `ReleasePlan`, `VersionResolution`, ContractOps authorization, APPLY/PUBLISH artifacts;
+- `semapact/deployment/` — provider-neutral `DeploymentPlan`, `DeploymentPreview`, deployment authorization and adapter contract;
+- `semapact/runtime/` — provider-neutral governed runtime asset projection;
+- `semapact/observation/` — provider-neutral point-in-time runtime state;
+- `semapact/reconciliation/` — desired-vs-observed comparison and `RuntimeDriftStatus`.
 
-- automatic discovery of which contracts in a repo should be released together
-- automatic git-tag lookup inside core/service layers
+A domain artifact does not move into the application layer merely because an application service returns it.
 
-## Release Governance Direction
+### Application layer
 
-Current release-version governance is intentionally **per contract**, not per repo.
+Location:
 
-This supports both:
+```text
+semapact/application/
+├── models/
+└── services/
+```
 
-- one-contract-per-repo setups
-- centralized repos containing many governed contracts
+`application/services/` owns thin, interface-independent use-case orchestration. It may resolve workflow context/configuration and compose existing domain functions or ports, but it must not reimplement domain policy.
 
-Current intended flow:
+`application/models/` owns typed use-case results that aggregate canonical domain artifacts. Examples include:
 
-1. `feature -> main`
-   - validate and analyze one changed contract
-   - compute `required_bump` for that contract
-   - do **not** change contract `version`
-2. `main -> release`
-   - re-evaluate the release candidate for that contract
-   - apply an explicit `release_tag`
-   - update contract `version` through the release path only
+- `GovernanceAnalysis`;
+- `GovernanceProposal`;
+- `RuntimeReconciliation`;
+- `ReleasePlanningResult`.
 
-Current bump rules:
+These are application DTOs, not new governance/release/deployment authorities.
 
-- `none`
-  - descriptive-only metadata changes
-- `minor`
-  - additive or non-breaking structural changes
-  - newly introduced schema/property deprecations
-- `major`
-  - lifecycle-breaking changes
+### Compatibility package
 
-Suggested next release versions are always computed from the last released
-contract version and the highest currently required bump. They are not
-calculated by chaining unreleased changes together.
+`semapact/services/` is a backward-compatible import surface for the former package layout. It contains re-exports only and owns no models or business logic. New code must import from `semapact.application`.
 
-Example:
+### Interfaces
 
-- last released version: `1.2.0`
-- unreleased changes: one breaking removal, then one additive field
-- final `required_bump`: `major`
-- suggested next version: `2.0.0`
+`semapact/interfaces/` owns parsing, loading input artifacts at the interface edge, rendering, and process-outcome mapping. Interfaces delegate to application/domain boundaries and must not independently calculate governance, version, deployment, or reconciliation results.
 
-If the final `required_bump` is `none`, the suggested version remains the same
-as the last released version. In that case, repo-level batch release manifest
-generation skips the contract by default.
+### Platform adapters
 
-Current release tooling:
+`semapact/platforms/` owns provider SDK/client integration and physical-platform translation. Databricks DDL generation/execution is provider behavior; it does not belong in ContractOps or application DTOs.
 
-- `semapact release classify`
-  - compute `required_bump` for one contract
-- `semapact release prepare`
-  - prepare one promoted contract candidate with an explicit `release_tag`
-- `semapact release create-pr`
-  - create one release PR for one contract
+### Import/export and compatibility workflows
 
-## Repo-Level Release Orchestration
+- `semapact/importers/` projects explicitly imported external metadata into ODCS and contains no lifecycle policy;
+- `semapact/exporters/` and `quality/` are read-only projections;
+- `semapact/devops/` and parts of `core/` contain stable compatibility workflows and must not become a second canonical ContractOps implementation.
 
-Some repositories contain multiple governed contracts. SemaPact supports
-repo-level release orchestration helpers, but these helpers do **not** change
-the versioning unit.
+## Model Placement Rule
 
-Current repo-level commands:
+Do not create a generic root `schema/`, `models/`, or `data_models/` directory to collect unrelated objects. Decide placement from semantic ownership:
 
-- `semapact release classify-repo`
-  - compare two contract roots
-  - report per-contract statuses such as `changed`, `unchanged`, `added`, and `removed`
-  - report `required_bump` for changed contracts only
-- `semapact release build-manifest`
-  - generate an editable JSON array of per-contract release tasks
-  - suggest release tags and source branches from each contract's current version and `required_bump`
-- `semapact release create-prs`
-  - consume an explicit batch manifest
-  - run independent per-contract release preparation and PR creation
+| What the object represents | Owner |
+| --- | --- |
+| governed ODCS contract | ODCS model |
+| governance/release/deployment/reconciliation artifact | owning domain package |
+| application/use-case aggregate result | `application/models/` |
+| application orchestration | `application/services/` |
+| provider/SDK/physical representation | `platforms/<provider>/` |
+| presentation-only rendering state | `interfaces/` |
+| durable history/persistence record | its persistence/history boundary |
 
-Important rule:
+The fact that every object is “data” is not a useful architectural boundary.
 
-- the repository is a batching boundary only
-- each contract still owns its own identity, version, release tag, and release decision
+## Governed Identity
 
-Recommended repo-level flow:
+For current governance semantics:
 
-1. `semapact release classify-repo`
-   - inspect changed contracts
-2. `semapact release build-manifest`
-   - generate an editable per-contract release task list
-3. review and adjust the manifest
-   - especially release tags and branch names
-4. `semapact release create-prs`
-   - create one PR per contract release task
+```text
+schema identity   = lowercase(schema.name)
+property identity = lowercase(schema.name) + lowercase(property.name)
+```
 
-## CI Build Modes
+`physicalName` is a deployment/runtime binding hint and never replaces governed logical identity.
 
-Recommended CI interpretation:
+## Lifecycle and Governance
 
-1. `pr`
-   - run validation and change classification
-   - do not change `contract.version`
-   - do not create release PRs
-2. `merge`
-   - re-run validation on the merged main state
-   - keep `contract.version` unchanged
-   - publish audit or summary artifacts if needed
-3. `release`
-   - build or review a per-contract release manifest
-   - apply explicit release tags only for contracts that require a bump
-   - create release PRs per contract
+Lifecycle/governance is the sole authority for change meaning. Active entities participate in governance; draft/deprecated entities are excluded where policy specifies; retired state is immutable. Interfaces, application services, adapters, and exporters must not independently reinterpret these rules.
 
-## Draft Workflow
+Governance produces one immutable `GovernanceDecision`. Downstream phases consume that decision and its projected artifacts rather than diffing again.
 
-Current draft workflow:
+## ContractOps Release Boundary
 
-1. load main contract
-2. load existing draft or initialize draft from main
-3. edit draft
-4. analyze draft vs main
-5. save draft
-6. promote later through GitOps workflow
+Canonical planning is:
 
-Important rules:
+```text
+base + candidate + exact revision refs
+        ↓
+GovernanceDecision + ChangeSet
+        ↓
+ReleasePlan
+        ↓
+VersionResolution
+```
 
-- UI must not overwrite the main contract
-- draft persists independently
-- service layer validates before saving draft
-- service layer preserves non-editable contract/schema/property fields from the main contract
+Version selection is separate from governance classification. SemaPact-managed and Git-managed authority both resolve through the canonical version-authority boundary.
 
-Draft storage:
+APPLY materializes the exact released ODCS snapshot only after matching authorization. PUBLISH publishes a released artifact and is distinct from DEPLOY.
 
-- `.semapact/drafts/{user}/{contract_id}.yaml`
+## Deployment Boundary
 
-## Storage Support
+Deployment planning starts from an exact `AppliedContractRelease`:
 
-Current canonical contract roots support:
+```text
+AppliedContractRelease + DeploymentTarget
+        ↓
+DeploymentPlan
+        ↓
+fresh runtime observation + adapter preview
+        ↓
+DeploymentPreview
+        ↓
+exact plan + preview + DeploymentAuthorization
+        ↓
+DeploymentAdapter.execute(...)
+```
 
-- local filesystem paths
-- ADLS2 paths
-- Databricks Unity Catalog mounted volume paths
+`DeploymentPlan` stays provider-neutral. Provider-native CREATE/ALTER/NO_OP operations begin at the adapter boundary. Runtime mutation must fail closed when capability or evidence is insufficient.
 
-ADLS2 authentication currently supports:
+Provider execution success is not convergence proof.
 
-- `SEMAPACT_ADLS_BEARER_TOKEN`
-- `azure.identity.DefaultAzureCredential`
+## Observation and Reconciliation
 
-SAS URL authentication is intentionally not supported.
+Observation captures platform-neutral runtime evidence. It never mutates ODCS or invokes governance.
 
-## Quality and Export Boundaries
+Reconciliation compares governed desired state with fresh observation and yields the existing status vocabulary:
 
-### Contract validation
+```text
+IN_SYNC
+DRIFT
+INDETERMINATE
+```
 
-`semapact/core/validator.py` validates:
+Deployment verification reuses this same reconciliation authority rather than introducing another convergence state machine.
 
-- ODCS structure
-- quality rule completeness
-- ODCS quality type semantics
+## Application Services
 
-### GE export
+Application services exist only when a use case genuinely coordinates multiple domain/port calls. Current examples include governance context construction, configured version authority, canonical release planning, runtime reconciliation orchestration, and deployment orchestration.
 
-`semapact/quality/ge_exporter.py`:
+Rules:
 
-- delegates suite generation to datacontract-cli
-- performs GE-specific preflight on exported expectation configs
-- does not execute runtime validation
+- keep services thin;
+- reusable application result DTOs live in `application/models`, not beside service implementation;
+- do not pass untyped dictionaries internally when a canonical model exists;
+- do not introduce ports around pure deterministic functions only for symmetry;
+- provider construction is composition/platform behavior, not domain behavior;
+- optional provider dependencies remain lazy so the base installation stays import-safe.
 
-### SQL export
+## Public Architecture Invariants
 
-`semapact/exporters/sql_exporter.py`:
-
-- delegates base SQL generation to datacontract-cli
-- appends Databricks-only constraints for a limited supported subset of ODCS quality rules
-
-Current supported Databricks mappings:
-
-- `nullValues mustBe 0` -> `SET NOT NULL`
-- `invalidValues + validValues` -> `CHECK IN (...)`
-- `invalidValues + pattern` -> `CHECK RLIKE ...`
-
-Precedence:
-
-- schema `required=True` is emitted first by datacontract-cli as `NOT NULL`
-- SemaPact does not emit duplicate nullability constraints
-
-## Current Design Principles
-
-- main governed contract is canonical and immutable from presentation paths
-- ODCS is the canonical model for governed desired contract state
-- platform observation is separate read-side state and cannot become governed truth implicitly
-- core observation models are platform-neutral; provider-specific hierarchy belongs in adapters
-- reuse official platform access/SDK layers where practical, while keeping ODCS import projection separate from observation
-- service layer is the application boundary between interfaces and system logic
-- lifecycle logic belongs in the lifecycle layer
-- datacontract-cli is reused where possible instead of reimplemented
-
-## Authoritative Governance Invariants
-
-1. **Centralized Gate Enforcement**: All mutation-capable application paths must obtain an authoritative `GovernanceDecision` and enforce the appropriate `GovernanceOperation` gate before persistence, Git mutation, publication, deployment, or draft submission.
-2. **Universal Retired Immutability**: A contract whose effective lifecycle is `retired` is permanently frozen. Any semantic mutation against a retired base contract produces `DecisionResult.BLOCK` with `GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED`. No interface, service, exporter, merge adapter, or future draft implementation may independently reinterpret retired immutability or perform side effects before gate evaluation.
-3. **Future Draft Contract**:
-   ```text
-   Load canonical contract
-           ↓
-   Create/edit candidate draft
-           ↓
-   GovernanceService.evaluate(...)
-           ↓
-   GovernanceOperation.PROPOSE
-           ↓
-   persist / submit draft
-   ```
-   If base is `retired` and candidate differs:
-   - Evaluator emits `DecisionResult.BLOCK` (`RETIRED_CONTRACT_MODIFIED`)
-   - `PROPOSE` gate rejects draft submission
-   - UI read-only styling is UX only; backend governance gate is the single authority.
-
-## Known Next Steps
-
-- separate platform discovery, observation, and contract import application workflows, starting with Databricks Unity Catalog
-- add stable observed-state fingerprints and reconciliation semantics
-- add governance-relevant metadata/constraint/relationship evidence independently from the minimal observation model
-- add lineage as optional runtime evidence rather than a core observation dependency
-- formalize draft promotion flow
-- continue reducing interface-specific logic that still lives near command/editor helpers
-- keep converging governed contract helper logic toward ODCS model-driven behavior
+1. **Change-driven, not CRUD** — governed state evolves through explicit analysis/planning/authorization boundaries.
+2. **One authority per rule** — lifecycle, governance, version selection, deployment translation, and reconciliation each have one canonical owner.
+3. **Exact artifacts cross boundaries** — side effects consume exact immutable artifacts; mutable current state is not silently substituted.
+4. **Operation-scoped authorization** — APPLY, PUBLISH, and DEPLOY are distinct operations; authorization for one cannot authorize another.
+5. **Logical identity is stable** — `physicalName` binds runtime state but does not redefine governed identity.
+6. **Execution is not convergence** — runtime state must be observed and reconciled independently.
+7. **Interfaces stay thin** — CLI/API/UI parse, delegate, and render; they do not become a second business-logic implementation.
+8. **Compatibility is not ownership** — legacy import paths may re-export canonical implementations but must not accumulate new logic.

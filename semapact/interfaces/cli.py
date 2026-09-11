@@ -229,12 +229,27 @@ def _build_parser() -> argparse.ArgumentParser:
 
     release_classify_parser = release_subparsers.add_parser(
         "classify",
-        help="Classify the required version bump for one contract change set",
+        help="Analyze the required version bump without creating release artifacts",
     )
     release_classify_parser.add_argument("--base", required=True)
     release_classify_parser.add_argument("--candidate", required=True)
     release_classify_parser.add_argument("--runtime-context", default="auto")
     _add_effective_date_argument(release_classify_parser)
+
+    release_plan_parser = release_subparsers.add_parser(
+        "plan",
+        help="Build canonical ChangeSet, ReleasePlan, and VersionResolution artifacts",
+    )
+    release_plan_parser.add_argument("--base", required=True)
+    release_plan_parser.add_argument("--candidate", required=True)
+    release_plan_parser.add_argument("--base-revision-ref", required=True)
+    release_plan_parser.add_argument("--candidate-revision-ref", required=True)
+    release_plan_parser.add_argument(
+        "--authority-reference",
+        help="Explicit Git release reference when release.versionAuthority=git",
+    )
+    release_plan_parser.add_argument("--runtime-context", default="auto")
+    _add_effective_date_argument(release_plan_parser)
 
     release_classify_repo_parser = release_subparsers.add_parser(
         "classify-repo",
@@ -259,7 +274,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     release_prepare_parser = release_subparsers.add_parser(
         "prepare",
-        help="Prepare one promoted contract candidate using an explicit release tag",
+        help="Compatibility helper: prepare a candidate using an explicit release tag",
     )
     release_prepare_parser.add_argument("--base", required=True)
     release_prepare_parser.add_argument("--candidate", required=True)
@@ -270,7 +285,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     release_pr_parser = release_subparsers.add_parser(
         "create-pr",
-        help="Prepare one promoted contract candidate and open a release PR",
+        help="Compatibility Git workflow: prepare a candidate and open a release PR",
     )
     release_pr_parser.add_argument("--base", required=True)
     release_pr_parser.add_argument("--candidate", required=True)
@@ -508,11 +523,20 @@ def main() -> int:
 
         if args.command == "release":
             from semapact.interfaces.commands.release_cmd import (
-                run_release_classify, run_release_classify_repo, run_release_build_manifest,
-                run_release_prepare, run_release_create_pr, run_release_create_prs
+                run_release_build_manifest,
+                run_release_classify,
+                run_release_classify_repo,
+                run_release_create_pr,
+                run_release_create_prs,
+                run_release_plan,
+                run_release_prepare,
             )
             if args.release_command == "classify":
                 payload = run_release_classify(args)
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return 0
+            if args.release_command == "plan":
+                payload = run_release_plan(args)
                 print(json.dumps(payload, indent=2, sort_keys=True))
                 return 0
             if args.release_command == "classify-repo":

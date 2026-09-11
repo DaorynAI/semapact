@@ -12,6 +12,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
+from semapact.application.services.deployment import DeploymentService
 from semapact.contractops import AppliedContractRelease
 from semapact.deployment import (
     DeploymentAuthorization,
@@ -26,7 +27,6 @@ from semapact.interfaces.outcomes import (
 )
 from semapact.observation import RuntimeProvider
 from semapact.reconciliation import classify_reconciliation_status
-from semapact.services.deployment_service import DeploymentService
 
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)

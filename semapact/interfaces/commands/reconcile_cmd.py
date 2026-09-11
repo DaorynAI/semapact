@@ -7,8 +7,9 @@ from dataclasses import dataclass
 import json
 from typing import Literal
 
+from semapact.application.models.reconciliation import RuntimeReconciliation
+from semapact.application.services.reconciliation import ReconciliationService
 from semapact.interfaces.outcomes import ProcessOutcome, outcome_from_reconciliation_status
-from semapact.services.reconciliation_service import ReconciliationService, RuntimeReconciliation
 
 
 @dataclass(frozen=True)

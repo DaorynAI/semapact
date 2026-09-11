@@ -9,11 +9,11 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
-import semapact.services.governance_service as governance_service_module
+import semapact.application.services.governance as governance_service_module
+from semapact.application.services.governance import GovernanceService
 from semapact.change_context import ChangeContext
 from semapact.governance.models import GovernanceDecision
 from semapact.lifecycle.merge_engine import MergeConflict
-from semapact.services import GovernanceService
 
 
 def _contract(physical_type: str) -> OpenDataContractStandard:
