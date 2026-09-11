@@ -10,6 +10,8 @@ from semapact.services.reconciliation_service import (
     ReconciliationService,
     RuntimeReconciliation,
 )
+from semapact.services.release_models import ReleasePlanningResult
+from semapact.services.release_planning_service import ReleasePlanningService
 from semapact.services.version_authority_service import VersionAuthorityService
 
 __all__ = [
@@ -18,6 +20,8 @@ __all__ = [
     "GovernanceProposal",
     "GovernanceService",
     "ReconciliationService",
+    "ReleasePlanningResult",
+    "ReleasePlanningService",
     "RuntimeReconciliation",
     "VersionAuthorityService",
 ]
