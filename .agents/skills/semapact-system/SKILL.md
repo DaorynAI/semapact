@@ -44,7 +44,7 @@ Owns identity, lifecycle semantics, breaking/deprecation policy, change classifi
 
 ### D. ContractOps domain
 
-Owns deterministic release artifacts, authorization, APPLY/PUBLISH contracts, and exact artifact association. Later phases consume earlier artifacts; they do not rerun governance/version classification.
+Owns deterministic release artifacts, authorization, APPLY/PUBLISH contracts, and exact artifact association. Downstream phases consume earlier artifacts; they do not rerun governance/version classification.
 
 ### E. Deployment/runtime domain
 
@@ -78,11 +78,11 @@ Provider SDK/client and physical-platform translation live under `semapact/platf
 Do not organize models by the fact that they are "data". Organize them by meaning:
 
 ```text
-ODCS governed contract                 → ODCS model
-GovernanceDecision / ReleasePlan       → owning domain package
-ReleasePlanningResult                  → application/models
-Databricks table/statement representation → platforms/databricks
-future deployment/history persistence  → its persistence/history boundary
+ODCS governed contract                      → ODCS model
+GovernanceDecision / ReleasePlan            → owning domain package
+ReleasePlanningResult                       → application/models
+Databricks table/statement representation   → platforms/databricks
+persistence/history record                  → dedicated persistence/history boundary
 ```
 
 Avoid generic root-level `schema`, `models`, or `data_models` dumping grounds.
@@ -100,3 +100,7 @@ When moving ownership:
 3. retain a thin compatibility re-export when public/backward compatibility matters;
 4. add architecture/import tests so compatibility wrappers cannot become a second implementation;
 5. update contributor-facing architecture rules in the same change.
+
+## 6. Public architecture documentation rule
+
+Public agent skills describe only current invariants, supported behavior, package ownership, coding constraints, and compatibility contracts. Product sequencing, unimplemented capability plans, internal technical debt, and roadmap material do not belong in public skills.
