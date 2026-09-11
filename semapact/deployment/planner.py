@@ -5,6 +5,7 @@ from __future__ import annotations
 from open_data_contract_standard.model import SchemaObject
 
 from semapact.contractops.execution_models import AppliedContractRelease
+from semapact.contractops.integrity import validate_applied_release_identity
 from semapact.deployment.models import (
     DeploymentAction,
     DeploymentActionKind,
@@ -35,6 +36,7 @@ def build_deployment_plan(
             f"target must be DeploymentTarget, got {type(target).__name__}"
         )
 
+    validate_applied_release_identity(release)
     contract = release.to_contract()
     asset_specs = runtime_asset_specs_from_contract(contract)
     specs_by_asset = {spec.governed_asset: spec for spec in asset_specs}
