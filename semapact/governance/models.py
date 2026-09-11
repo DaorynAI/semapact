@@ -8,10 +8,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from semapact.change_context import ChangeContext
-from semapact.core.release import RequiredBump
 from semapact.governance_codes import GovernanceReasonCode, GovernanceSeverity
 from semapact.lifecycle.changes import GovernanceChange
 from semapact.lifecycle.policy import BreakingChange
+from semapact.versioning import RequiredBump
 
 
 class DecisionResult(str, Enum):
@@ -110,4 +110,3 @@ class GovernanceDecision(GovernanceModel):
                     f"ALLOW decision invariant violation: evidence.merge_conflicts_count must be 0, got {self.evidence.merge_conflicts_count}"
                 )
         return self
-
