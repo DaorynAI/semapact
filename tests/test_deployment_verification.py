@@ -26,6 +26,7 @@ from semapact.observation import (
 from semapact.reconciliation import RuntimeDriftStatus, classify_reconciliation_status
 
 CAPTURED_AT = datetime(2026, 9, 10, 7, 0, tzinfo=timezone.utc)
+SOURCE_REFERENCE = "https://adb.example"
 
 
 class FakeRuntimeProvider:
@@ -75,7 +76,11 @@ def _plan() -> DeploymentPlan:
         physical_name="orders_v2",
         desired_state_json=schema.model_dump_json(by_alias=True, exclude_none=True),
     )
-    target = DeploymentTarget(platform="databricks", runtime_target="main.silver")
+    target = DeploymentTarget(
+        platform="databricks",
+        runtime_target="main.silver",
+        source_reference=SOURCE_REFERENCE,
+    )
     plan_id = compute_deployment_plan_id(
         applied_release_id="release-1",
         contract_id="orders-contract",
@@ -101,6 +106,7 @@ def _observation(
     *,
     physical_type: str | None = "BIGINT",
     nullable: bool | None = False,
+    source_identifier: str = SOURCE_REFERENCE,
 ) -> ObservedPlatformState:
     asset_identity = ObservedAssetIdentity(
         platform="databricks",
@@ -109,7 +115,7 @@ def _observation(
     )
     state = ObservedPlatformState(
         platform="databricks",
-        source_identifier="https://adb.example",
+        source_identifier=source_identifier,
         captured_at=CAPTURED_AT,
         assets=(
             ObservedAsset(
@@ -175,6 +181,15 @@ def test_provider_platform_mismatch_fails_closed() -> None:
     provider.key = "snowflake"
 
     with pytest.raises(ValidationError, match="does not match DeploymentPlan platform"):
+        verify_deployment_convergence(_plan(), provider)
+
+
+def test_runtime_source_mismatch_fails_closed() -> None:
+    provider = FakeRuntimeProvider(
+        _observation(source_identifier="https://other-workspace.example")
+    )
+
+    with pytest.raises(ValidationError, match="source reference"):
         verify_deployment_convergence(_plan(), provider)
 
 
