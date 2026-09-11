@@ -1,4 +1,4 @@
-"""Storage-neutral governance history repository contract."""
+"""Storage-neutral typed persistence ports for governance history."""
 
 from __future__ import annotations
 
@@ -24,13 +24,8 @@ class HistoryCorruptionError(HistoryRepositoryError):
     """Persisted or supplied historical content fails canonical validation."""
 
 
-class GovernanceHistoryRepository(Protocol):
-    """Typed persistence/query port for canonical governance history.
-
-    The port deliberately starts with artifacts that already have canonical M0/M2
-    ownership. M3 adapters persist and retrieve these exact models rather than
-    defining storage-owned replacements.
-    """
+class DecisionHistoryRepository(Protocol):
+    """Persistence capability for canonical GovernanceDecision history only."""
 
     def put_decision(self, decision: GovernanceDecision) -> None:
         """Persist one immutable GovernanceDecision idempotently."""
@@ -43,6 +38,10 @@ class GovernanceHistoryRepository(Protocol):
     def list_decisions(self, contract_id: str) -> tuple[GovernanceDecision, ...]:
         """List decisions for one contract in deterministic artifact-ID order."""
         ...
+
+
+class ChangeSetHistoryRepository(Protocol):
+    """Persistence capability for canonical ChangeSet history only."""
 
     def put_change_set(self, change_set: ChangeSet) -> None:
         """Persist one immutable ChangeSet idempotently."""
