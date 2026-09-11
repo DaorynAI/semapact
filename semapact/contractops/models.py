@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -16,6 +17,14 @@ class ContractOpsModel(BaseModel):
     """Shared immutable base for M2 ContractOps domain models."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    def model_post_init(self, __context: Any) -> None:
+        # Import lazily so the integrity module can depend on concrete ContractOps
+        # model classes without creating a module-import cycle. Identity-bearing
+        # artifacts therefore fail closed both on construction and rehydration.
+        from semapact.contractops.integrity import validate_contractops_artifact_identity
+
+        validate_contractops_artifact_identity(self)
 
 
 class ChangeSet(ContractOpsModel):
