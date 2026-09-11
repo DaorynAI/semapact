@@ -45,6 +45,27 @@ SEMAPACT_PUBLICATION_NAMESPACE = uuid.UUID(
 )
 
 
+def validate_contractops_artifact_identity(artifact: object) -> None:
+    """Validate deterministic identity for self-describing ContractOps artifacts.
+
+    Non-identity configuration/evidence models are intentionally ignored. This hook
+    is called by ``ContractOpsModel.model_post_init`` so persisted artifacts cannot
+    be rehydrated with IDs that do not match their immutable content.
+    """
+    if isinstance(artifact, ChangeSet):
+        validate_change_set_identity(artifact)
+    elif isinstance(artifact, ReleasePlan):
+        validate_release_plan_identity(artifact)
+    elif isinstance(artifact, VersionResolution):
+        validate_version_resolution_identity(artifact)
+    elif isinstance(artifact, ContractOpsAuthorization):
+        validate_contractops_authorization_identity(artifact)
+    elif isinstance(artifact, AppliedContractRelease):
+        validate_applied_release_identity(artifact)
+    elif isinstance(artifact, PublicationResult):
+        validate_publication_result_identity(artifact)
+
+
 def compute_change_set_id(
     *,
     contract_id: str,
