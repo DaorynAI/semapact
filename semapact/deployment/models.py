@@ -45,10 +45,11 @@ class NativeOperationKind(str, Enum):
 
 
 class DeploymentTarget(DeploymentModel):
-    """Explicit runtime target for one DeploymentPlan."""
+    """Exact runtime target for one DeploymentPlan, excluding credentials."""
 
     platform: str
     runtime_target: str
+    source_reference: str
     server_name: str | None = None
 
     @field_validator("platform")
@@ -59,12 +60,12 @@ class DeploymentTarget(DeploymentModel):
             raise ValueError("platform must not be empty")
         return cleaned
 
-    @field_validator("runtime_target")
+    @field_validator("runtime_target", "source_reference")
     @classmethod
-    def _normalize_runtime_target(cls, value: str) -> str:
+    def _normalize_required_target_text(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("runtime_target must not be empty")
+            raise ValueError("runtime target fields must not be empty")
         return cleaned
 
     @field_validator("server_name")
@@ -128,7 +129,7 @@ class DeploymentPlan(DeploymentModel):
     selected_version: str
     target: DeploymentTarget
     actions: tuple[DeploymentAction, ...]
-    plan_version: Literal["1"] = "1"
+    plan_version: Literal["2"] = "2"
 
     @field_validator(
         "deployment_plan_id",
@@ -252,7 +253,7 @@ def compute_deployment_plan_id(
     selected_version: str,
     target: DeploymentTarget,
     actions: Sequence[DeploymentAction],
-    plan_version: str = "1",
+    plan_version: str = "2",
 ) -> str:
     return deterministic_uuid5(
         SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
