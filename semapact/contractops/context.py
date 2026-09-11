@@ -2,8 +2,19 @@
 
 from __future__ import annotations
 
-from semapact.contractops.models import ChangeSet, ReleasePlan, VersionResolution
+from semapact.contractops.integrity import (
+    validate_change_set_identity,
+    validate_release_plan_identity,
+    validate_version_resolution_identity,
+)
+from semapact.contractops.models import (
+    ChangeSet,
+    ReleasePlan,
+    ReleasePrecondition,
+    VersionResolution,
+)
 from semapact.exceptions import ReleaseValidationError
+from semapact.governance.gate import GovernanceOperation, evaluate_governance_gate
 from semapact.governance.models import GovernanceDecision
 
 
@@ -12,6 +23,8 @@ def validate_proposal_context(
     change_set: ChangeSet,
 ) -> None:
     """Fail closed unless ChangeSet exactly projects one GovernanceDecision."""
+    validate_change_set_identity(change_set)
+
     if change_set.contract_id != decision.contract_id:
         raise ReleaseValidationError(
             "ChangeSet and GovernanceDecision contract IDs do not match"
@@ -34,6 +47,8 @@ def validate_release_context(
 ) -> None:
     """Fail closed unless immutable artifacts describe one exact release context."""
     validate_proposal_context(decision, change_set)
+    validate_release_plan_identity(release_plan)
+    validate_version_resolution_identity(version_resolution)
 
     if release_plan.contract_id != change_set.contract_id:
         raise ReleaseValidationError("ReleasePlan and ChangeSet contract IDs do not match")
@@ -50,6 +65,20 @@ def validate_release_context(
     if release_plan.required_version_bump != decision.required_version_bump:
         raise ReleaseValidationError(
             "ReleasePlan required version bump does not match GovernanceDecision"
+        )
+
+    publish_gate = evaluate_governance_gate(decision, GovernanceOperation.PUBLISH)
+    if publish_gate.allowed:
+        expected_preconditions: tuple[ReleasePrecondition, ...] = ()
+    elif publish_gate.reason == "review_required":
+        expected_preconditions = (ReleasePrecondition.REVIEW_AUTHORIZATION_REQUIRED,)
+    else:
+        raise ReleaseValidationError(
+            "GovernanceDecision cannot be represented by an executable ReleasePlan"
+        )
+    if release_plan.preconditions != expected_preconditions:
+        raise ReleaseValidationError(
+            "ReleasePlan preconditions do not match authoritative governance disposition"
         )
 
     if version_resolution.release_plan_id != release_plan.release_plan_id:
