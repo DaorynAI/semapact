@@ -114,7 +114,7 @@ Breaking checks apply ONLY when:
 ## 4.2 Behavior Matrix
 
 | Lifecycle State | Breaking Checks | Auto-Deprecation | Structural Changes | Metadata Updates |
-|-----------------|----------------|-----------------|-------------------|------------------|
+|-----------------|----------------|-----------------|------------------|------------------|
 | draft           | ❌ Skip        | ❌ Skip         | ✅ Allowed         | ✅ Allowed |
 | active          | ✅ Enforce     | ✅ Apply        | ⚠ Governed        | ✅ Allowed |
 | deprecated      | ❌ Skip        | ❌ Skip         | ❌ Forbidden       | ✅ Allowed |
