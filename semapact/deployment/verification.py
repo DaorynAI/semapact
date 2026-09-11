@@ -51,6 +51,10 @@ def verify_deployment_convergence(
         raise ValidationError(
             "Observed runtime platform does not match DeploymentPlan platform"
         )
+    if observation.source_identifier.strip() != plan.target.source_reference:
+        raise ValidationError(
+            "Observed runtime source does not match DeploymentPlan source reference"
+        )
 
     return reconcile_governed_contract(
         desired_contract,
