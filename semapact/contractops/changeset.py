@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Sequence
 
 from semapact.change_context import ChangeContext
+from semapact.contractops.integrity import (
+    SEMAPACT_CHANGESET_NAMESPACE,
+    compute_change_set_id,
+)
 from semapact.contractops.models import ChangeSet
 from semapact.governance.models import GovernanceDecision
 from semapact.lifecycle.changes import GovernanceChange, governance_change_sort_key
-from semapact.utils.deterministic import deterministic_uuid5
-
-
-SEMAPACT_CHANGESET_NAMESPACE = uuid.UUID("3ea0f6d8-28ca-4bb4-94f5-ea1f0f48cb84")
 
 
 def build_change_set(
@@ -45,16 +44,15 @@ def build_change_set(
     cleaned_source = _optional_text(source)
     cleaned_actor_reference = _optional_text(actor_reference)
 
-    identity_payload = {
-        "contract_id": cleaned_contract_id,
-        "base_revision_ref": cleaned_base_ref,
-        "candidate_revision_ref": cleaned_candidate_ref,
-        "context": context.model_dump(mode="json"),
-        "changes": [change.model_dump(mode="json") for change in canonical_changes],
-        "source": cleaned_source,
-        "actor_reference": cleaned_actor_reference,
-    }
-    change_set_id = deterministic_uuid5(SEMAPACT_CHANGESET_NAMESPACE, identity_payload)
+    change_set_id = compute_change_set_id(
+        contract_id=cleaned_contract_id,
+        base_revision_ref=cleaned_base_ref,
+        candidate_revision_ref=cleaned_candidate_ref,
+        changes=canonical_changes,
+        context=context,
+        source=cleaned_source,
+        actor_reference=cleaned_actor_reference,
+    )
 
     return ChangeSet(
         change_set_id=change_set_id,

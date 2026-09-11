@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from semapact.contractops.execution_models import AppliedContractRelease
+from semapact.contractops.integrity import (
+    validate_applied_release_identity,
+    validate_contractops_authorization_identity,
+)
 from semapact.contractops.models import AuthorizationReason, ContractOpsAuthorization
 from semapact.deployment.models import (
     DeploymentAuthorization,
@@ -33,6 +37,8 @@ def authorize_deployment(
         )
 
     validate_deployment_plan_identity(plan)
+    validate_applied_release_identity(release)
+    validate_contractops_authorization_identity(authorization)
 
     if authorization.operation is not GovernanceOperation.DEPLOY:
         raise ReleaseValidationError(

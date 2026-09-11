@@ -10,23 +10,27 @@ from semapact.contractops import (
     extract_version_from_release_reference,
     resolve_release_version,
 )
-from semapact.core.release import ActualVersionBump, RequiredBump
+from semapact.contractops.integrity import compute_release_plan_id
 from semapact.exceptions import ReleaseValidationError
+from semapact.versioning import ActualVersionBump, RequiredBump
 
 
 def _plan(
     required_bump: RequiredBump,
     *,
     contract_id: str = "orders-product",
-    release_plan_id: str = "release-plan-1",
 ) -> ReleasePlan:
+    fields = {
+        "contract_id": contract_id,
+        "change_set_id": f"change-set:{contract_id}",
+        "decision_id": f"decision:{contract_id}",
+        "release_revision_ref": "rev:candidate",
+        "required_version_bump": required_bump,
+        "preconditions": (),
+    }
     return ReleasePlan(
-        release_plan_id=release_plan_id,
-        contract_id=contract_id,
-        change_set_id="change-set-1",
-        decision_id="decision-1",
-        release_revision_ref="rev:candidate",
-        required_version_bump=required_bump,
+        release_plan_id=compute_release_plan_id(**fields),
+        **fields,
     )
 
 
@@ -59,12 +63,12 @@ def test_semapact_authority_selects_smallest_valid_release_version(
 
 def test_semapact_authority_versions_contracts_independently() -> None:
     orders = resolve_release_version(
-        _plan("minor", contract_id="orders", release_plan_id="release-orders"),
+        _plan("minor", contract_id="orders"),
         current_version="1.2.3",
         config=VersionAuthorityConfig(),
     )
     customers = resolve_release_version(
-        _plan("none", contract_id="customers", release_plan_id="release-customers"),
+        _plan("none", contract_id="customers"),
         current_version="4.7.2",
         config=VersionAuthorityConfig(),
     )

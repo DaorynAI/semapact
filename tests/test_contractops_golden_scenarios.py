@@ -173,6 +173,7 @@ def _allow_chain():
         DeploymentTarget(
             platform="databricks",
             runtime_target="main.silver",
+            source_reference="workspace:golden",
             server_name="production",
         ),
     )
@@ -360,6 +361,7 @@ def test_allow_chain_has_stable_cross_boundary_golden_semantics() -> None:
             "target": {
                 "platform": "databricks",
                 "runtime_target": "main.silver",
+                "source_reference": "workspace:golden",
                 "server_name": "production",
             },
             "actions": [
@@ -443,7 +445,11 @@ def test_review_requires_exact_apply_and_deployment_authorization() -> None:
     )
     plan = build_deployment_plan(
         release,
-        DeploymentTarget(platform="databricks", runtime_target="main.silver"),
+        DeploymentTarget(
+            platform="databricks",
+            runtime_target="main.silver",
+            source_reference="workspace:golden",
+        ),
     )
 
     unscoped_deploy_evidence = _review_evidence(

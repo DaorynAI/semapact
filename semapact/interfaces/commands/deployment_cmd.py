@@ -46,6 +46,7 @@ def run_deployment_plan(args: argparse.Namespace) -> DeploymentCommandResult:
     target = DeploymentTarget(
         platform=args.platform,
         runtime_target=args.runtime,
+        source_reference=args.source_reference,
         server_name=args.server,
     )
     plan = DeploymentService().plan(release, target)

@@ -3,10 +3,11 @@ from __future__ import annotations
 import pytest
 
 from semapact.contractops import ReleasePlan, VersionAuthority
+from semapact.contractops.integrity import compute_release_plan_id
 from semapact.core.config import ConfigManager
-from semapact.core.release import RequiredBump
 from semapact.exceptions import ReleaseValidationError, ValidationError
 from semapact.services import VersionAuthorityService
+from semapact.versioning import RequiredBump
 
 
 @pytest.fixture(autouse=True)
@@ -29,13 +30,17 @@ def _config(data: dict[str, object] | None = None) -> ConfigManager:
 
 
 def _plan(required_bump: RequiredBump = "minor") -> ReleasePlan:
+    fields = {
+        "contract_id": "orders-product",
+        "change_set_id": "change-set-1",
+        "decision_id": "decision-1",
+        "release_revision_ref": "rev:candidate",
+        "required_version_bump": required_bump,
+        "preconditions": (),
+    }
     return ReleasePlan(
-        release_plan_id="release-plan-1",
-        contract_id="orders-product",
-        change_set_id="change-set-1",
-        decision_id="decision-1",
-        release_revision_ref="rev:candidate",
-        required_version_bump=required_bump,
+        release_plan_id=compute_release_plan_id(**fields),
+        **fields,
     )
 
 

@@ -11,6 +11,7 @@ from open_data_contract_standard.model import (
 from pydantic import ValidationError as PydanticValidationError
 
 from semapact.contractops import AppliedContractRelease
+from semapact.contractops.integrity import compute_applied_release_id
 from semapact.deployment import (
     DeploymentAction,
     DeploymentActionKind,
@@ -41,7 +42,6 @@ def _schema(
 def _release(
     *,
     schemas: list[SchemaObject] | None = None,
-    applied_release_id: str = "applied-release:test",
 ) -> AppliedContractRelease:
     contract = OpenDataContractStandard(
         apiVersion="v3.1.0",
@@ -58,17 +58,20 @@ def _release(
         separators=(",", ":"),
         ensure_ascii=False,
     )
+    fields = {
+        "contract_id": "orders-product",
+        "decision_id": "decision:test",
+        "change_set_id": "change-set:test",
+        "release_plan_id": "release-plan:test",
+        "version_resolution_id": "version-resolution:test",
+        "release_revision_ref": "rev:released",
+        "selected_version": "1.2.0",
+        "authorization_id": "authorization:test",
+        "released_contract_json": released_contract_json,
+    }
     return AppliedContractRelease(
-        applied_release_id=applied_release_id,
-        contract_id="orders-product",
-        decision_id="decision:test",
-        change_set_id="change-set:test",
-        release_plan_id="release-plan:test",
-        version_resolution_id="version-resolution:test",
-        release_revision_ref="rev:released",
-        selected_version="1.2.0",
-        authorization_id="authorization:test",
-        released_contract_json=released_contract_json,
+        applied_release_id=compute_applied_release_id(**fields),
+        **fields,
     )
 
 
@@ -76,6 +79,7 @@ def _target() -> DeploymentTarget:
     return DeploymentTarget(
         platform="Databricks",
         runtime_target="main.analytics",
+        source_reference="https://workspace.example",
         server_name="production",
     )
 
@@ -102,7 +106,8 @@ def test_plan_preserves_exact_applied_release_provenance() -> None:
     assert plan.release_plan_id == release.release_plan_id
     assert plan.released_revision_ref == release.release_revision_ref
     assert plan.selected_version == release.selected_version
-    assert plan.plan_version == "1"
+    assert plan.plan_version == "2"
+    assert plan.target.source_reference == "https://workspace.example"
 
 
 def test_actions_are_provider_neutral_ensure_state_intents() -> None:
@@ -154,6 +159,7 @@ def test_target_is_explicit_and_changes_plan_identity() -> None:
         DeploymentTarget(
             platform="databricks",
             runtime_target="main.staging",
+            source_reference="https://staging-workspace.example",
             server_name="staging",
         ),
     )
@@ -163,14 +169,28 @@ def test_target_is_explicit_and_changes_plan_identity() -> None:
     assert staging.target.runtime_target == "main.staging"
 
 
+def test_runtime_source_changes_plan_identity_for_same_runtime_target() -> None:
+    release = _release()
+    first = build_deployment_plan(release, _target())
+    second = build_deployment_plan(
+        release,
+        DeploymentTarget(
+            platform="databricks",
+            runtime_target="main.analytics",
+            source_reference="https://other-workspace.example",
+            server_name="production",
+        ),
+    )
+
+    assert first.deployment_plan_id != second.deployment_plan_id
+
+
 def test_schema_order_is_canonicalized_within_each_exact_release() -> None:
     first_release = _release(
         schemas=[_schema("zeta"), _schema("alpha")],
-        applied_release_id="applied-release:first",
     )
     second_release = _release(
         schemas=[_schema("alpha"), _schema("zeta")],
-        applied_release_id="applied-release:second",
     )
 
     first = build_deployment_plan(first_release, _target())
@@ -178,8 +198,8 @@ def test_schema_order_is_canonicalized_within_each_exact_release() -> None:
 
     assert [action.governed_asset for action in first.actions] == ["alpha", "zeta"]
     assert [action.governed_asset for action in second.actions] == ["alpha", "zeta"]
-    # Exact release identity remains authoritative; #115 does not collapse two
-    # distinct AppliedContractRelease artifacts into one plan identity.
+    # Exact release snapshot identity remains authoritative; two releases with
+    # differently serialized source schema order remain distinct authorities.
     assert first.deployment_plan_id != second.deployment_plan_id
 
 

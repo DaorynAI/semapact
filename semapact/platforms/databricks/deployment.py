@@ -208,6 +208,10 @@ class DatabricksDeploymentAdapter:
             raise ValidationError("DeploymentPreview platform does not match adapter")
         if preview.runtime_target != plan.target.runtime_target:
             raise ValidationError("DeploymentPreview target does not match DeploymentPlan")
+        if preview.source_identifier != plan.target.source_reference:
+            raise ValidationError(
+                "DeploymentPreview runtime source does not match DeploymentPlan source reference"
+            )
 
         current = self._observe_plan_scope(plan)
         if current.source_identifier != preview.source_identifier:
@@ -290,6 +294,10 @@ def _validate_observation(
         raise ValidationError("Databricks preview requires Databricks runtime evidence")
     if not observed_state.source_identifier.strip():
         raise ValidationError("Runtime observation source_identifier is required")
+    if observed_state.source_identifier != plan.target.source_reference:
+        raise ValidationError(
+            "Runtime observation source does not match DeploymentPlan source reference"
+        )
     if observed_state.fingerprint is None:
         raise ValidationError("Runtime observation fingerprint is required")
     if observed_state.fingerprint != fingerprint_observed_state(observed_state):

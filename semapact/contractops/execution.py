@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
-import uuid
 from typing import Protocol
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.contractops.context import validate_release_context
 from semapact.contractops.execution_models import AppliedContractRelease, PublicationResult
+from semapact.contractops.integrity import (
+    SEMAPACT_APPLIED_RELEASE_NAMESPACE,
+    SEMAPACT_PUBLICATION_NAMESPACE,
+    compute_applied_release_id,
+    compute_publication_id,
+    validate_applied_release_identity,
+    validate_contractops_authorization_identity,
+)
 from semapact.contractops.models import (
     ChangeSet,
     ContractOpsAuthorization,
@@ -18,16 +25,8 @@ from semapact.contractops.models import (
 from semapact.exceptions import ContractOpsAuthorizationError, ReleaseValidationError
 from semapact.governance.gate import GovernanceOperation
 from semapact.governance.models import GovernanceDecision
-from semapact.utils.deterministic import canonical_compact_json, deterministic_uuid5
+from semapact.utils.deterministic import canonical_compact_json
 from semapact.versioning import normalize_semver
-
-
-SEMAPACT_APPLIED_RELEASE_NAMESPACE = uuid.UUID(
-    "a5de2e65-aee7-48ac-9cb6-6a785f4cdf33"
-)
-SEMAPACT_PUBLICATION_NAMESPACE = uuid.UUID(
-    "f776fc77-b37f-43ef-bf6d-d8dcf38d264f"
-)
 
 
 class ContractReleasePublisher(Protocol):
@@ -105,20 +104,16 @@ def apply_contract_release(
     released_contract.version = selected_version
     released_contract_json = _canonical_contract_json(released_contract)
 
-    stable_record = {
-        "contract_id": release_plan.contract_id,
-        "decision_id": decision.decision_id,
-        "change_set_id": change_set.change_set_id,
-        "release_plan_id": release_plan.release_plan_id,
-        "version_resolution_id": version_resolution.version_resolution_id,
-        "release_revision_ref": release_plan.release_revision_ref,
-        "selected_version": selected_version,
-        "authorization_id": authorization.authorization_id,
-        "released_contract_json": released_contract_json,
-    }
-    applied_release_id = deterministic_uuid5(
-        SEMAPACT_APPLIED_RELEASE_NAMESPACE,
-        stable_record,
+    applied_release_id = compute_applied_release_id(
+        contract_id=release_plan.contract_id,
+        decision_id=decision.decision_id,
+        change_set_id=change_set.change_set_id,
+        release_plan_id=release_plan.release_plan_id,
+        version_resolution_id=version_resolution.version_resolution_id,
+        release_revision_ref=release_plan.release_revision_ref,
+        selected_version=selected_version,
+        authorization_id=authorization.authorization_id,
+        released_contract_json=released_contract_json,
     )
 
     return AppliedContractRelease(
@@ -154,6 +149,7 @@ def publish_contract_release(
     if not hasattr(publisher, "publish") or not callable(publisher.publish):
         raise TypeError("publisher must provide a callable publish(release) method")
 
+    validate_applied_release_identity(release)
     _validate_publication_authorization(release, authorization)
 
     publication_reference = publisher.publish(release)
@@ -165,14 +161,10 @@ def publish_contract_release(
             "publisher.publish() returned an empty publication reference"
         )
 
-    stable_record = {
-        "applied_release_id": release.applied_release_id,
-        "authorization_id": authorization.authorization_id,
-        "publication_reference": publication_reference,
-    }
-    publication_id = deterministic_uuid5(
-        SEMAPACT_PUBLICATION_NAMESPACE,
-        stable_record,
+    publication_id = compute_publication_id(
+        applied_release_id=release.applied_release_id,
+        authorization_id=authorization.authorization_id,
+        publication_reference=publication_reference,
     )
     return PublicationResult(
         publication_id=publication_id,
@@ -196,6 +188,7 @@ def _validate_authorization(
             "authorization must be ContractOpsAuthorization, "
             f"got {type(authorization).__name__}"
         )
+    validate_contractops_authorization_identity(authorization)
     if authorization.operation is not operation:
         raise ReleaseValidationError(
             f"Authorization operation must be {operation.value}, "
@@ -222,6 +215,7 @@ def _validate_publication_authorization(
     release: AppliedContractRelease,
     authorization: ContractOpsAuthorization,
 ) -> None:
+    validate_contractops_authorization_identity(authorization)
     if authorization.operation is not GovernanceOperation.PUBLISH:
         raise ReleaseValidationError(
             "Publication requires operation-scoped PUBLISH authorization"

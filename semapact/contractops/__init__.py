@@ -14,6 +14,14 @@ from semapact.contractops.execution_models import (
     AppliedContractRelease,
     PublicationResult,
 )
+from semapact.contractops.integrity import (
+    validate_applied_release_identity,
+    validate_change_set_identity,
+    validate_contractops_authorization_identity,
+    validate_publication_result_identity,
+    validate_release_plan_identity,
+    validate_version_resolution_identity,
+)
 from semapact.contractops.models import (
     AuthorizationReason,
     ChangeSet,
@@ -54,4 +62,10 @@ __all__ = [
     "extract_version_from_release_reference",
     "publish_contract_release",
     "resolve_release_version",
+    "validate_applied_release_identity",
+    "validate_change_set_identity",
+    "validate_contractops_authorization_identity",
+    "validate_publication_result_identity",
+    "validate_release_plan_identity",
+    "validate_version_resolution_identity",
 ]

@@ -7,11 +7,14 @@ from open_data_contract_standard.model import OpenDataContractStandard, SchemaOb
 import pytest
 
 from semapact.contractops import AppliedContractRelease
+from semapact.contractops.integrity import compute_applied_release_id
 from semapact.exceptions import ValidationError
 from semapact.interfaces import cli
 from semapact.interfaces.commands import deployment_cmd
 from semapact.interfaces.commands.deployment_cmd import DeploymentCommandResult
 from semapact.interfaces.outcomes import ProcessOutcome
+
+SOURCE_REFERENCE = "https://workspace.example"
 
 
 def _release() -> AppliedContractRelease:
@@ -38,21 +41,25 @@ def _release() -> AppliedContractRelease:
             )
         ],
     )
+    released_contract_json = json.dumps(
+        contract.model_dump(mode="json", by_alias=True, exclude_none=True),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    fields = {
+        "contract_id": "orders-product",
+        "decision_id": "decision:test",
+        "change_set_id": "change-set:test",
+        "release_plan_id": "release-plan:test",
+        "version_resolution_id": "version-resolution:test",
+        "release_revision_ref": "rev:released",
+        "selected_version": "1.2.0",
+        "authorization_id": "authorization:test",
+        "released_contract_json": released_contract_json,
+    }
     return AppliedContractRelease(
-        applied_release_id="applied-release:test",
-        contract_id="orders-product",
-        decision_id="decision:test",
-        change_set_id="change-set:test",
-        release_plan_id="release-plan:test",
-        version_resolution_id="version-resolution:test",
-        release_revision_ref="rev:released",
-        selected_version="1.2.0",
-        authorization_id="authorization:test",
-        released_contract_json=json.dumps(
-            contract.model_dump(mode="json", by_alias=True, exclude_none=True),
-            sort_keys=True,
-            separators=(",", ":"),
-        ),
+        applied_release_id=compute_applied_release_id(**fields),
+        **fields,
     )
 
 
@@ -69,6 +76,8 @@ def test_deployment_parser_exposes_four_explicit_phases() -> None:
             "databricks",
             "--runtime",
             "main.silver",
+            "--source-reference",
+            SOURCE_REFERENCE,
         ]
     )
     preview = parser.parse_args(
@@ -84,8 +93,6 @@ def test_deployment_parser_exposes_four_explicit_phases() -> None:
             "preview.json",
             "--authorization",
             "authorization.json",
-            "--warehouse-id",
-            "warehouse-1",
         ]
     )
     verify = parser.parse_args(
@@ -93,17 +100,19 @@ def test_deployment_parser_exposes_four_explicit_phases() -> None:
     )
 
     assert plan.deployment_command == "plan"
+    assert plan.source_reference == SOURCE_REFERENCE
     assert preview.deployment_command == "preview"
     assert not hasattr(preview, "warehouse_id")
     assert execute.deployment_command == "execute"
-    assert execute.warehouse_id == "warehouse-1"
+    assert execute.warehouse_id is None
     assert verify.deployment_command == "verify"
     assert verify.output == "json"
 
 
 def test_plan_command_outputs_canonical_deployment_plan(tmp_path) -> None:
     release_path = tmp_path / "release.json"
-    release_path.write_text(_release().model_dump_json(), encoding="utf-8")
+    release = _release()
+    release_path.write_text(release.model_dump_json(), encoding="utf-8")
     args = cli._build_parser().parse_args(
         [
             "deployment",
@@ -114,6 +123,8 @@ def test_plan_command_outputs_canonical_deployment_plan(tmp_path) -> None:
             "databricks",
             "--runtime",
             "main.silver",
+            "--source-reference",
+            SOURCE_REFERENCE,
             "--server",
             "production",
         ]
@@ -123,10 +134,11 @@ def test_plan_command_outputs_canonical_deployment_plan(tmp_path) -> None:
     payload = json.loads(result.output)
 
     assert result.outcome is ProcessOutcome.SUCCESS
-    assert payload["applied_release_id"] == "applied-release:test"
+    assert payload["applied_release_id"] == release.applied_release_id
     assert payload["target"] == {
         "platform": "databricks",
         "runtime_target": "main.silver",
+        "source_reference": SOURCE_REFERENCE,
         "server_name": "production",
     }
     assert payload["actions"][0]["governed_asset"] == "orders"

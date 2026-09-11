@@ -34,6 +34,7 @@ from semapact.reconciliation import RuntimeDriftStatus, classify_reconciliation_
 from semapact.services.deployment_service import DeploymentService
 
 CAPTURED_AT = datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc)
+SOURCE_REFERENCE = "https://adb.example"
 
 
 class FakeRuntimeProvider:
@@ -109,7 +110,11 @@ def _plan() -> DeploymentPlan:
         physical_name="orders_v2",
         desired_state_json=schema.model_dump_json(by_alias=True, exclude_none=True),
     )
-    target = DeploymentTarget(platform="databricks", runtime_target="main.silver")
+    target = DeploymentTarget(
+        platform="databricks",
+        runtime_target="main.silver",
+        source_reference=SOURCE_REFERENCE,
+    )
     plan_id = compute_deployment_plan_id(
         applied_release_id="release-1",
         contract_id="orders-contract",
@@ -131,7 +136,7 @@ def _plan() -> DeploymentPlan:
     )
 
 
-def _observation() -> ObservedPlatformState:
+def _observation(*, source: str = SOURCE_REFERENCE) -> ObservedPlatformState:
     asset_identity = ObservedAssetIdentity(
         platform="databricks",
         namespace=("main", "silver"),
@@ -140,7 +145,7 @@ def _observation() -> ObservedPlatformState:
     return with_observed_state_fingerprint(
         ObservedPlatformState(
             platform="databricks",
-            source_identifier="https://adb.example",
+            source_identifier=source,
             captured_at=CAPTURED_AT,
             assets=(
                 ObservedAsset(
@@ -221,6 +226,23 @@ def test_preview_orchestrates_observation_without_execution() -> None:
     assert provider.observe_calls == 1
     assert adapter.preview_calls == 1
     assert adapter.execute_calls == 0
+
+
+def test_preview_rejects_runtime_source_mismatch() -> None:
+    plan = _plan()
+    observation = _observation(source="https://other-workspace.example")
+    provider = FakeRuntimeProvider(observation)
+    adapter = FakeDeploymentAdapter(_preview(plan, observation))
+
+    with pytest.raises(ValidationError, match="source reference"):
+        DeploymentService().preview(
+            plan,
+            runtime_provider=provider,
+            adapter=adapter,
+        )
+
+    assert provider.observe_calls == 1
+    assert adapter.preview_calls == 0
 
 
 def test_execute_delegates_exact_canonical_artifacts() -> None:

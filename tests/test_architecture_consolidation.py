@@ -13,11 +13,11 @@ from open_data_contract_standard.model import (
 
 from semapact.change_context import ChangeContext
 from semapact.contractops import (
-    AppliedContractRelease,
     AuthorizationReason,
     ReviewAuthorizationEvidence,
     ReviewEvidenceAction,
     VersionAuthorityConfig,
+    apply_contract_release,
     authorize_contract_operation,
     build_change_set_from_decision,
     build_release_plan,
@@ -94,23 +94,31 @@ def _review_release_chain():
         current_version="1.0.0",
         config=VersionAuthorityConfig(),
     )
-
-    released_contract = candidate.model_copy(deep=True)
-    released_contract.version = version_resolution.selected_version
-    released_json = canonical_compact_json(
-        released_contract.model_dump(mode="json", by_alias=True, exclude_none=True)
-    )
-    release = AppliedContractRelease(
-        applied_release_id="applied:review-test",
-        contract_id=release_plan.contract_id,
+    apply_evidence = ReviewAuthorizationEvidence(
+        evidence_reference="approval:apply",
         decision_id=decision.decision_id,
         change_set_id=change_set.change_set_id,
         release_plan_id=release_plan.release_plan_id,
         version_resolution_id=version_resolution.version_resolution_id,
-        release_revision_ref=release_plan.release_revision_ref,
-        selected_version=version_resolution.selected_version,
-        authorization_id="authorization:apply-test",
-        released_contract_json=released_json,
+        operation=GovernanceOperation.APPLY,
+        action=ReviewEvidenceAction.APPROVE,
+    )
+    apply_authorization = authorize_contract_operation(
+        decision,
+        change_set,
+        release_plan,
+        version_resolution,
+        GovernanceOperation.APPLY,
+        evidence=apply_evidence,
+    )
+    release = apply_contract_release(
+        candidate,
+        candidate_revision_ref="rev:candidate",
+        decision=decision,
+        change_set=change_set,
+        release_plan=release_plan,
+        version_resolution=version_resolution,
+        authorization=apply_authorization,
     )
     return decision, change_set, release_plan, version_resolution, release
 
@@ -149,7 +157,11 @@ def test_review_deploy_authorization_is_bound_to_exact_deployment_plan() -> None
     decision, change_set, release_plan, version_resolution, release = _review_release_chain()
     production_plan = build_deployment_plan(
         release,
-        DeploymentTarget(platform="databricks", runtime_target="main.production"),
+        DeploymentTarget(
+            platform="databricks",
+            runtime_target="main.production",
+            source_reference="https://production-workspace.example",
+        ),
     )
 
     evidence = ReviewAuthorizationEvidence(
@@ -185,17 +197,47 @@ def test_review_deploy_authorization_is_bound_to_exact_deployment_plan() -> None
 
     staging_plan = build_deployment_plan(
         release,
-        DeploymentTarget(platform="databricks", runtime_target="main.staging"),
+        DeploymentTarget(
+            platform="databricks",
+            runtime_target="main.staging",
+            source_reference="https://staging-workspace.example",
+        ),
     )
     with pytest.raises(ReleaseValidationError, match="not scoped to this DeploymentPlan"):
         authorize_deployment(staging_plan, release, contractops_authorization)
+
+
+def test_same_runtime_namespace_on_another_source_requires_distinct_plan() -> None:
+    _, _, _, _, release = _review_release_chain()
+    workspace_a = build_deployment_plan(
+        release,
+        DeploymentTarget(
+            platform="databricks",
+            runtime_target="main.production",
+            source_reference="https://workspace-a.example",
+        ),
+    )
+    workspace_b = build_deployment_plan(
+        release,
+        DeploymentTarget(
+            platform="databricks",
+            runtime_target="main.production",
+            source_reference="https://workspace-b.example",
+        ),
+    )
+
+    assert workspace_a.deployment_plan_id != workspace_b.deployment_plan_id
 
 
 def test_publish_authorization_cannot_be_reused_for_runtime_deploy() -> None:
     decision, change_set, release_plan, version_resolution, release = _review_release_chain()
     plan = build_deployment_plan(
         release,
-        DeploymentTarget(platform="databricks", runtime_target="main.production"),
+        DeploymentTarget(
+            platform="databricks",
+            runtime_target="main.production",
+            source_reference="https://production-workspace.example",
+        ),
     )
     evidence = ReviewAuthorizationEvidence(
         evidence_reference="approval:publish",
