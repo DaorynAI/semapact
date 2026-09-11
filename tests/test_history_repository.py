@@ -4,13 +4,18 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject, SchemaProperty
+from open_data_contract_standard.model import (
+    OpenDataContractStandard,
+    SchemaObject,
+    SchemaProperty,
+)
 
-from semapact.application.services.history import GovernanceHistoryService
 from semapact.change_context import ChangeContext
 from semapact.contractops import build_change_set_from_decision
 from semapact.governance import GovernanceDecision, evaluate_governance_decision
 from semapact.history import (
+    ChangeSetHistoryRepository,
+    DecisionHistoryRepository,
     HistoryConflictError,
     HistoryCorruptionError,
     HistoryNotFoundError,
@@ -53,9 +58,12 @@ def _decision(*, candidate_name: str) -> GovernanceDecision:
     )
 
 
-def test_decision_and_change_set_round_trip_through_history_service(tmp_path: Path) -> None:
-    repository = GitWorkingTreeHistoryRepository(tmp_path)
-    service = GovernanceHistoryService(repository)
+def test_artifacts_round_trip_through_segregated_repository_ports(
+    tmp_path: Path,
+) -> None:
+    backend = GitWorkingTreeHistoryRepository(tmp_path)
+    decisions: DecisionHistoryRepository = backend
+    change_sets: ChangeSetHistoryRepository = backend
     decision = _decision(candidate_name="orders-candidate")
     change_set = build_change_set_from_decision(
         decision,
@@ -65,12 +73,12 @@ def test_decision_and_change_set_round_trip_through_history_service(tmp_path: Pa
         actor_reference="service:ci",
     )
 
-    service.record_decision(decision)
-    service.record_change_set(change_set)
+    decisions.put_decision(decision)
+    change_sets.put_change_set(change_set)
 
-    assert service.get_decision(decision.decision_id) == decision
-    assert service.get_change_set(change_set.change_set_id) == change_set
-    assert service.get_change_set(change_set.change_set_id).context == CONTEXT
+    assert decisions.get_decision(decision.decision_id) == decision
+    assert change_sets.get_change_set(change_set.change_set_id) == change_set
+    assert change_sets.get_change_set(change_set.change_set_id).context == CONTEXT
 
 
 def test_identical_writes_are_idempotent(tmp_path: Path) -> None:
