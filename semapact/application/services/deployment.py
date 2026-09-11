@@ -51,6 +51,7 @@ class DeploymentService:
             assets=assets,
         )
         observation = runtime_provider.observe(bindings=bindings)
+        _validate_source_reference(observation.source_identifier, plan.target.source_reference)
         return adapter.preview(plan, observation)
 
     def execute(
@@ -89,5 +90,13 @@ def _validate_component_key(actual: str, expected: str, component: str) -> None:
     if actual.strip().casefold() != expected.strip().casefold():
         raise ValidationError(
             f"{component.capitalize()} does not match DeploymentPlan platform: "
+            f"{actual!r} != {expected!r}"
+        )
+
+
+def _validate_source_reference(actual: str, expected: str) -> None:
+    if actual.strip() != expected.strip():
+        raise ValidationError(
+            "Runtime observation source does not match DeploymentPlan source reference: "
             f"{actual!r} != {expected!r}"
         )
