@@ -73,10 +73,13 @@ A plan requires an explicit target:
 DeploymentTarget
 ├── platform
 ├── runtimeTarget
+├── sourceReference
 └── serverName?     # optional provenance
 ```
 
-`platform` is the downstream adapter dispatch key. `runtimeTarget` is an opaque provider-local target descriptor at this layer.
+`platform` is the downstream adapter dispatch key. `runtimeTarget` is an opaque provider-local product target. `sourceReference` identifies the exact runtime source/end point against which the plan is authorized; for Databricks this is the workspace host used by runtime observation. It is an identity reference, never a credential.
+
+Preview, execution, and verification fail closed when fresh runtime evidence comes from a different source than the plan's `sourceReference`. This prevents an authorization for the same catalog/schema name from being reused against another workspace.
 
 The plan does not contain credentials, workspace clients, SQL connections, or provider sessions.
 
@@ -90,10 +93,11 @@ The deployment CLI consumes and emits canonical JSON artifacts. Planning and pre
 semapact deployment plan \
   --release ./artifacts/applied-release.json \
   --platform databricks \
-  --runtime main.sales
+  --runtime main.sales \
+  --source-reference https://dbc-example.cloud.databricks.com
 ```
 
-Optional `--server` preserves the selected contract-server reference as target provenance.
+`--source-reference` must match the stable source identity reported by the runtime provider. Optional `--server` preserves the selected contract-server reference as target provenance.
 
 The output is the canonical `DeploymentPlan` JSON.
 
@@ -108,6 +112,8 @@ Preview observes the exact target scope and derives a canonical `DeploymentPrevi
 
 ### Execute
 
+For a preview containing CREATE or ALTER operations, provide the SQL warehouse used for mutation:
+
 ```bash
 semapact deployment execute \
   --plan ./artifacts/deployment-plan.json \
@@ -116,7 +122,9 @@ semapact deployment execute \
   --warehouse-id <databricks-sql-warehouse-id>
 ```
 
-Execution requires the exact plan, exact preview, and exact `DeploymentAuthorization`. The adapter re-observes the target, validates the observation source and fingerprint, re-derives the expected preview for integrity/freshness validation, and executes only the supplied operations when the artifacts still match.
+For an all-`NO_OP` preview, `--warehouse-id` may be omitted because no native mutation is executed. Any CREATE/ALTER attempt without a warehouse fails closed.
+
+Execution requires the exact plan, exact preview, and exact `DeploymentAuthorization`. The adapter re-observes the target, validates the authorized runtime source and observation fingerprint, re-derives the expected preview for integrity/freshness validation, and executes only the supplied operations when the artifacts still match.
 
 Provider execution success is not convergence proof.
 
@@ -171,7 +179,7 @@ Runtime deployment is a separate protected operation from publishing a contract 
 
 A `ContractOpsAuthorization(operation=DEPLOY)` establishes release-context authorization. Before runtime mutation, it must be bound to the exact `DeploymentPlan` as a `DeploymentAuthorization`.
 
-For review-required changes, structured review evidence may carry an opaque `scopeReference`. Deployment requires that scope to match the exact `deploymentPlanId`, so an approval for one target cannot be reused for another target.
+For review-required changes, structured review evidence may carry an opaque `scopeReference`. Deployment requires that scope to match the exact `deploymentPlanId`, so an approval for one exact platform/runtime/source target cannot be reused for another target.
 
 A PUBLISH authorization cannot authorize DEPLOY.
 
@@ -180,7 +188,7 @@ A PUBLISH authorization cannot authorize DEPLOY.
 `deploymentPlanId` is UUID5-derived from the full stable plan record:
 
 - exact `AppliedContractRelease` identity and provenance;
-- exact deployment target;
+- exact deployment target, including runtime source reference;
 - canonical actions ordered by governed asset identity;
 - plan schema version.
 
