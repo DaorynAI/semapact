@@ -68,14 +68,14 @@ def validate_release_context(
         )
 
     publish_gate = evaluate_governance_gate(decision, GovernanceOperation.PUBLISH)
-    if publish_gate.allowed:
-        expected_preconditions: tuple[ReleasePrecondition, ...] = ()
-    elif publish_gate.reason == "review_required":
+    if publish_gate.reason == "review_required":
         expected_preconditions = (ReleasePrecondition.REVIEW_AUTHORIZATION_REQUIRED,)
     else:
-        raise ReleaseValidationError(
-            "GovernanceDecision cannot be represented by an executable ReleasePlan"
-        )
+        # ALLOW and BLOCK carry no review precondition. BLOCK cannot be produced by
+        # the canonical planner, but authorization must still preserve its existing
+        # fail-closed result if a structurally valid historical/context artifact is
+        # supplied; review evidence can never override that decision.
+        expected_preconditions = ()
     if release_plan.preconditions != expected_preconditions:
         raise ReleaseValidationError(
             "ReleasePlan preconditions do not match authoritative governance disposition"
