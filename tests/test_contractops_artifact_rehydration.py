@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date
 
 import pytest
@@ -147,5 +148,6 @@ def test_rehydration_rejects_content_with_stale_deterministic_identity() -> None
     for model, artifact, field, tampered_value in cases:
         payload = artifact.model_dump(mode="json")
         payload[field] = tampered_value
+        persisted_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
         with pytest.raises(PydanticValidationError, match="deterministic identity"):
-            model.model_validate(payload)
+            model.model_validate_json(persisted_json)
