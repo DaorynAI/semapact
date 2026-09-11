@@ -32,6 +32,7 @@ from semapact.observation.providers import RuntimeAssetBinding
 from semapact.platforms.databricks.deployment import DatabricksDeploymentAdapter
 
 CAPTURED_AT = datetime(2026, 9, 10, 5, 0, tzinfo=timezone.utc)
+SOURCE_REFERENCE = "workspace-a"
 
 
 def _property(name: str, physical_type: str, *, required: bool = False) -> SchemaProperty:
@@ -44,7 +45,7 @@ def _property(name: str, physical_type: str, *, required: bool = False) -> Schem
     )
 
 
-def _plan(*properties: SchemaProperty) -> DeploymentPlan:
+def _plan(*properties: SchemaProperty, source_reference: str = SOURCE_REFERENCE) -> DeploymentPlan:
     schema = SchemaObject(
         name="orders",
         physicalName="orders",
@@ -61,7 +62,11 @@ def _plan(*properties: SchemaProperty) -> DeploymentPlan:
             separators=(",", ":"),
         ),
     )
-    target = DeploymentTarget(platform="databricks", runtime_target="main.silver")
+    target = DeploymentTarget(
+        platform="databricks",
+        runtime_target="main.silver",
+        source_reference=source_reference,
+    )
     plan_id = compute_deployment_plan_id(
         applied_release_id="applied:test",
         contract_id="orders-product",
@@ -102,7 +107,7 @@ def _authorization(plan: DeploymentPlan, allowed: bool = True) -> DeploymentAuth
 def _state(
     *columns: tuple[str, str, bool],
     asset_type: str = "MANAGED",
-    source: str = "workspace-a",
+    source: str = SOURCE_REFERENCE,
     present: bool = True,
 ) -> ObservedPlatformState:
     identity = ObservedAssetIdentity(
@@ -179,13 +184,13 @@ class _Client:
         self.statement_execution = _Statements()
 
 
-def _adapter(state: ObservedPlatformState):
+def _adapter(state: ObservedPlatformState, *, warehouse_id: str | None = "warehouse-1"):
     client = _Client()
     provider = _Provider(state)
     adapter = DatabricksDeploymentAdapter(
         client=client,
         runtime_provider=provider,
-        warehouse_id="warehouse-1",
+        warehouse_id=warehouse_id,
         poll_interval_seconds=0,
     )
     return adapter, provider, client
@@ -263,9 +268,18 @@ def test_non_managed_asset_and_unsafe_type_fail_closed() -> None:
         adapter.validate(malicious)
 
 
+def test_preview_rejects_cross_source_runtime_evidence() -> None:
+    plan = _plan(_property("id", "BIGINT", required=True))
+    other_workspace = _state(("id", "bigint", False), source="workspace-b")
+    adapter, _, _ = _adapter(other_workspace)
+
+    with pytest.raises(ValidationError, match="source reference"):
+        adapter.preview(plan, other_workspace)
+
+
 def test_execute_fails_closed_for_denied_stale_and_cross_source() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
-    before = _state(("id", "bigint", False), source="workspace-a")
+    before = _state(("id", "bigint", False))
     adapter, provider, _ = _adapter(before)
     preview = adapter.preview(plan, before)
 
@@ -275,7 +289,6 @@ def test_execute_fails_closed_for_denied_stale_and_cross_source() -> None:
     provider.state = _state(
         ("id", "bigint", False),
         ("other", "string", True),
-        source="workspace-a",
     )
     with pytest.raises(ValidationError, match="Runtime state changed"):
         adapter.execute(plan, preview, _authorization(plan))
@@ -332,3 +345,35 @@ def test_execute_runs_exact_preview_statement() -> None:
     assert client.statement_execution.calls == [
         "ALTER TABLE `main`.`silver`.`orders` ADD COLUMNS (`note` STRING)"
     ]
+
+
+def test_no_op_execute_does_not_require_warehouse() -> None:
+    plan = _plan(_property("id", "BIGINT", required=True))
+    current = _state(("id", "bigint", False))
+    adapter, _, client = _adapter(current, warehouse_id=None)
+    preview = adapter.preview(plan, current)
+
+    assert preview.operations[0].kind is NativeOperationKind.NO_OP
+    adapter.execute(plan, preview, _authorization(plan))
+    assert client.statement_execution.calls == []
+
+
+def test_mutation_execute_without_warehouse_fails_closed() -> None:
+    plan = _plan(
+        _property("id", "BIGINT", required=True),
+        _property("note", "STRING"),
+    )
+    current = _state(("id", "bigint", False))
+    adapter, _, client = _adapter(current, warehouse_id=None)
+    preview = adapter.preview(plan, current)
+
+    with pytest.raises(ValidationError, match="warehouse_id"):
+        adapter.execute(plan, preview, _authorization(plan))
+    assert client.statement_execution.calls == []
+
+
+def test_runtime_source_participates_in_plan_identity() -> None:
+    plan_a = _plan(_property("id", "BIGINT", required=True), source_reference="workspace-a")
+    plan_b = _plan(_property("id", "BIGINT", required=True), source_reference="workspace-b")
+
+    assert plan_a.deployment_plan_id != plan_b.deployment_plan_id
