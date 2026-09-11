@@ -5,7 +5,8 @@ governance, ContractOps, deployment, or reconciliation semantics.
 """
 
 from semapact.history.repository import (
-    GovernanceHistoryRepository,
+    ChangeSetHistoryRepository,
+    DecisionHistoryRepository,
     HistoryConflictError,
     HistoryCorruptionError,
     HistoryNotFoundError,
@@ -13,7 +14,8 @@ from semapact.history.repository import (
 )
 
 __all__ = [
-    "GovernanceHistoryRepository",
+    "ChangeSetHistoryRepository",
+    "DecisionHistoryRepository",
     "HistoryConflictError",
     "HistoryCorruptionError",
     "HistoryNotFoundError",
