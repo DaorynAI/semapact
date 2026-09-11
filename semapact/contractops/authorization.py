@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import uuid
-
 from semapact.contractops.context import validate_release_context
+from semapact.contractops.integrity import (
+    SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE,
+    compute_contractops_authorization_id,
+)
 from semapact.contractops.models import (
     AuthorizationReason,
     ChangeSet,
@@ -16,12 +18,6 @@ from semapact.contractops.models import (
 )
 from semapact.governance.gate import GovernanceOperation, evaluate_governance_gate
 from semapact.governance.models import GovernanceDecision
-from semapact.utils.deterministic import deterministic_uuid5
-
-
-SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE = uuid.UUID(
-    "b6218d0c-3f9d-44a2-8d68-e3b0ee170948"
-)
 
 
 def authorize_contract_operation(
@@ -192,25 +188,17 @@ def _build_authorization(
     evidence_action = evidence.action if evidence is not None else None
     scope_reference = evidence.scope_reference if evidence is not None else None
 
-    stable_record = {
-        "decision_id": decision.decision_id,
-        "change_set_id": change_set.change_set_id,
-        "release_plan_id": release_plan.release_plan_id,
-        "version_resolution_id": version_resolution.version_resolution_id,
-        "operation": operation.value,
-        "allowed": allowed,
-        "reason": reason.value,
-        "evidence_reference": evidence_reference,
-        "evidence_action": evidence_action.value if evidence_action is not None else None,
-    }
-    # Preserve all pre-#122 authorization IDs byte-for-byte when no downstream
-    # scope was supplied. Scoped authorizations intentionally gain a new identity.
-    if scope_reference is not None:
-        stable_record["scope_reference"] = scope_reference
-
-    authorization_id = deterministic_uuid5(
-        SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE,
-        stable_record,
+    authorization_id = compute_contractops_authorization_id(
+        decision_id=decision.decision_id,
+        change_set_id=change_set.change_set_id,
+        release_plan_id=release_plan.release_plan_id,
+        version_resolution_id=version_resolution.version_resolution_id,
+        operation=operation,
+        allowed=allowed,
+        reason=reason.value,
+        evidence_reference=evidence_reference,
+        evidence_action=(evidence_action.value if evidence_action is not None else None),
+        scope_reference=scope_reference,
     )
 
     return ContractOpsAuthorization(
