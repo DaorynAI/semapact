@@ -88,5 +88,5 @@ Do not create a root `schema`, `models`, or `data_models` directory simply to co
 7. Are compatibility imports wrappers rather than a second implementation?
 
 Read also:
-- [semapact-system](../../semapact-system/SKILL.md)
-- [lifecycle-policy](../../lifecycle-policy/SKILL.md)
+- [semapact-system](../semapact-system/SKILL.md)
+- [lifecycle-policy](../lifecycle-policy/SKILL.md)
