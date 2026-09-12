@@ -6,7 +6,7 @@ from typing import Protocol
 
 from semapact.contractops import ChangeSet
 from semapact.governance import GovernanceDecision
-from semapact.history.revisions import ContractRevision, ContractRevisionSource
+from semapact.revision import ContractRevision, ContractRevisionSource
 
 
 class HistoryRepositoryError(RuntimeError):
