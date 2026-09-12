@@ -7,6 +7,7 @@ pull requests; normal GitOps tooling can version the deterministic files it writ
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
@@ -19,7 +20,12 @@ from semapact.history import (
     HistoryCorruptionError,
     HistoryNotFoundError,
 )
-from semapact.history.revisions import ContractRevision, ContractRevisionSource
+from semapact.revision import (
+    ContractRevision,
+    ContractRevisionSource,
+    validate_contract_revision_identity,
+    validate_contract_revision_source_identity,
+)
 from semapact.utils.deterministic import canonical_compact_json
 
 
@@ -31,7 +37,8 @@ class GitWorkingTreeHistoryRepository:
     """Shared Git backend implementing narrow typed history capabilities.
 
     Public methods satisfy artifact-specific repository protocols while the private
-    helpers below own the common JSON/file persistence mechanics.
+    helpers own common JSON/file persistence mechanics. Domain integrity remains in
+    each owning domain and is injected when persistence rehydrates that artifact.
     """
 
     def __init__(
@@ -101,6 +108,7 @@ class GitWorkingTreeHistoryRepository:
             artifact=revision,
             model_type=ContractRevision,
             id_attribute="revision_id",
+            integrity_validator=validate_contract_revision_identity,
         )
 
     def get_revision(self, revision_id: str) -> ContractRevision:
@@ -109,6 +117,7 @@ class GitWorkingTreeHistoryRepository:
             artifact_id=revision_id,
             model_type=ContractRevision,
             id_attribute="revision_id",
+            integrity_validator=validate_contract_revision_identity,
         )
 
     def list_revisions(self, contract_id: str) -> tuple[ContractRevision, ...]:
@@ -117,6 +126,7 @@ class GitWorkingTreeHistoryRepository:
             kind="contract_revisions",
             model_type=ContractRevision,
             id_attribute="revision_id",
+            integrity_validator=validate_contract_revision_identity,
         )
         return tuple(record for record in records if record.contract_id == contract_id)
 
@@ -127,6 +137,7 @@ class GitWorkingTreeHistoryRepository:
             artifact=source,
             model_type=ContractRevisionSource,
             id_attribute="source_link_id",
+            integrity_validator=validate_contract_revision_source_identity,
         )
 
     def get_revision_source(self, source_link_id: str) -> ContractRevisionSource:
@@ -135,6 +146,7 @@ class GitWorkingTreeHistoryRepository:
             artifact_id=source_link_id,
             model_type=ContractRevisionSource,
             id_attribute="source_link_id",
+            integrity_validator=validate_contract_revision_source_identity,
         )
 
     def list_revision_sources(
@@ -146,6 +158,7 @@ class GitWorkingTreeHistoryRepository:
             kind="contract_revision_sources",
             model_type=ContractRevisionSource,
             id_attribute="source_link_id",
+            integrity_validator=validate_contract_revision_source_identity,
         )
         return tuple(record for record in records if record.revision_id == revision_id)
 
@@ -157,6 +170,7 @@ class GitWorkingTreeHistoryRepository:
         artifact: T,
         model_type: type[T],
         id_attribute: str,
+        integrity_validator: Callable[[T], None] | None = None,
     ) -> None:
         artifact_id = _safe_artifact_id(artifact_id)
         canonical = self._validated_canonical_json(
@@ -164,6 +178,7 @@ class GitWorkingTreeHistoryRepository:
             model_type=model_type,
             expected_id=artifact_id,
             id_attribute=id_attribute,
+            integrity_validator=integrity_validator,
         )
         path = self._artifact_path(kind, artifact_id)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -175,6 +190,7 @@ class GitWorkingTreeHistoryRepository:
                 model_type=model_type,
                 expected_id=artifact_id,
                 id_attribute=id_attribute,
+                integrity_validator=integrity_validator,
             )
             return
 
@@ -182,14 +198,13 @@ class GitWorkingTreeHistoryRepository:
             with path.open("x", encoding="utf-8", newline="\n") as handle:
                 handle.write(canonical)
         except FileExistsError:
-            # Another writer won the create race. Treat identical content as the
-            # same idempotent write and fail closed on any conflict.
             self._require_idempotent_existing(
                 path,
                 canonical=canonical,
                 model_type=model_type,
                 expected_id=artifact_id,
                 id_attribute=id_attribute,
+                integrity_validator=integrity_validator,
             )
 
     def _get(
@@ -199,6 +214,7 @@ class GitWorkingTreeHistoryRepository:
         artifact_id: str,
         model_type: type[T],
         id_attribute: str,
+        integrity_validator: Callable[[T], None] | None = None,
     ) -> T:
         artifact_id = _safe_artifact_id(artifact_id)
         path = self._artifact_path(kind, artifact_id)
@@ -211,6 +227,7 @@ class GitWorkingTreeHistoryRepository:
             model_type=model_type,
             expected_id=artifact_id,
             id_attribute=id_attribute,
+            integrity_validator=integrity_validator,
         )
 
     def _list(
@@ -219,6 +236,7 @@ class GitWorkingTreeHistoryRepository:
         kind: str,
         model_type: type[T],
         id_attribute: str,
+        integrity_validator: Callable[[T], None] | None = None,
     ) -> tuple[T, ...]:
         directory = self._history_root / kind
         if not directory.is_dir():
@@ -233,6 +251,7 @@ class GitWorkingTreeHistoryRepository:
                     model_type=model_type,
                     expected_id=artifact_id,
                     id_attribute=id_attribute,
+                    integrity_validator=integrity_validator,
                 )
             )
         return tuple(records)
@@ -245,12 +264,14 @@ class GitWorkingTreeHistoryRepository:
         model_type: type[T],
         expected_id: str,
         id_attribute: str,
+        integrity_validator: Callable[[T], None] | None = None,
     ) -> None:
         existing = self._read_validated(
             path,
             model_type=model_type,
             expected_id=expected_id,
             id_attribute=id_attribute,
+            integrity_validator=integrity_validator,
         )
         existing_canonical = canonical_compact_json(existing.model_dump(mode="json"))
         if existing_canonical != canonical:
@@ -265,10 +286,13 @@ class GitWorkingTreeHistoryRepository:
         model_type: type[T],
         expected_id: str,
         id_attribute: str,
+        integrity_validator: Callable[[T], None] | None = None,
     ) -> T:
         try:
             raw = path.read_text(encoding="utf-8")
             artifact = model_type.model_validate_json(raw)
+            if integrity_validator is not None:
+                integrity_validator(artifact)
         except (OSError, PydanticValidationError, ValueError) as exc:
             raise HistoryCorruptionError(
                 f"Persisted {model_type.__name__} {expected_id!r} is invalid"
@@ -288,6 +312,7 @@ class GitWorkingTreeHistoryRepository:
         model_type: type[T],
         expected_id: str,
         id_attribute: str,
+        integrity_validator: Callable[[T], None] | None = None,
     ) -> str:
         if not isinstance(artifact, model_type):
             raise TypeError(
@@ -296,6 +321,8 @@ class GitWorkingTreeHistoryRepository:
         try:
             canonical = canonical_compact_json(artifact.model_dump(mode="json"))
             validated = model_type.model_validate_json(canonical)
+            if integrity_validator is not None:
+                integrity_validator(validated)
         except (PydanticValidationError, ValueError) as exc:
             raise HistoryCorruptionError(
                 f"Supplied {model_type.__name__} {expected_id!r} is invalid"
