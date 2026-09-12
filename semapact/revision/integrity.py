@@ -6,8 +6,8 @@ import hashlib
 import re
 import uuid
 
+from semapact.odcs.serialization import canonical_contract_json
 from semapact.revision.models import ContractRevision, ContractRevisionSource
-from semapact.utils.contracts import canonical_contract_json
 from semapact.utils.deterministic import deterministic_uuid5
 
 
