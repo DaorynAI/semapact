@@ -6,6 +6,7 @@ from typing import Protocol
 
 from semapact.contractops import ChangeSet
 from semapact.governance import GovernanceDecision
+from semapact.history.models import ChangeSetDecisionLink
 from semapact.revision.models import ContractRevision, ContractRevisionSource
 
 
@@ -54,6 +55,21 @@ class ChangeSetHistoryRepository(Protocol):
 
     def list_change_sets(self, contract_id: str) -> tuple[ChangeSet, ...]:
         """List ChangeSets for one contract in deterministic artifact-ID order."""
+        ...
+
+
+class ChangeSetDecisionLinkHistoryRepository(Protocol):
+    """Persistence capability for ChangeSet-to-decision audit provenance only."""
+
+    def put_change_set_decision_link(self, link: ChangeSetDecisionLink) -> None:
+        """Persist one immutable ChangeSet-to-decision link idempotently."""
+        ...
+
+    def list_change_set_decision_links(
+        self,
+        change_set_id: str,
+    ) -> tuple[ChangeSetDecisionLink, ...]:
+        """List governance outcomes linked to one ChangeSet in deterministic order."""
         ...
 
 
