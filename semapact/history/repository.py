@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from semapact.contractops import ChangeSet
+from semapact.contractops import ChangeSet, ReleasePlan
 from semapact.governance import GovernanceDecision
-from semapact.history.models import ChangeSetDecisionLink
+from semapact.history.models import ChangeSetDecisionLink, ReleaseRecord
 from semapact.revision.models import ContractRevision, ContractRevisionSource
 
 
@@ -105,4 +105,40 @@ class ContractRevisionSourceHistoryRepository(Protocol):
         revision_id: str,
     ) -> tuple[ContractRevisionSource, ...]:
         """List all source links for one revision in deterministic ID order."""
+        ...
+
+
+class ReleasePlanHistoryRepository(Protocol):
+    """Persistence capability for canonical ReleasePlan history only."""
+
+    def put_release_plan(self, release_plan: ReleasePlan) -> None:
+        """Persist one immutable ReleasePlan idempotently."""
+        ...
+
+    def get_release_plan(self, release_plan_id: str) -> ReleasePlan:
+        """Load one ReleasePlan by exact deterministic artifact ID."""
+        ...
+
+
+class ReleaseRecordHistoryRepository(Protocol):
+    """Persistence capability for finalized release audit records only."""
+
+    def put_release_record(self, record: ReleaseRecord) -> None:
+        """Persist one immutable ReleaseRecord idempotently."""
+        ...
+
+    def get_release_record(self, release_record_id: str) -> ReleaseRecord:
+        """Load one ReleaseRecord by exact deterministic artifact ID."""
+        ...
+
+    def list_release_records(self, contract_id: str) -> tuple[ReleaseRecord, ...]:
+        """List release records for one contract in deterministic artifact-ID order."""
+        ...
+
+    def get_release_record_by_version(
+        self,
+        contract_id: str,
+        contract_version: str,
+    ) -> ReleaseRecord:
+        """Load the unique finalized release for one contract semantic version."""
         ...
