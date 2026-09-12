@@ -127,7 +127,11 @@ class GitWorkingTreeHistoryRepository:
             id_attribute="revision_id",
             integrity_validator=validate_contract_revision_identity,
         )
-        return tuple(record for record in records if record.contract_id == contract_id)
+        return tuple(
+            record
+            for record in records
+            if str(record.contract.id or "") == contract_id
+        )
 
     def put_revision_source(self, source: ContractRevisionSource) -> None:
         self._put(
