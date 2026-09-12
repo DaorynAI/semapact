@@ -14,11 +14,7 @@ class ContractRevision(BaseModel):
     serialized contract copy.
     """
 
-    model_config = ConfigDict(
-        frozen=True,
-        extra="forbid",
-        serialize_by_alias=True,
-    )
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     revision_id: str
     content_fingerprint: str
