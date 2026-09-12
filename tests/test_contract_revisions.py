@@ -8,20 +8,23 @@ from open_data_contract_standard.model import (
     SchemaObject,
     SchemaProperty,
 )
-from pydantic import ValidationError as PydanticValidationError
 
 from semapact.history import (
-    ContractRevision,
     ContractRevisionHistoryRepository,
     ContractRevisionSourceHistoryRepository,
     HistoryCorruptionError,
+)
+from semapact.platforms.git import GitWorkingTreeHistoryRepository
+from semapact.revision import (
+    ContractRevision,
     build_contract_revision,
     compute_contract_content_fingerprint,
     compute_contract_revision_id,
     compute_contract_revision_source_id,
     link_contract_revision_source,
+    validate_contract_revision_identity,
 )
-from semapact.platforms.git import GitWorkingTreeHistoryRepository
+from semapact.utils.deterministic import canonical_compact_json
 
 
 def _contract(
@@ -115,13 +118,26 @@ def test_source_provenance_does_not_change_revision_identity() -> None:
     assert branch_source.source_reference != tag_source.source_reference
 
 
-def test_revision_rehydration_rejects_tampered_content_identity() -> None:
+def test_revision_model_structure_is_separate_from_derived_identity_validation() -> None:
     revision = build_contract_revision(_contract())
     payload = revision.model_dump(mode="json")
     payload["content_fingerprint"] = "0" * 64
 
-    with pytest.raises(PydanticValidationError, match="content_fingerprint"):
-        ContractRevision.model_validate(payload)
+    structurally_valid = ContractRevision.model_validate(payload)
+
+    with pytest.raises(ValueError, match="content_fingerprint"):
+        validate_contract_revision_identity(structurally_valid)
+
+
+def test_source_link_builder_rejects_invalid_revision_identity() -> None:
+    revision = build_contract_revision(_contract())
+    tampered = revision.model_copy(update={"content_fingerprint": "0" * 64})
+
+    with pytest.raises(ValueError, match="content_fingerprint"):
+        link_contract_revision_source(
+            tampered,
+            source_reference="git:commit:abc123",
+        )
 
 
 def test_revision_and_sources_round_trip_through_typed_history_ports(
@@ -156,7 +172,7 @@ def test_revision_and_sources_round_trip_through_typed_history_ports(
     assert source_ids == sorted([source_a.source_link_id, source_b.source_link_id])
 
 
-def test_corrupted_persisted_revision_fails_closed(tmp_path: Path) -> None:
+def test_semantically_corrupted_persisted_revision_fails_closed(tmp_path: Path) -> None:
     repository = GitWorkingTreeHistoryRepository(tmp_path)
     revision = build_contract_revision(_contract())
     repository.put_revision(revision)
@@ -168,7 +184,11 @@ def test_corrupted_persisted_revision_fails_closed(tmp_path: Path) -> None:
         / "contract_revisions"
         / f"{revision.revision_id}.json"
     )
-    path.write_text("{}", encoding="utf-8")
+    tampered = revision.model_copy(update={"content_fingerprint": "0" * 64})
+    path.write_text(
+        canonical_compact_json(tampered.model_dump(mode="json")),
+        encoding="utf-8",
+    )
 
     with pytest.raises(HistoryCorruptionError, match="is invalid"):
         repository.get_revision(revision.revision_id)
