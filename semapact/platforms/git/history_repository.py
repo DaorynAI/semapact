@@ -13,14 +13,17 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 
-from semapact.contractops import ChangeSet
+from semapact.contractops import ChangeSet, ReleasePlan
+from semapact.contractops.integrity import validate_release_plan_identity
 from semapact.governance import GovernanceDecision
 from semapact.history import (
     ChangeSetDecisionLink,
     HistoryConflictError,
     HistoryCorruptionError,
     HistoryNotFoundError,
+    ReleaseRecord,
 )
+from semapact.history.integrity import validate_release_record_identity
 from semapact.revision.integrity import (
     validate_contract_revision_identity,
     validate_contract_revision_source_identity,
@@ -197,6 +200,90 @@ class GitWorkingTreeHistoryRepository:
             integrity_validator=validate_contract_revision_source_identity,
         )
         return tuple(record for record in records if record.revision_id == revision_id)
+
+    def put_release_plan(self, release_plan: ReleasePlan) -> None:
+        self._put(
+            kind="release_plans",
+            artifact_id=release_plan.release_plan_id,
+            artifact=release_plan,
+            model_type=ReleasePlan,
+            id_attribute="release_plan_id",
+            integrity_validator=validate_release_plan_identity,
+        )
+
+    def get_release_plan(self, release_plan_id: str) -> ReleasePlan:
+        return self._get(
+            kind="release_plans",
+            artifact_id=release_plan_id,
+            model_type=ReleasePlan,
+            id_attribute="release_plan_id",
+            integrity_validator=validate_release_plan_identity,
+        )
+
+    def put_release_record(self, record: ReleaseRecord) -> None:
+        if not isinstance(record, ReleaseRecord):
+            raise TypeError(
+                f"record must be ReleaseRecord, got {type(record).__name__}"
+            )
+        validate_release_record_identity(record)
+        for existing in self.list_release_records(record.contract_id):
+            if (
+                existing.contract_version == record.contract_version
+                and existing.release_record_id != record.release_record_id
+            ):
+                raise HistoryConflictError(
+                    "A different ReleaseRecord already exists for "
+                    f"{record.contract_id!r} version {record.contract_version!r}"
+                )
+        self._put(
+            kind="release_records",
+            artifact_id=record.release_record_id,
+            artifact=record,
+            model_type=ReleaseRecord,
+            id_attribute="release_record_id",
+            integrity_validator=validate_release_record_identity,
+        )
+
+    def get_release_record(self, release_record_id: str) -> ReleaseRecord:
+        return self._get(
+            kind="release_records",
+            artifact_id=release_record_id,
+            model_type=ReleaseRecord,
+            id_attribute="release_record_id",
+            integrity_validator=validate_release_record_identity,
+        )
+
+    def list_release_records(self, contract_id: str) -> tuple[ReleaseRecord, ...]:
+        contract_id = _required_text(contract_id, "contract_id")
+        records = self._list(
+            kind="release_records",
+            model_type=ReleaseRecord,
+            id_attribute="release_record_id",
+            integrity_validator=validate_release_record_identity,
+        )
+        return tuple(record for record in records if record.contract_id == contract_id)
+
+    def get_release_record_by_version(
+        self,
+        contract_id: str,
+        contract_version: str,
+    ) -> ReleaseRecord:
+        contract_id = _required_text(contract_id, "contract_id")
+        contract_version = _required_text(contract_version, "contract_version")
+        matches = tuple(
+            record
+            for record in self.list_release_records(contract_id)
+            if record.contract_version == contract_version
+        )
+        if not matches:
+            raise HistoryNotFoundError(
+                f"ReleaseRecord for {contract_id!r} version {contract_version!r} was not found"
+            )
+        if len(matches) != 1:
+            raise HistoryCorruptionError(
+                f"Multiple ReleaseRecords exist for {contract_id!r} version {contract_version!r}"
+            )
+        return matches[0]
 
     def _put(
         self,
