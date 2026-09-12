@@ -276,7 +276,7 @@ class GitWorkingTreeHistoryRepository:
             id_attribute=id_attribute,
             integrity_validator=integrity_validator,
         )
-        existing_canonical = canonical_compact_json(existing.model_dump(mode="json"))
+        existing_canonical = _canonical_model_json(existing)
         if existing_canonical != canonical:
             raise HistoryConflictError(
                 f"{model_type.__name__} {expected_id!r} already exists with different content"
@@ -322,7 +322,7 @@ class GitWorkingTreeHistoryRepository:
                 f"artifact must be {model_type.__name__}, got {type(artifact).__name__}"
             )
         try:
-            canonical = canonical_compact_json(artifact.model_dump(mode="json"))
+            canonical = _canonical_model_json(artifact)
             validated = model_type.model_validate_json(canonical)
             if integrity_validator is not None:
                 integrity_validator(validated)
@@ -338,6 +338,13 @@ class GitWorkingTreeHistoryRepository:
 
     def _artifact_path(self, kind: str, artifact_id: str) -> Path:
         return self._history_root / kind / f"{artifact_id}.json"
+
+
+def _canonical_model_json(artifact: BaseModel) -> str:
+    """Serialize persisted models with aliases so nested ODCS models round-trip."""
+    return canonical_compact_json(
+        artifact.model_dump(mode="json", by_alias=True)
+    )
 
 
 def _safe_artifact_id(value: str) -> str:
