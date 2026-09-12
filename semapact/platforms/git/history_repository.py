@@ -16,6 +16,7 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from semapact.contractops import ChangeSet
 from semapact.governance import GovernanceDecision
 from semapact.history import (
+    ChangeSetDecisionLink,
     HistoryConflictError,
     HistoryCorruptionError,
     HistoryNotFoundError,
@@ -99,6 +100,38 @@ class GitWorkingTreeHistoryRepository:
             id_attribute="change_set_id",
         )
         return tuple(record for record in records if record.contract_id == contract_id)
+
+    def put_change_set_decision_link(self, link: ChangeSetDecisionLink) -> None:
+        if not isinstance(link, ChangeSetDecisionLink):
+            raise TypeError(
+                "link must be ChangeSetDecisionLink, "
+                f"got {type(link).__name__}"
+            )
+        change_set_id = _safe_artifact_id(link.change_set_id)
+        self._put(
+            kind=f"change_set_decisions/{change_set_id}",
+            artifact_id=link.decision_id,
+            artifact=link,
+            model_type=ChangeSetDecisionLink,
+            id_attribute="decision_id",
+        )
+
+    def list_change_set_decision_links(
+        self,
+        change_set_id: str,
+    ) -> tuple[ChangeSetDecisionLink, ...]:
+        change_set_id = _safe_artifact_id(change_set_id)
+        records = self._list(
+            kind=f"change_set_decisions/{change_set_id}",
+            model_type=ChangeSetDecisionLink,
+            id_attribute="decision_id",
+        )
+        for record in records:
+            if record.change_set_id != change_set_id:
+                raise HistoryCorruptionError(
+                    "Persisted ChangeSetDecisionLink does not match its ChangeSet path"
+                )
+        return records
 
     def put_revision(self, revision: ContractRevision) -> None:
         self._put(
@@ -342,9 +375,7 @@ class GitWorkingTreeHistoryRepository:
 
 def _canonical_model_json(artifact: BaseModel) -> str:
     """Serialize persisted models with aliases so nested ODCS models round-trip."""
-    return canonical_compact_json(
-        artifact.model_dump(mode="json", by_alias=True)
-    )
+    return canonical_compact_json(artifact.model_dump(mode="json", by_alias=True))
 
 
 def _safe_artifact_id(value: str) -> str:
