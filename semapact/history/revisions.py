@@ -7,7 +7,13 @@ import re
 import uuid
 
 from open_data_contract_standard.model import OpenDataContractStandard
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    ValidationError as PydanticValidationError,
+    field_validator,
+    model_validator,
+)
 
 from semapact.utils.contracts import canonical_contract_json
 from semapact.utils.deterministic import deterministic_uuid5
@@ -62,7 +68,7 @@ class ContractRevision(BaseModel):
             contract = OpenDataContractStandard.model_validate_json(
                 self.canonical_contract_json
             )
-        except Exception as exc:  # Pydantic/ODCS validation details remain the cause.
+        except PydanticValidationError as exc:
             raise ValueError("canonical_contract_json is not a valid ODCS contract") from exc
 
         canonical = canonical_contract_json(contract)
