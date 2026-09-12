@@ -16,7 +16,7 @@ from semapact.utils.contracts import canonical_contract_json
 
 
 def build_contract_revision(contract: OpenDataContractStandard) -> ContractRevision:
-    """Build the immutable content identity for one exact ODCS contract state."""
+    """Build a revision envelope around one exact canonical ODCS contract snapshot."""
     if not isinstance(contract, OpenDataContractStandard):
         raise TypeError(
             "contract must be OpenDataContractStandard, "
@@ -24,16 +24,13 @@ def build_contract_revision(contract: OpenDataContractStandard) -> ContractRevis
         )
 
     canonical = canonical_contract_json(contract)
-    contract_id = _canonical_text(str(contract.id or ""), "contract.id")
-    contract_version = _canonical_text(str(contract.version or ""), "contract.version")
+    contract_snapshot = OpenDataContractStandard.model_validate_json(canonical)
     fingerprint = compute_contract_content_fingerprint(canonical)
 
     revision = ContractRevision(
         revision_id=compute_contract_revision_id(fingerprint),
-        contract_id=contract_id,
-        contract_version=contract_version,
         content_fingerprint=fingerprint,
-        canonical_contract_json=canonical,
+        contract=contract_snapshot,
     )
     validate_contract_revision_identity(revision)
     return revision
@@ -46,7 +43,6 @@ def link_contract_revision_source(
 ) -> ContractRevisionSource:
     """Build one immutable provenance link without changing revision identity."""
     validate_contract_revision_identity(revision)
-    source_reference = _canonical_text(source_reference, "source_reference")
     source = ContractRevisionSource(
         source_link_id=compute_contract_revision_source_id(
             revision_id=revision.revision_id,
@@ -57,12 +53,3 @@ def link_contract_revision_source(
     )
     validate_contract_revision_source_identity(source)
     return source
-
-
-def _canonical_text(value: str, field_name: str) -> str:
-    if not isinstance(value, str):
-        raise TypeError(f"{field_name} must be str")
-    cleaned = value.strip()
-    if not cleaned:
-        raise ValueError(f"{field_name} must not be empty")
-    return cleaned
