@@ -11,6 +11,7 @@ from open_data_contract_standard.model import (
 
 from semapact.application.services.governance import GovernanceService
 from semapact.application.services.history import ProposalHistoryService
+from semapact.contractops import build_change_set
 from semapact.history import (
     ChangeSetDecisionLinkHistoryRepository,
     ChangeSetHistoryRepository,
@@ -136,7 +137,16 @@ def test_rejects_changeset_that_does_not_reference_exact_contract_revisions(
 ) -> None:
     service, _ = _service(tmp_path)
     proposal, base_revision, candidate_revision = _proposal()
-    mismatched = proposal.change_set.model_copy(update={"base_revision_ref": "git:base"})
+    original = proposal.change_set
+    mismatched = build_change_set(
+        contract_id=original.contract_id,
+        base_revision_ref="git:base",
+        candidate_revision_ref=original.candidate_revision_ref,
+        changes=original.changes,
+        context=original.context,
+        source=original.source,
+        actor_reference=original.actor_reference,
+    )
     broken_proposal = proposal.__class__(change_set=mismatched, decision=proposal.decision)
 
     with pytest.raises(ValueError, match="base_revision_ref"):
