@@ -50,10 +50,9 @@ class ContractRevision(BaseModel):
     @field_validator("content_fingerprint")
     @classmethod
     def _validate_fingerprint_shape(cls, value: str) -> str:
-        cleaned = value.strip().lower()
-        if not _SHA256_HEX.fullmatch(cleaned):
+        if value != value.strip().lower() or not _SHA256_HEX.fullmatch(value):
             raise ValueError("content_fingerprint must be a lowercase SHA-256 hex digest")
-        return cleaned
+        return value
 
     @field_validator("canonical_contract_json")
     @classmethod
@@ -136,12 +135,14 @@ def compute_contract_content_fingerprint(canonical_json: str) -> str:
 
 def compute_contract_revision_id(content_fingerprint: str) -> str:
     """Return the stable UUIDv5 identity for one content fingerprint."""
-    fingerprint = content_fingerprint.strip().lower()
-    if not _SHA256_HEX.fullmatch(fingerprint):
+    if (
+        content_fingerprint != content_fingerprint.strip().lower()
+        or not _SHA256_HEX.fullmatch(content_fingerprint)
+    ):
         raise ValueError("content_fingerprint must be a lowercase SHA-256 hex digest")
     return deterministic_uuid5(
         SEMAPACT_CONTRACT_REVISION_NAMESPACE,
-        {"contentFingerprint": fingerprint},
+        {"contentFingerprint": content_fingerprint},
     )
 
 
