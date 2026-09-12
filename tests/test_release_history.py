@@ -13,6 +13,8 @@ from semapact.application.services.governance import GovernanceService
 from semapact.application.services.history import ProposalHistoryService
 from semapact.application.services.release_history import ReleaseHistoryService
 from semapact.contractops import (
+    ReviewAuthorizationEvidence,
+    ReviewEvidenceAction,
     VersionAuthorityConfig,
     apply_contract_release,
     authorize_contract_operation,
@@ -97,12 +99,22 @@ def _release_bundle(*, source: str):
         current_version="1.2.3",
         config=VersionAuthorityConfig(),
     )
+    apply_review = ReviewAuthorizationEvidence(
+        evidence_reference=f"review:{source}",
+        decision_id=proposal.decision.decision_id,
+        change_set_id=proposal.change_set.change_set_id,
+        release_plan_id=release_plan.release_plan_id,
+        version_resolution_id=version_resolution.version_resolution_id,
+        operation=GovernanceOperation.APPLY,
+        action=ReviewEvidenceAction.APPROVE,
+    )
     authorization = authorize_contract_operation(
         proposal.decision,
         proposal.change_set,
         release_plan,
         version_resolution,
         GovernanceOperation.APPLY,
+        evidence=apply_review,
     )
     applied_release = apply_contract_release(
         candidate_revision.contract,
@@ -192,6 +204,8 @@ def test_records_release_against_exact_plan_and_released_revision(tmp_path: Path
     assert record.required_version_bump == version_resolution.required_version_bump
     assert record.actual_version_bump == version_resolution.actual_bump
     assert record.version_authority == version_resolution.authority
+    assert record.review_evidence_reference == authorization.evidence_reference
+    assert record.review_evidence_action == authorization.evidence_action
 
 
 def test_exact_release_history_write_is_idempotent(tmp_path: Path) -> None:
@@ -261,12 +275,22 @@ def test_release_history_rejects_wrong_apply_authorization(tmp_path: Path) -> No
         base_revision=base_revision,
         candidate_revision=candidate_revision,
     )
+    publish_review = ReviewAuthorizationEvidence(
+        evidence_reference="review:publish",
+        decision_id=proposal.decision.decision_id,
+        change_set_id=proposal.change_set.change_set_id,
+        release_plan_id=release_plan.release_plan_id,
+        version_resolution_id=version_resolution.version_resolution_id,
+        operation=GovernanceOperation.PUBLISH,
+        action=ReviewEvidenceAction.APPROVE,
+    )
     publish_authorization = authorize_contract_operation(
         proposal.decision,
         proposal.change_set,
         release_plan,
         version_resolution,
         GovernanceOperation.PUBLISH,
+        evidence=publish_review,
     )
 
     with pytest.raises(ValueError, match="APPLY"):
