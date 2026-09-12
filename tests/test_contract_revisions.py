@@ -137,7 +137,7 @@ def test_source_provenance_does_not_change_revision_identity() -> None:
 
 def test_revision_model_structure_is_separate_from_derived_identity_validation() -> None:
     revision = build_contract_revision(_contract())
-    payload = revision.model_dump(mode="json")
+    payload = revision.model_dump(mode="json", by_alias=True)
     payload["content_fingerprint"] = "0" * 64
 
     structurally_valid = ContractRevision.model_validate(payload)
@@ -213,7 +213,9 @@ def test_semantically_corrupted_persisted_revision_fails_closed(tmp_path: Path) 
     )
     tampered = revision.model_copy(update={"content_fingerprint": "0" * 64})
     path.write_text(
-        canonical_compact_json(tampered.model_dump(mode="json")),
+        canonical_compact_json(
+            tampered.model_dump(mode="json", by_alias=True)
+        ),
         encoding="utf-8",
     )
 
