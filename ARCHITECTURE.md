@@ -123,6 +123,14 @@ Do not create a generic root `schema/`, `models/`, or `data_models/` directory t
 
 The fact that every object is “data” is not a useful architectural boundary.
 
+## Canonical Contract Model
+
+SemaPact reuses `OpenDataContractStandard` as the canonical logical contract model. It must not create a second contract representation merely to support governance, revision history, persistence, or deployment.
+
+Domain artifacts may reference or wrap the canonical ODCS model while adding only semantics owned by that domain. For example, `ContractRevision` adds content identity around an exact `OpenDataContractStandard`; it does not duplicate `contract.id`, `contract.version`, schema fields, or a serialized contract copy as parallel logical fields.
+
+Canonical JSON may be derived transiently for deterministic hashing, signatures, persistence, or transport. That serialization is not a second logical contract model.
+
 ## Governed Identity
 
 For current governance semantics:
@@ -217,3 +225,4 @@ Rules:
 6. **Execution is not convergence** — runtime state must be observed and reconciled independently.
 7. **Interfaces stay thin** — CLI/API/UI parse, delegate, and render; they do not become a second business-logic implementation.
 8. **Compatibility is not ownership** — legacy import paths may re-export canonical implementations but must not accumulate new logic.
+9. **One canonical contract model** — SemaPact reuses ODCS rather than maintaining a parallel contract schema.
