@@ -34,6 +34,23 @@ cross-artifact timeline.
 
 ## Contract revision identity
 
+`ContractRevision` is a revision-domain artifact owned by `semapact/revision/`.
+`semapact/history/` only exposes persistence capabilities for it. Persisting a domain
+artifact does not transfer semantic ownership to the persistence layer.
+
+The revision package keeps structure, identity rules, and construction separate:
+
+```text
+revision/models.py
+    ContractRevision / ContractRevisionSource
+
+revision/integrity.py
+    fingerprint + UUID formulas + integrity validation
+
+revision/builders.py
+    build canonical revision/provenance artifacts
+```
+
 `ContractRevision` identifies exact canonical ODCS content. It is deliberately
 separate from semantic version and source-control provenance.
 
@@ -72,9 +89,10 @@ For supported artifacts:
 
 - writing identical content under the same artifact ID is idempotent;
 - writing different content under an existing artifact ID fails closed;
-- reads rehydrate and validate the canonical domain model;
+- reads rehydrate the canonical domain model and invoke domain integrity validation
+  before trusting persisted content;
 - the embedded artifact ID must match the requested/file identity;
-- malformed or invalid persisted content fails closed;
+- malformed or semantically inconsistent persisted content fails closed;
 - missing IDs produce an explicit history not-found error;
 - contract-scoped listings are deterministic.
 
@@ -82,8 +100,8 @@ For supported artifacts:
 not written into canonical ODCS contracts.
 
 M2 deterministic identities remain authoritative. Persistence does not generate a
-replacement identity and does not reinterpret lifecycle, governance, version,
-authorization, deployment, or reconciliation semantics.
+replacement identity and does not reinterpret lifecycle, governance, revision,
+version, authorization, deployment, or reconciliation semantics.
 
 ## Backend extension rule
 
