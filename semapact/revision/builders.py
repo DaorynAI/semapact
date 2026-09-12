@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
+from semapact.odcs.serialization import canonical_contract_json
 from semapact.revision.integrity import (
     compute_contract_content_fingerprint,
     compute_contract_revision_id,
@@ -12,7 +13,6 @@ from semapact.revision.integrity import (
     validate_contract_revision_source_identity,
 )
 from semapact.revision.models import ContractRevision, ContractRevisionSource
-from semapact.utils.contracts import canonical_contract_json
 
 
 def build_contract_revision(contract: OpenDataContractStandard) -> ContractRevision:
