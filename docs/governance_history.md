@@ -51,13 +51,28 @@ revision/builders.py
     build canonical revision/provenance artifacts
 ```
 
-`ContractRevision` identifies exact canonical ODCS content. It is deliberately
-separate from semantic version and source-control provenance.
+SemaPact does not define another contract model. `ContractRevision.contract` uses the
+same `OpenDataContractStandard` model used by the ODCS/datacontract-cli stack. The
+revision envelope adds only SemaPact-owned identity:
 
 ```text
-exact ODCS contract
+ContractRevision
+├── revision_id
+├── content_fingerprint
+└── contract: OpenDataContractStandard
+```
+
+`contract.id`, `contract.version`, schema, quality, servers, and all other ODCS fields
+remain authoritative inside the ODCS model. They are not duplicated as revision fields.
+Likewise, canonical JSON is not stored as a second logical contract representation; it
+is derived transiently when computing or validating revision identity.
+
+Revision identity is computed from the exact ODCS state:
+
+```text
+OpenDataContractStandard
       ↓
-canonical JSON
+canonical JSON bytes
       ↓
 SHA-256 content fingerprint
       ↓
