@@ -25,7 +25,25 @@ from semapact.platforms.git import GitWorkingTreeHistoryRepository
 from semapact.revision import build_contract_revision
 
 
-def _contract() -> OpenDataContractStandard:
+def _contract(*, include_note: bool = False) -> OpenDataContractStandard:
+    properties = [
+        SchemaProperty(
+            name="id",
+            logicalType="string",
+            physicalType="varchar(255)",
+            required=True,
+        )
+    ]
+    if include_note:
+        properties.append(
+            SchemaProperty(
+                name="note",
+                logicalType="string",
+                physicalType="varchar(255)",
+                required=False,
+            )
+        )
+
     return OpenDataContractStandard(
         apiVersion="v3.1.0",
         kind="DataContract",
@@ -36,14 +54,7 @@ def _contract() -> OpenDataContractStandard:
         schema=[
             SchemaObject(
                 name="orders",
-                properties=[
-                    SchemaProperty(
-                        name="id",
-                        logicalType="string",
-                        physicalType="varchar(255)",
-                        required=True,
-                    )
-                ],
+                properties=properties,
             )
         ],
     )
@@ -70,7 +81,7 @@ def _services(tmp_path: Path):
 
 def _release_bundle(*, source: str):
     base_revision = build_contract_revision(_contract())
-    candidate_revision = build_contract_revision(_contract())
+    candidate_revision = build_contract_revision(_contract(include_note=True))
     proposal = GovernanceService().evaluate_proposal(
         base_revision.contract,
         candidate_revision.contract,
@@ -164,12 +175,15 @@ def test_records_release_against_exact_plan_and_released_revision(tmp_path: Path
     assert backend.get_release_plan(release_plan.release_plan_id) == release_plan
     assert backend.get_release_record(record.release_record_id) == record
     assert (
-        backend.get_release_record_by_version("orders-product", "1.2.4")
+        backend.get_release_record_by_version(
+            "orders-product",
+            version_resolution.selected_version,
+        )
         == record
     )
     released_revision = backend.get_revision(record.released_revision_id)
     assert released_revision.revision_id != candidate_revision.revision_id
-    assert str(released_revision.contract.version) == "1.2.4"
+    assert str(released_revision.contract.version) == version_resolution.selected_version
     assert record.decision_id == proposal.decision.decision_id
     assert record.change_set_id == proposal.change_set.change_set_id
     assert record.version_resolution_id == version_resolution.version_resolution_id
