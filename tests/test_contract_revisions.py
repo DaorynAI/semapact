@@ -72,6 +72,20 @@ def test_revision_identity_protocol_has_golden_values() -> None:
     )
 
 
+def test_revision_reuses_odcs_contract_model_without_duplicate_contract_fields() -> None:
+    contract = _contract()
+    revision = build_contract_revision(contract)
+
+    assert isinstance(revision.contract, OpenDataContractStandard)
+    assert revision.contract == contract
+    assert revision.contract is not contract
+    assert set(ContractRevision.model_fields) == {
+        "revision_id",
+        "content_fingerprint",
+        "contract",
+    }
+
+
 def test_identical_content_has_stable_revision_identity() -> None:
     first = build_contract_revision(_contract())
     second = build_contract_revision(_contract())
@@ -79,7 +93,7 @@ def test_identical_content_has_stable_revision_identity() -> None:
     assert first == second
     assert first.revision_id == second.revision_id
     assert first.content_fingerprint == second.content_fingerprint
-    assert first.revision_id != first.contract_version
+    assert first.revision_id != str(first.contract.version or "")
 
 
 def test_governed_content_change_changes_revision_identity() -> None:
@@ -94,10 +108,13 @@ def test_semantic_version_is_part_of_exact_contract_content_not_revision_alias()
     first = build_contract_revision(_contract(version="1.0.0"))
     second = build_contract_revision(_contract(version="1.0.1"))
 
-    assert first.contract_version == "1.0.0"
-    assert second.contract_version == "1.0.1"
+    assert str(first.contract.version) == "1.0.0"
+    assert str(second.contract.version) == "1.0.1"
     assert first.revision_id != second.revision_id
-    assert first.revision_id not in {first.contract_version, second.contract_version}
+    assert first.revision_id not in {
+        str(first.contract.version),
+        str(second.contract.version),
+    }
 
 
 def test_source_provenance_does_not_change_revision_identity() -> None:
@@ -127,6 +144,16 @@ def test_revision_model_structure_is_separate_from_derived_identity_validation()
 
     with pytest.raises(ValueError, match="content_fingerprint"):
         validate_contract_revision_identity(structurally_valid)
+
+
+def test_revision_integrity_detects_changed_nested_contract_content() -> None:
+    revision = build_contract_revision(_contract())
+    changed_contract = revision.contract.model_copy(deep=True)
+    changed_contract.name = "changed-orders"
+    tampered = revision.model_copy(update={"contract": changed_contract})
+
+    with pytest.raises(ValueError, match="content_fingerprint"):
+        validate_contract_revision_identity(tampered)
 
 
 def test_source_link_builder_rejects_invalid_revision_identity() -> None:
