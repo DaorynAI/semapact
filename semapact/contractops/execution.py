@@ -25,7 +25,7 @@ from semapact.contractops.models import (
 from semapact.exceptions import ContractOpsAuthorizationError, ReleaseValidationError
 from semapact.governance.gate import GovernanceOperation
 from semapact.governance.models import GovernanceDecision
-from semapact.utils.deterministic import canonical_compact_json
+from semapact.utils.contracts import canonical_contract_json
 from semapact.versioning import normalize_semver
 
 
@@ -102,7 +102,7 @@ def apply_contract_release(
 
     released_contract = candidate_contract.model_copy(deep=True)
     released_contract.version = selected_version
-    released_contract_json = _canonical_contract_json(released_contract)
+    released_contract_json = canonical_contract_json(released_contract)
 
     applied_release_id = compute_applied_release_id(
         contract_id=release_plan.contract_id,
@@ -246,8 +246,3 @@ def _canonical_version(version: str, *, field_name: str) -> str:
             f"{field_name} must use canonical major.minor.patch form"
         )
     return canonical
-
-
-def _canonical_contract_json(contract: OpenDataContractStandard) -> str:
-    payload = contract.model_dump(mode="json", by_alias=True, exclude_none=True)
-    return canonical_compact_json(payload)
