@@ -25,7 +25,7 @@ from semapact.contractops.models import (
 from semapact.exceptions import ContractOpsAuthorizationError, ReleaseValidationError
 from semapact.governance.gate import GovernanceOperation
 from semapact.governance.models import GovernanceDecision
-from semapact.utils.contracts import canonical_contract_json
+from semapact.odcs.serialization import canonical_contract_json
 from semapact.versioning import normalize_semver
 
 
