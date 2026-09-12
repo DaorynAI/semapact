@@ -6,7 +6,7 @@ canonical domain artifacts they connect.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from semapact.contractops.models import ReviewEvidenceAction, VersionAuthority
 from semapact.versioning import ActualVersionBump, RequiredBump
@@ -81,6 +81,24 @@ class ReleaseRecord(HistoryModel):
             return None
         cleaned = value.strip()
         return cleaned or None
+
+    @model_validator(mode="after")
+    def _validate_provenance_pairs(self) -> ReleaseRecord:
+        if self.version_authority is VersionAuthority.GIT:
+            if self.authority_reference is None:
+                raise ValueError("git release history requires authority_reference")
+        elif self.authority_reference is not None:
+            raise ValueError(
+                "SemaPact release history must not contain authority_reference"
+            )
+
+        has_reference = self.review_evidence_reference is not None
+        has_action = self.review_evidence_action is not None
+        if has_reference != has_action:
+            raise ValueError(
+                "review evidence reference and action must either both be present or both be absent"
+            )
+        return self
 
 
 def _required_text(value: str) -> str:
