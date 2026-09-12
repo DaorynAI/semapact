@@ -16,6 +16,9 @@ from semapact.history import (
     ContractRevisionSourceHistoryRepository,
     HistoryCorruptionError,
     build_contract_revision,
+    compute_contract_content_fingerprint,
+    compute_contract_revision_id,
+    compute_contract_revision_source_id,
     link_contract_revision_source,
 )
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
@@ -47,6 +50,22 @@ def _contract(
                 ],
             )
         ],
+    )
+
+
+def test_revision_identity_protocol_has_golden_values() -> None:
+    canonical = '{"id":"x"}'
+    fingerprint = compute_contract_content_fingerprint(canonical)
+
+    assert fingerprint == "5e2b92cc57ce618dfbb54844a31775e4b95c6fb552ee6bf5a068133c12d2ad90"
+    revision_id = compute_contract_revision_id(fingerprint)
+    assert revision_id == "88b0f51f-8208-528e-92c7-75d2b357a751"
+    assert (
+        compute_contract_revision_source_id(
+            revision_id=revision_id,
+            source_reference="git:commit:abc123",
+        )
+        == "8598e362-fef7-58e9-87c1-a582d511728d"
     )
 
 
@@ -130,9 +149,11 @@ def test_revision_and_sources_round_trip_through_typed_history_ports(
     assert revisions.list_revisions("orders-product") == (revision,)
     assert revisions.list_revisions("other-contract") == ()
     assert sources.get_revision_source(source_a.source_link_id) == source_a
-    assert [item.source_link_id for item in sources.list_revision_sources(revision.revision_id)] == sorted(
-        [source_a.source_link_id, source_b.source_link_id]
-    )
+    source_ids = [
+        item.source_link_id
+        for item in sources.list_revision_sources(revision.revision_id)
+    ]
+    assert source_ids == sorted([source_a.source_link_id, source_b.source_link_id])
 
 
 def test_corrupted_persisted_revision_fails_closed(tmp_path: Path) -> None:
