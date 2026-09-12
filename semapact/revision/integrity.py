@@ -6,9 +6,6 @@ import hashlib
 import re
 import uuid
 
-from open_data_contract_standard.model import OpenDataContractStandard
-from pydantic import ValidationError as PydanticValidationError
-
 from semapact.revision.models import ContractRevision, ContractRevisionSource
 from semapact.utils.contracts import canonical_contract_json
 from semapact.utils.deterministic import deterministic_uuid5
@@ -59,30 +56,16 @@ def compute_contract_revision_source_id(
 
 
 def validate_contract_revision_identity(revision: ContractRevision) -> None:
-    """Fail if a revision's derived identity does not match its canonical content."""
+    """Fail if a revision's derived identity does not match its exact ODCS state."""
     if not isinstance(revision, ContractRevision):
         raise TypeError(
             f"revision must be ContractRevision, got {type(revision).__name__}"
         )
 
-    try:
-        contract = OpenDataContractStandard.model_validate_json(
-            revision.canonical_contract_json
-        )
-    except PydanticValidationError as exc:
-        raise ValueError("canonical_contract_json is not a valid ODCS contract") from exc
+    _require_canonical_text(str(revision.contract.id or ""), "contract.id")
+    _require_canonical_text(str(revision.contract.version or ""), "contract.version")
 
-    canonical = canonical_contract_json(contract)
-    if canonical != revision.canonical_contract_json:
-        raise ValueError("canonical_contract_json is not in canonical form")
-
-    contract_id = str(contract.id or "").strip()
-    contract_version = str(contract.version or "").strip()
-    if contract_id != revision.contract_id:
-        raise ValueError("contract_id does not match canonical contract content")
-    if contract_version != revision.contract_version:
-        raise ValueError("contract_version does not match canonical contract content")
-
+    canonical = canonical_contract_json(revision.contract)
     expected_fingerprint = compute_contract_content_fingerprint(canonical)
     if expected_fingerprint != revision.content_fingerprint:
         raise ValueError("content_fingerprint does not match canonical contract content")
