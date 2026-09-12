@@ -2,48 +2,28 @@
 
 from __future__ import annotations
 
-import re
-
+from open_data_contract_standard.model import OpenDataContractStandard
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
-_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
-
-
 class ContractRevision(BaseModel):
-    """Exact governed ODCS content identity.
+    """Content-identity envelope around one exact canonical ODCS contract state.
 
-    The model owns structure only. Derived identity validation belongs to the
-    revision integrity rules so model definition and domain computation stay
-    separate.
+    The ODCS model remains the canonical contract representation. This model adds only
+    SemaPact-owned revision identity and does not duplicate contract ID, version, or a
+    serialized contract copy.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     revision_id: str
-    contract_id: str
-    contract_version: str
     content_fingerprint: str
-    canonical_contract_json: str
+    contract: OpenDataContractStandard
 
-    @field_validator("revision_id", "contract_id", "contract_version")
+    @field_validator("revision_id", "content_fingerprint")
     @classmethod
     def _require_canonical_text(cls, value: str) -> str:
         return _canonical_text(value)
-
-    @field_validator("content_fingerprint")
-    @classmethod
-    def _require_sha256_hex(cls, value: str) -> str:
-        if value != value.strip().lower() or not _SHA256_HEX.fullmatch(value):
-            raise ValueError("content_fingerprint must be a lowercase SHA-256 hex digest")
-        return value
-
-    @field_validator("canonical_contract_json")
-    @classmethod
-    def _require_contract_json(cls, value: str) -> str:
-        if not value:
-            raise ValueError("canonical_contract_json must not be empty")
-        return value
 
 
 class ContractRevisionSource(BaseModel):
