@@ -54,13 +54,14 @@ Domain models live with the rules that give them meaning:
 
 - `semapact/lifecycle/` — canonical identity, lifecycle policy, merge/change semantics;
 - `semapact/governance/` — `GovernanceDecision`, reason codes, centralized gate;
+- `semapact/revision/` — immutable governed contract content identity and source-provenance links;
 - `semapact/contractops/` — `ChangeSet`, `ReleasePlan`, `VersionResolution`, ContractOps authorization, APPLY/PUBLISH artifacts;
 - `semapact/deployment/` — provider-neutral `DeploymentPlan`, `DeploymentPreview`, deployment authorization and adapter contract;
 - `semapact/runtime/` — provider-neutral governed runtime asset projection;
 - `semapact/observation/` — provider-neutral point-in-time runtime state;
 - `semapact/reconciliation/` — desired-vs-observed comparison and `RuntimeDriftStatus`.
 
-A domain artifact does not move into the application layer merely because an application service returns it.
+A domain artifact does not move into the application or persistence layer merely because an application service returns it or a history backend stores it.
 
 ### Application layer
 
@@ -91,9 +92,13 @@ These are application DTOs, not new governance/release/deployment authorities.
 
 `semapact/interfaces/` owns parsing, loading input artifacts at the interface edge, rendering, and process-outcome mapping. Interfaces delegate to application/domain boundaries and must not independently calculate governance, version, deployment, or reconciliation results.
 
+### History persistence
+
+`semapact/history/` owns storage-neutral typed persistence/query ports and persistence errors. It stores canonical artifacts from their owning domains but does not redefine their models, identity formulas, or business semantics.
+
 ### Platform adapters
 
-`semapact/platforms/` owns provider SDK/client integration and physical-platform translation. Databricks DDL generation/execution is provider behavior; it does not belong in ContractOps or application DTOs.
+`semapact/platforms/` owns provider SDK/client integration and physical-platform translation. Databricks DDL generation/execution is provider behavior; it does not belong in ContractOps or application DTOs. Storage backend layout and physical persistence mechanics likewise belong to the corresponding platform adapter.
 
 ### Import/export and compatibility workflows
 
@@ -108,12 +113,13 @@ Do not create a generic root `schema/`, `models/`, or `data_models/` directory t
 | What the object represents | Owner |
 | --- | --- |
 | governed ODCS contract | ODCS model |
+| governed contract revision identity/provenance | `semapact/revision/` |
 | governance/release/deployment/reconciliation artifact | owning domain package |
 | application/use-case aggregate result | `application/models/` |
 | application orchestration | `application/services/` |
+| storage-neutral history persistence/query capability | `semapact/history/` |
 | provider/SDK/physical representation | `platforms/<provider>/` |
 | presentation-only rendering state | `interfaces/` |
-| durable history/persistence record | its persistence/history boundary |
 
 The fact that every object is “data” is not a useful architectural boundary.
 
@@ -204,7 +210,7 @@ Rules:
 ## Public Architecture Invariants
 
 1. **Change-driven, not CRUD** — governed state evolves through explicit analysis/planning/authorization boundaries.
-2. **One authority per rule** — lifecycle, governance, version selection, deployment translation, and reconciliation each have one canonical owner.
+2. **One authority per rule** — lifecycle, governance, revision identity, version selection, deployment translation, and reconciliation each have one canonical owner.
 3. **Exact artifacts cross boundaries** — side effects consume exact immutable artifacts; mutable current state is not silently substituted.
 4. **Operation-scoped authorization** — APPLY, PUBLISH, and DEPLOY are distinct operations; authorization for one cannot authorize another.
 5. **Logical identity is stable** — `physicalName` binds runtime state but does not redefine governed identity.
