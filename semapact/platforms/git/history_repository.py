@@ -19,6 +19,7 @@ from semapact.history import (
     HistoryCorruptionError,
     HistoryNotFoundError,
 )
+from semapact.history.revisions import ContractRevision, ContractRevisionSource
 from semapact.utils.deterministic import canonical_compact_json
 
 
@@ -92,6 +93,61 @@ class GitWorkingTreeHistoryRepository:
             id_attribute="change_set_id",
         )
         return tuple(record for record in records if record.contract_id == contract_id)
+
+    def put_revision(self, revision: ContractRevision) -> None:
+        self._put(
+            kind="contract_revisions",
+            artifact_id=revision.revision_id,
+            artifact=revision,
+            model_type=ContractRevision,
+            id_attribute="revision_id",
+        )
+
+    def get_revision(self, revision_id: str) -> ContractRevision:
+        return self._get(
+            kind="contract_revisions",
+            artifact_id=revision_id,
+            model_type=ContractRevision,
+            id_attribute="revision_id",
+        )
+
+    def list_revisions(self, contract_id: str) -> tuple[ContractRevision, ...]:
+        contract_id = _required_text(contract_id, "contract_id")
+        records = self._list(
+            kind="contract_revisions",
+            model_type=ContractRevision,
+            id_attribute="revision_id",
+        )
+        return tuple(record for record in records if record.contract_id == contract_id)
+
+    def put_revision_source(self, source: ContractRevisionSource) -> None:
+        self._put(
+            kind="contract_revision_sources",
+            artifact_id=source.source_link_id,
+            artifact=source,
+            model_type=ContractRevisionSource,
+            id_attribute="source_link_id",
+        )
+
+    def get_revision_source(self, source_link_id: str) -> ContractRevisionSource:
+        return self._get(
+            kind="contract_revision_sources",
+            artifact_id=source_link_id,
+            model_type=ContractRevisionSource,
+            id_attribute="source_link_id",
+        )
+
+    def list_revision_sources(
+        self,
+        revision_id: str,
+    ) -> tuple[ContractRevisionSource, ...]:
+        revision_id = _required_text(revision_id, "revision_id")
+        records = self._list(
+            kind="contract_revision_sources",
+            model_type=ContractRevisionSource,
+            id_attribute="source_link_id",
+        )
+        return tuple(record for record in records if record.revision_id == revision_id)
 
     def _put(
         self,
