@@ -20,12 +20,11 @@ from semapact.history import (
     HistoryCorruptionError,
     HistoryNotFoundError,
 )
-from semapact.revision import (
-    ContractRevision,
-    ContractRevisionSource,
+from semapact.revision.integrity import (
     validate_contract_revision_identity,
     validate_contract_revision_source_identity,
 )
+from semapact.revision.models import ContractRevision, ContractRevisionSource
 from semapact.utils.deterministic import canonical_compact_json
 
 
