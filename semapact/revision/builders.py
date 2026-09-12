@@ -9,6 +9,7 @@ from semapact.revision.integrity import (
     compute_contract_revision_id,
     compute_contract_revision_source_id,
     validate_contract_revision_identity,
+    validate_contract_revision_source_identity,
 )
 from semapact.revision.models import ContractRevision, ContractRevisionSource
 from semapact.utils.contracts import canonical_contract_json
@@ -46,7 +47,7 @@ def link_contract_revision_source(
     """Build one immutable provenance link without changing revision identity."""
     validate_contract_revision_identity(revision)
     source_reference = _canonical_text(source_reference, "source_reference")
-    return ContractRevisionSource(
+    source = ContractRevisionSource(
         source_link_id=compute_contract_revision_source_id(
             revision_id=revision.revision_id,
             source_reference=source_reference,
@@ -54,6 +55,8 @@ def link_contract_revision_source(
         revision_id=revision.revision_id,
         source_reference=source_reference,
     )
+    validate_contract_revision_source_identity(source)
+    return source
 
 
 def _canonical_text(value: str, field_name: str) -> str:
