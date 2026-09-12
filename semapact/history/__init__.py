@@ -1,11 +1,13 @@
-"""Durable governance-history boundary.
+"""Durable governance-history persistence boundary.
 
-History persists canonical domain artifacts without becoming a second source of
-governance, ContractOps, deployment, or reconciliation semantics.
+History stores canonical domain artifacts without becoming a second source of
+revision, governance, ContractOps, deployment, or reconciliation semantics.
 """
 
 from semapact.history.repository import (
     ChangeSetHistoryRepository,
+    ContractRevisionHistoryRepository,
+    ContractRevisionSourceHistoryRepository,
     DecisionHistoryRepository,
     HistoryConflictError,
     HistoryCorruptionError,
@@ -15,6 +17,8 @@ from semapact.history.repository import (
 
 __all__ = [
     "ChangeSetHistoryRepository",
+    "ContractRevisionHistoryRepository",
+    "ContractRevisionSourceHistoryRepository",
     "DecisionHistoryRepository",
     "HistoryConflictError",
     "HistoryCorruptionError",

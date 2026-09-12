@@ -54,13 +54,14 @@ Domain models live with the rules that give them meaning:
 
 - `semapact/lifecycle/` — canonical identity, lifecycle policy, merge/change semantics;
 - `semapact/governance/` — `GovernanceDecision`, reason codes, centralized gate;
+- `semapact/revision/` — immutable governed contract content identity and source-provenance links;
 - `semapact/contractops/` — `ChangeSet`, `ReleasePlan`, `VersionResolution`, ContractOps authorization, APPLY/PUBLISH artifacts;
 - `semapact/deployment/` — provider-neutral `DeploymentPlan`, `DeploymentPreview`, deployment authorization and adapter contract;
 - `semapact/runtime/` — provider-neutral governed runtime asset projection;
 - `semapact/observation/` — provider-neutral point-in-time runtime state;
 - `semapact/reconciliation/` — desired-vs-observed comparison and `RuntimeDriftStatus`.
 
-A domain artifact does not move into the application layer merely because an application service returns it.
+A domain artifact does not move into the application or persistence layer merely because an application service returns it or a history backend stores it.
 
 ### Application layer
 
@@ -91,9 +92,13 @@ These are application DTOs, not new governance/release/deployment authorities.
 
 `semapact/interfaces/` owns parsing, loading input artifacts at the interface edge, rendering, and process-outcome mapping. Interfaces delegate to application/domain boundaries and must not independently calculate governance, version, deployment, or reconciliation results.
 
+### History persistence
+
+`semapact/history/` owns storage-neutral typed persistence/query ports and persistence errors. It stores canonical artifacts from their owning domains but does not redefine their models, identity formulas, or business semantics.
+
 ### Platform adapters
 
-`semapact/platforms/` owns provider SDK/client integration and physical-platform translation. Databricks DDL generation/execution is provider behavior; it does not belong in ContractOps or application DTOs.
+`semapact/platforms/` owns provider SDK/client integration and physical-platform translation. Databricks DDL generation/execution is provider behavior; it does not belong in ContractOps or application DTOs. Storage backend layout and physical persistence mechanics likewise belong to the corresponding platform adapter.
 
 ### Import/export and compatibility workflows
 
@@ -108,14 +113,23 @@ Do not create a generic root `schema/`, `models/`, or `data_models/` directory t
 | What the object represents | Owner |
 | --- | --- |
 | governed ODCS contract | ODCS model |
+| governed contract revision identity/provenance | `semapact/revision/` |
 | governance/release/deployment/reconciliation artifact | owning domain package |
 | application/use-case aggregate result | `application/models/` |
 | application orchestration | `application/services/` |
+| storage-neutral history persistence/query capability | `semapact/history/` |
 | provider/SDK/physical representation | `platforms/<provider>/` |
 | presentation-only rendering state | `interfaces/` |
-| durable history/persistence record | its persistence/history boundary |
 
 The fact that every object is “data” is not a useful architectural boundary.
+
+## Canonical Contract Model
+
+SemaPact reuses `OpenDataContractStandard` as the canonical logical contract model. It must not create a second contract representation merely to support governance, revision history, persistence, or deployment.
+
+Domain artifacts may reference or wrap the canonical ODCS model while adding only semantics owned by that domain. For example, `ContractRevision` adds content identity around an exact `OpenDataContractStandard`; it does not duplicate `contract.id`, `contract.version`, schema fields, or a serialized contract copy as parallel logical fields.
+
+Canonical JSON may be derived transiently for deterministic hashing, signatures, persistence, or transport. That serialization is not a second logical contract model.
 
 ## Governed Identity
 
@@ -204,10 +218,11 @@ Rules:
 ## Public Architecture Invariants
 
 1. **Change-driven, not CRUD** — governed state evolves through explicit analysis/planning/authorization boundaries.
-2. **One authority per rule** — lifecycle, governance, version selection, deployment translation, and reconciliation each have one canonical owner.
+2. **One authority per rule** — lifecycle, governance, revision identity, version selection, deployment translation, and reconciliation each have one canonical owner.
 3. **Exact artifacts cross boundaries** — side effects consume exact immutable artifacts; mutable current state is not silently substituted.
 4. **Operation-scoped authorization** — APPLY, PUBLISH, and DEPLOY are distinct operations; authorization for one cannot authorize another.
 5. **Logical identity is stable** — `physicalName` binds runtime state but does not redefine governed identity.
 6. **Execution is not convergence** — runtime state must be observed and reconciled independently.
 7. **Interfaces stay thin** — CLI/API/UI parse, delegate, and render; they do not become a second business-logic implementation.
 8. **Compatibility is not ownership** — legacy import paths may re-export canonical implementations but must not accumulate new logic.
+9. **One canonical contract model** — SemaPact reuses ODCS rather than maintaining a parallel contract schema.

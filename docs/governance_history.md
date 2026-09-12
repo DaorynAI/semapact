@@ -7,14 +7,15 @@ store and retrieve those exact immutable models.
 The persistence boundary is capability-oriented:
 
 ```text
-GovernanceDecision        ChangeSet
-        ↓                    ↓
-DecisionHistoryRepository  ChangeSetHistoryRepository
-          \                  /
-           \                /
-        GitWorkingTreeHistoryRepository
-                    ↓
-          .semapact/history/
+GovernanceDecision   ChangeSet   ContractRevision   RevisionSource
+        ↓                ↓               ↓                ↓
+DecisionHistory      ChangeSetHistory    RevisionHistory   RevisionSourceHistory
+Repository           Repository          Repository        Repository
+          \              |                  |              /
+           \             |                  |             /
+             GitWorkingTreeHistoryRepository
+                           ↓
+                 .semapact/history/
 ```
 
 Callers depend only on the narrow typed repository capability they need. A physical
@@ -31,15 +32,82 @@ query/application service belongs above these ports only when a use case actuall
 coordinates multiple artifact types, for example evolution-chain reconstruction or a
 cross-artifact timeline.
 
+## Contract revision identity
+
+`ContractRevision` is a revision-domain artifact owned by `semapact/revision/`.
+`semapact/history/` only exposes persistence capabilities for it. Persisting a domain
+artifact does not transfer semantic ownership to the persistence layer.
+
+The revision package keeps structure, identity rules, and construction separate:
+
+```text
+revision/models.py
+    ContractRevision / ContractRevisionSource
+
+revision/integrity.py
+    fingerprint + UUID formulas + integrity validation
+
+revision/builders.py
+    build canonical revision/provenance artifacts
+```
+
+SemaPact does not define another contract model. `ContractRevision.contract` uses the
+same `OpenDataContractStandard` model used by the ODCS/datacontract-cli stack. The
+revision envelope adds only SemaPact-owned identity:
+
+```text
+ContractRevision
+├── revision_id
+├── content_fingerprint
+└── contract: OpenDataContractStandard
+```
+
+`contract.id`, `contract.version`, schema, quality, servers, and all other ODCS fields
+remain authoritative inside the ODCS model. They are not duplicated as revision fields.
+Likewise, canonical JSON is not stored as a second logical contract representation; it
+is derived transiently when computing or validating revision identity.
+
+Revision identity is computed from the exact ODCS state:
+
+```text
+OpenDataContractStandard
+      ↓
+canonical JSON bytes
+      ↓
+SHA-256 content fingerprint
+      ↓
+UUIDv5 revision ID
+```
+
+The canonical JSON representation uses ODCS alias names, excludes absent (`None`)
+fields, preserves list order, and sorts object keys through SemaPact's canonical JSON
+serializer. The fixed ContractRevision UUID namespace is part of the identity protocol;
+changing it is an identity-schema migration.
+
+A Git SHA, branch, tag, registry URI, or other external source reference does not
+participate in revision identity. Source provenance is represented as a separate
+immutable `ContractRevisionSource` link:
+
+```text
+ContractRevision
+   ├── source A
+   ├── source B
+   └── source C
+```
+
+Therefore the same canonical contract content has the same revision ID wherever it is
+observed, while all known source references can still be retained independently.
+
 ## Persistence semantics
 
 For supported artifacts:
 
 - writing identical content under the same artifact ID is idempotent;
 - writing different content under an existing artifact ID fails closed;
-- reads rehydrate and validate the canonical domain model;
+- reads rehydrate the canonical domain model and invoke domain integrity validation
+  before trusting persisted content;
 - the embedded artifact ID must match the requested/file identity;
-- malformed or invalid persisted content fails closed;
+- malformed or semantically inconsistent persisted content fails closed;
 - missing IDs produce an explicit history not-found error;
 - contract-scoped listings are deterministic.
 
@@ -47,8 +115,8 @@ For supported artifacts:
 not written into canonical ODCS contracts.
 
 M2 deterministic identities remain authoritative. Persistence does not generate a
-replacement identity and does not reinterpret lifecycle, governance, version,
-authorization, deployment, or reconciliation semantics.
+replacement identity and does not reinterpret lifecycle, governance, revision,
+version, authorization, deployment, or reconciliation semantics.
 
 ## Backend extension rule
 

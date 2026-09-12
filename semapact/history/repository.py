@@ -6,6 +6,7 @@ from typing import Protocol
 
 from semapact.contractops import ChangeSet
 from semapact.governance import GovernanceDecision
+from semapact.revision.models import ContractRevision, ContractRevisionSource
 
 
 class HistoryRepositoryError(RuntimeError):
@@ -53,4 +54,39 @@ class ChangeSetHistoryRepository(Protocol):
 
     def list_change_sets(self, contract_id: str) -> tuple[ChangeSet, ...]:
         """List ChangeSets for one contract in deterministic artifact-ID order."""
+        ...
+
+
+class ContractRevisionHistoryRepository(Protocol):
+    """Persistence capability for immutable ContractRevision history only."""
+
+    def put_revision(self, revision: ContractRevision) -> None:
+        """Persist one immutable ContractRevision idempotently."""
+        ...
+
+    def get_revision(self, revision_id: str) -> ContractRevision:
+        """Load one ContractRevision by its exact content-derived ID."""
+        ...
+
+    def list_revisions(self, contract_id: str) -> tuple[ContractRevision, ...]:
+        """List revisions for one contract in deterministic artifact-ID order."""
+        ...
+
+
+class ContractRevisionSourceHistoryRepository(Protocol):
+    """Persistence capability for immutable revision provenance links only."""
+
+    def put_revision_source(self, source: ContractRevisionSource) -> None:
+        """Persist one revision-to-source provenance link idempotently."""
+        ...
+
+    def get_revision_source(self, source_link_id: str) -> ContractRevisionSource:
+        """Load one revision provenance link by exact ID."""
+        ...
+
+    def list_revision_sources(
+        self,
+        revision_id: str,
+    ) -> tuple[ContractRevisionSource, ...]:
+        """List all source links for one revision in deterministic ID order."""
         ...
