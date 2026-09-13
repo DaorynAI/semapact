@@ -29,10 +29,14 @@ from semapact.history import (
     HistoryCorruptionError,
     HistoryNotFoundError,
     ReleaseRecord,
+    RuntimeObservationRecord,
+    RuntimeReconciliationRecord,
 )
 from semapact.history.integrity import (
     validate_deployment_record_identity,
     validate_release_record_identity,
+    validate_runtime_observation_record_identity,
+    validate_runtime_reconciliation_record_identity,
 )
 from semapact.revision.integrity import (
     validate_contract_revision_identity,
@@ -47,12 +51,7 @@ _SAFE_ARTIFACT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 class GitWorkingTreeHistoryRepository:
-    """Shared Git backend implementing narrow typed history capabilities.
-
-    Public methods satisfy artifact-specific repository protocols while the private
-    helpers own common JSON/file persistence mechanics. Domain integrity remains in
-    each owning domain and is injected when persistence rehydrates that artifact.
-    """
+    """Shared Git backend implementing narrow typed history capabilities."""
 
     def __init__(
         self,
@@ -405,6 +404,100 @@ class GitWorkingTreeHistoryRepository:
         )
         return tuple(
             record for record in records if record.deployment_plan_id == deployment_plan_id
+        )
+
+    def put_runtime_observation_record(self, record: RuntimeObservationRecord) -> None:
+        self._put(
+            kind="runtime_observations",
+            artifact_id=record.observation_record_id,
+            artifact=record,
+            model_type=RuntimeObservationRecord,
+            id_attribute="observation_record_id",
+            integrity_validator=validate_runtime_observation_record_identity,
+        )
+
+    def get_runtime_observation_record(
+        self,
+        observation_record_id: str,
+    ) -> RuntimeObservationRecord:
+        return self._get(
+            kind="runtime_observations",
+            artifact_id=observation_record_id,
+            model_type=RuntimeObservationRecord,
+            id_attribute="observation_record_id",
+            integrity_validator=validate_runtime_observation_record_identity,
+        )
+
+    def list_runtime_observation_records(
+        self,
+        source_identifier: str,
+    ) -> tuple[RuntimeObservationRecord, ...]:
+        source_identifier = _required_text(source_identifier, "source_identifier")
+        records = self._list(
+            kind="runtime_observations",
+            model_type=RuntimeObservationRecord,
+            id_attribute="observation_record_id",
+            integrity_validator=validate_runtime_observation_record_identity,
+        )
+        return tuple(
+            record
+            for record in records
+            if record.observation.source_identifier == source_identifier
+        )
+
+    def put_runtime_reconciliation_record(
+        self,
+        record: RuntimeReconciliationRecord,
+    ) -> None:
+        self._put(
+            kind="runtime_reconciliations",
+            artifact_id=record.runtime_reconciliation_record_id,
+            artifact=record,
+            model_type=RuntimeReconciliationRecord,
+            id_attribute="runtime_reconciliation_record_id",
+            integrity_validator=validate_runtime_reconciliation_record_identity,
+        )
+
+    def get_runtime_reconciliation_record(
+        self,
+        runtime_reconciliation_record_id: str,
+    ) -> RuntimeReconciliationRecord:
+        return self._get(
+            kind="runtime_reconciliations",
+            artifact_id=runtime_reconciliation_record_id,
+            model_type=RuntimeReconciliationRecord,
+            id_attribute="runtime_reconciliation_record_id",
+            integrity_validator=validate_runtime_reconciliation_record_identity,
+        )
+
+    def list_runtime_reconciliation_records(
+        self,
+        contract_id: str,
+    ) -> tuple[RuntimeReconciliationRecord, ...]:
+        contract_id = _required_text(contract_id, "contract_id")
+        records = self._list(
+            kind="runtime_reconciliations",
+            model_type=RuntimeReconciliationRecord,
+            id_attribute="runtime_reconciliation_record_id",
+            integrity_validator=validate_runtime_reconciliation_record_identity,
+        )
+        return tuple(record for record in records if record.result.contract_id == contract_id)
+
+    def list_runtime_reconciliation_records_for_source(
+        self,
+        source_identifier: str,
+    ) -> tuple[RuntimeReconciliationRecord, ...]:
+        source_identifier = _required_text(source_identifier, "source_identifier")
+        records = self._list(
+            kind="runtime_reconciliations",
+            model_type=RuntimeReconciliationRecord,
+            id_attribute="runtime_reconciliation_record_id",
+            integrity_validator=validate_runtime_reconciliation_record_identity,
+        )
+        return tuple(
+            record
+            for record in records
+            if record.result.observation_source_identifier == source_identifier
         )
 
     def _put(
