@@ -5,8 +5,13 @@ from __future__ import annotations
 from typing import Protocol
 
 from semapact.contractops import ChangeSet, ReleasePlan
+from semapact.deployment import DeploymentAuthorization, DeploymentPlan, DeploymentPreview
 from semapact.governance import GovernanceDecision
-from semapact.history.models import ChangeSetDecisionLink, ReleaseRecord
+from semapact.history.models import (
+    ChangeSetDecisionLink,
+    DeploymentRecord,
+    ReleaseRecord,
+)
 from semapact.revision.models import ContractRevision, ContractRevisionSource
 
 
@@ -141,4 +146,72 @@ class ReleaseRecordHistoryRepository(Protocol):
         contract_version: str,
     ) -> ReleaseRecord:
         """Load the unique finalized release for one contract semantic version."""
+        ...
+
+
+class DeploymentPlanHistoryRepository(Protocol):
+    """Persistence capability for canonical DeploymentPlan history only."""
+
+    def put_deployment_plan(self, plan: DeploymentPlan) -> None:
+        """Persist one immutable DeploymentPlan idempotently."""
+        ...
+
+    def get_deployment_plan(self, deployment_plan_id: str) -> DeploymentPlan:
+        """Load one DeploymentPlan by exact deterministic artifact ID."""
+        ...
+
+
+class DeploymentPreviewHistoryRepository(Protocol):
+    """Persistence capability for canonical DeploymentPreview history only."""
+
+    def put_deployment_preview(self, preview: DeploymentPreview) -> None:
+        """Persist one immutable DeploymentPreview idempotently."""
+        ...
+
+    def get_deployment_preview(self, deployment_preview_id: str) -> DeploymentPreview:
+        """Load one DeploymentPreview by exact deterministic artifact ID."""
+        ...
+
+
+class DeploymentAuthorizationHistoryRepository(Protocol):
+    """Persistence capability for canonical DeploymentAuthorization history only."""
+
+    def put_deployment_authorization(
+        self,
+        authorization: DeploymentAuthorization,
+    ) -> None:
+        """Persist one immutable DeploymentAuthorization idempotently."""
+        ...
+
+    def get_deployment_authorization(
+        self,
+        deployment_authorization_id: str,
+    ) -> DeploymentAuthorization:
+        """Load one DeploymentAuthorization by exact deterministic artifact ID."""
+        ...
+
+
+class DeploymentRecordHistoryRepository(Protocol):
+    """Persistence capability for terminal deployment execution occurrences only."""
+
+    def put_deployment_record(self, record: DeploymentRecord) -> None:
+        """Persist one immutable DeploymentRecord idempotently."""
+        ...
+
+    def get_deployment_record(self, deployment_record_id: str) -> DeploymentRecord:
+        """Load one DeploymentRecord by exact deterministic artifact ID."""
+        ...
+
+    def list_deployment_records_for_release(
+        self,
+        release_record_id: str,
+    ) -> tuple[DeploymentRecord, ...]:
+        """List deployment occurrences for one finalized release."""
+        ...
+
+    def list_deployment_records_for_plan(
+        self,
+        deployment_plan_id: str,
+    ) -> tuple[DeploymentRecord, ...]:
+        """List deployment occurrences for one exact deployment plan."""
         ...

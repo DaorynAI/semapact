@@ -6,6 +6,9 @@ canonical domain artifacts they connect.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from enum import Enum
+
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from semapact.contractops.models import ReviewEvidenceAction, VersionAuthority
@@ -77,10 +80,7 @@ class ReleaseRecord(HistoryModel):
     )
     @classmethod
     def _normalize_optional_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        cleaned = value.strip()
-        return cleaned or None
+        return _optional_text(value)
 
     @model_validator(mode="after")
     def _validate_provenance_pairs(self) -> ReleaseRecord:
@@ -101,6 +101,71 @@ class ReleaseRecord(HistoryModel):
         return self
 
 
+class DeploymentStatus(str, Enum):
+    """Terminal provider-execution outcome for one deployment occurrence."""
+
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+
+
+class DeploymentRecord(HistoryModel):
+    """Immutable audit record for one completed deployment execution occurrence.
+
+    This records provider execution only. ``SUCCEEDED`` never implies runtime
+    convergence; reconciliation remains a separate observation/history concern.
+    """
+
+    deployment_record_id: str
+    release_record_id: str
+    deployment_plan_id: str
+    deployment_preview_id: str
+    deployment_authorization_id: str
+    platform: str
+    runtime_target: str
+    source_reference: str
+    status: DeploymentStatus
+    started_at: datetime
+    completed_at: datetime
+    actor_reference: str | None = None
+    external_reference: str | None = None
+
+    @field_validator(
+        "deployment_record_id",
+        "release_record_id",
+        "deployment_plan_id",
+        "deployment_preview_id",
+        "deployment_authorization_id",
+        "runtime_target",
+        "source_reference",
+    )
+    @classmethod
+    def _require_deployment_text(cls, value: str) -> str:
+        return _required_text(value)
+
+    @field_validator("platform")
+    @classmethod
+    def _normalize_platform(cls, value: str) -> str:
+        return _required_text(value).casefold()
+
+    @field_validator("actor_reference", "external_reference")
+    @classmethod
+    def _normalize_optional_deployment_text(cls, value: str | None) -> str | None:
+        return _optional_text(value)
+
+    @field_validator("started_at", "completed_at")
+    @classmethod
+    def _normalize_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("deployment timestamps must be timezone-aware")
+        return value.astimezone(timezone.utc)
+
+    @model_validator(mode="after")
+    def _validate_timestamp_order(self) -> DeploymentRecord:
+        if self.completed_at < self.started_at:
+            raise ValueError("completed_at must not be earlier than started_at")
+        return self
+
+
 def _required_text(value: str) -> str:
     if not isinstance(value, str):
         raise TypeError("history identifiers must be strings")
@@ -108,3 +173,10 @@ def _required_text(value: str) -> str:
     if not cleaned:
         raise ValueError("history identifiers must not be empty")
     return cleaned
+
+
+def _optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
