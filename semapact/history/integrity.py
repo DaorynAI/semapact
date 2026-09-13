@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import uuid
 
-from semapact.history.models import DeploymentRecord, ReleaseRecord
+from semapact.history.models import (
+    DeploymentRecord,
+    ReleaseRecord,
+    RuntimeObservationRecord,
+    RuntimeReconciliationRecord,
+)
+from semapact.observation import ObservedPlatformState
+from semapact.reconciliation import ReconciliationResult
 from semapact.utils.deterministic import deterministic_uuid5
 
 
@@ -13,6 +20,12 @@ SEMAPACT_RELEASE_RECORD_NAMESPACE = uuid.UUID(
 )
 SEMAPACT_DEPLOYMENT_RECORD_NAMESPACE = uuid.UUID(
     "93db6770-90f0-4ac5-a185-2f21e818d18e"
+)
+SEMAPACT_RUNTIME_OBSERVATION_RECORD_NAMESPACE = uuid.UUID(
+    "8a3c8c10-e7d0-4df6-8b1a-3f087ef7e8e2"
+)
+SEMAPACT_RUNTIME_RECONCILIATION_RECORD_NAMESPACE = uuid.UUID(
+    "11969598-1f11-4c03-8ab0-f99f012a5041"
 )
 
 
@@ -138,4 +151,72 @@ def validate_deployment_record_identity(record: DeploymentRecord) -> None:
     if record.deployment_record_id != expected:
         raise ValueError(
             "DeploymentRecord deterministic identity does not match its content"
+        )
+
+
+def compute_runtime_observation_record_id(
+    observation: ObservedPlatformState,
+) -> str:
+    """Derive stable history identity from the exact canonical M1 observation."""
+    if not isinstance(observation, ObservedPlatformState):
+        raise TypeError(
+            "observation must be ObservedPlatformState, "
+            f"got {type(observation).__name__}"
+        )
+    return deterministic_uuid5(
+        SEMAPACT_RUNTIME_OBSERVATION_RECORD_NAMESPACE,
+        {"observation": observation.model_dump(mode="json")},
+    )
+
+
+def validate_runtime_observation_record_identity(
+    record: RuntimeObservationRecord,
+) -> None:
+    """Fail closed when observation history identity does not match exact evidence."""
+    expected = compute_runtime_observation_record_id(record.observation)
+    if record.observation_record_id != expected:
+        raise ValueError(
+            "RuntimeObservationRecord deterministic identity does not match content"
+        )
+
+
+def compute_runtime_reconciliation_record_id(
+    *,
+    observation_record_id: str,
+    result: ReconciliationResult,
+    status: str,
+    release_record_id: str | None,
+    deployment_record_id: str | None,
+) -> str:
+    """Derive stable identity for one persisted runtime reconciliation conclusion."""
+    if not isinstance(result, ReconciliationResult):
+        raise TypeError(
+            f"result must be ReconciliationResult, got {type(result).__name__}"
+        )
+    return deterministic_uuid5(
+        SEMAPACT_RUNTIME_RECONCILIATION_RECORD_NAMESPACE,
+        {
+            "observation_record_id": observation_record_id,
+            "result": result.model_dump(mode="json"),
+            "status": status,
+            "release_record_id": release_record_id,
+            "deployment_record_id": deployment_record_id,
+        },
+    )
+
+
+def validate_runtime_reconciliation_record_identity(
+    record: RuntimeReconciliationRecord,
+) -> None:
+    """Fail closed when runtime reconciliation history identity is stale/tampered."""
+    expected = compute_runtime_reconciliation_record_id(
+        observation_record_id=record.observation_record_id,
+        result=record.result,
+        status=record.status.value,
+        release_record_id=record.release_record_id,
+        deployment_record_id=record.deployment_record_id,
+    )
+    if record.runtime_reconciliation_record_id != expected:
+        raise ValueError(
+            "RuntimeReconciliationRecord deterministic identity does not match content"
         )

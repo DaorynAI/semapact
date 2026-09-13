@@ -9,6 +9,8 @@ from semapact.history.models import (
     DeploymentRecord,
     DeploymentStatus,
     ReleaseRecord,
+    RuntimeObservationRecord,
+    RuntimeReconciliationRecord,
 )
 from semapact.history.repository import (
     ChangeSetDecisionLinkHistoryRepository,
@@ -26,6 +28,8 @@ from semapact.history.repository import (
     HistoryRepositoryError,
     ReleasePlanHistoryRepository,
     ReleaseRecordHistoryRepository,
+    RuntimeObservationHistoryRepository,
+    RuntimeReconciliationHistoryRepository,
 )
 
 __all__ = [
@@ -48,4 +52,8 @@ __all__ = [
     "ReleasePlanHistoryRepository",
     "ReleaseRecord",
     "ReleaseRecordHistoryRepository",
+    "RuntimeObservationHistoryRepository",
+    "RuntimeObservationRecord",
+    "RuntimeReconciliationHistoryRepository",
+    "RuntimeReconciliationRecord",
 ]

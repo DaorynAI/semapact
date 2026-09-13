@@ -12,6 +12,12 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from semapact.contractops.models import ReviewEvidenceAction, VersionAuthority
+from semapact.observation import ObservedPlatformState
+from semapact.reconciliation import (
+    ReconciliationResult,
+    RuntimeDriftStatus,
+    classify_reconciliation_status,
+)
 from semapact.versioning import ActualVersionBump, RequiredBump
 
 
@@ -166,6 +172,59 @@ class DeploymentRecord(HistoryModel):
         return self
 
 
+class RuntimeObservationRecord(HistoryModel):
+    """Content-addressed history envelope around canonical M1 runtime evidence."""
+
+    observation_record_id: str
+    observation: ObservedPlatformState
+
+    @field_validator("observation_record_id")
+    @classmethod
+    def _require_observation_id(cls, value: str) -> str:
+        return _required_text(value)
+
+
+class RuntimeReconciliationRecord(HistoryModel):
+    """Immutable linkage from canonical runtime evidence to optional lifecycle context.
+
+    ``result`` remains the canonical M1 ReconciliationResult. This record adds only
+    durable identity, point-in-time classification, and optional exact history links.
+    """
+
+    runtime_reconciliation_record_id: str
+    observation_record_id: str
+    result: ReconciliationResult
+    status: RuntimeDriftStatus
+    release_record_id: str | None = None
+    deployment_record_id: str | None = None
+
+    @field_validator(
+        "runtime_reconciliation_record_id",
+        "observation_record_id",
+    )
+    @classmethod
+    def _require_runtime_history_text(cls, value: str) -> str:
+        return _required_text(value)
+
+    @field_validator("release_record_id", "deployment_record_id")
+    @classmethod
+    def _normalize_runtime_links(cls, value: str | None) -> str | None:
+        return _optional_text(value)
+
+    @model_validator(mode="after")
+    def _validate_runtime_history_semantics(self) -> RuntimeReconciliationRecord:
+        expected_status = classify_reconciliation_status(self.result)
+        if self.status is not expected_status:
+            raise ValueError(
+                "runtime reconciliation status does not match canonical classification"
+            )
+        if self.deployment_record_id is not None and self.release_record_id is None:
+            raise ValueError(
+                "deployment-linked runtime history requires release_record_id"
+            )
+        return self
+
+
 def _required_text(value: str) -> str:
     if not isinstance(value, str):
         raise TypeError("history identifiers must be strings")
@@ -178,5 +237,7 @@ def _required_text(value: str) -> str:
 def _optional_text(value: str | None) -> str | None:
     if value is None:
         return None
+    if not isinstance(value, str):
+        raise TypeError("optional history references must be strings")
     cleaned = value.strip()
     return cleaned or None
