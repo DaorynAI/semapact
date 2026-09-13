@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import uuid
 
-from semapact.history.models import ReleaseRecord
+from semapact.history.models import DeploymentRecord, ReleaseRecord
 from semapact.utils.deterministic import deterministic_uuid5
 
 
 SEMAPACT_RELEASE_RECORD_NAMESPACE = uuid.UUID(
     "9f750d1c-8f0a-491a-b861-8e349fc351cb"
+)
+SEMAPACT_DEPLOYMENT_RECORD_NAMESPACE = uuid.UUID(
+    "93db6770-90f0-4ac5-a185-2f21e818d18e"
 )
 
 
@@ -79,3 +82,60 @@ def validate_release_record_identity(record: ReleaseRecord) -> None:
     )
     if record.release_record_id != expected:
         raise ValueError("ReleaseRecord deterministic identity does not match its content")
+
+
+def compute_deployment_record_id(
+    *,
+    release_record_id: str,
+    deployment_plan_id: str,
+    deployment_preview_id: str,
+    deployment_authorization_id: str,
+    platform: str,
+    runtime_target: str,
+    source_reference: str,
+    status: str,
+    started_at: str,
+    completed_at: str,
+    actor_reference: str | None,
+    external_reference: str | None,
+) -> str:
+    """Derive one stable identity for a concrete deployment execution occurrence."""
+    return deterministic_uuid5(
+        SEMAPACT_DEPLOYMENT_RECORD_NAMESPACE,
+        {
+            "release_record_id": release_record_id,
+            "deployment_plan_id": deployment_plan_id,
+            "deployment_preview_id": deployment_preview_id,
+            "deployment_authorization_id": deployment_authorization_id,
+            "platform": platform,
+            "runtime_target": runtime_target,
+            "source_reference": source_reference,
+            "status": status,
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "actor_reference": actor_reference,
+            "external_reference": external_reference,
+        },
+    )
+
+
+def validate_deployment_record_identity(record: DeploymentRecord) -> None:
+    """Fail closed when a deployment occurrence ID does not match its content."""
+    expected = compute_deployment_record_id(
+        release_record_id=record.release_record_id,
+        deployment_plan_id=record.deployment_plan_id,
+        deployment_preview_id=record.deployment_preview_id,
+        deployment_authorization_id=record.deployment_authorization_id,
+        platform=record.platform,
+        runtime_target=record.runtime_target,
+        source_reference=record.source_reference,
+        status=record.status.value,
+        started_at=record.started_at.isoformat(),
+        completed_at=record.completed_at.isoformat(),
+        actor_reference=record.actor_reference,
+        external_reference=record.external_reference,
+    )
+    if record.deployment_record_id != expected:
+        raise ValueError(
+            "DeploymentRecord deterministic identity does not match its content"
+        )
