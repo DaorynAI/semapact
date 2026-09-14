@@ -27,6 +27,39 @@ class HistoryModel(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+class HistoryIntegrityIssueCode(str, Enum):
+    """Stable diagnostics emitted by a physical history backend integrity scan."""
+
+    CHECKSUM_MISSING = "CHECKSUM_MISSING"
+    CHECKSUM_MISMATCH = "CHECKSUM_MISMATCH"
+    CHECKSUM_INVALID = "CHECKSUM_INVALID"
+    ORPHAN_CHECKSUM = "ORPHAN_CHECKSUM"
+    ARTIFACT_INVALID = "ARTIFACT_INVALID"
+    IDENTITY_MISMATCH = "IDENTITY_MISMATCH"
+    PATH_PROVENANCE_MISMATCH = "PATH_PROVENANCE_MISMATCH"
+    UNKNOWN_ARTIFACT_LAYOUT = "UNKNOWN_ARTIFACT_LAYOUT"
+
+
+class HistoryStorageIntegrityIssue(HistoryModel):
+    """One deterministic storage-integrity diagnostic without mutating history."""
+
+    code: HistoryIntegrityIssueCode
+    artifact_kind: str
+    storage_reference: str
+    artifact_id: str | None = None
+    detail: str
+
+    @field_validator("artifact_kind", "storage_reference", "detail")
+    @classmethod
+    def _require_integrity_text(cls, value: str) -> str:
+        return _required_text(value)
+
+    @field_validator("artifact_id")
+    @classmethod
+    def _normalize_integrity_artifact_id(cls, value: str | None) -> str | None:
+        return _optional_text(value)
+
+
 class ChangeSetDecisionLink(HistoryModel):
     """Audit provenance linking one ChangeSet to one GovernanceDecision outcome."""
 
