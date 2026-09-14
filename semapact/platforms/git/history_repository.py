@@ -141,6 +141,8 @@ class GitWorkingTreeHistoryRepository:
         state_path = Path(state_directory)
         if state_path.is_absolute():
             raise ValueError("history state_directory must be repository-relative")
+        if ".." in state_path.parts:
+            raise ValueError("history state_directory must not contain '..'")
         history_root = (repository_path / state_path).resolve(strict=False)
         if not history_root.is_relative_to(repository_path):
             raise ValueError("history state_directory must remain inside repository_root")
@@ -934,7 +936,8 @@ class GitWorkingTreeHistoryRepository:
             )
         if checksum_text != _checksum_record(raw).strip():
             raise HistoryCorruptionError(
-                f"Persisted history checksum does not match {self._storage_reference(path)!r}"
+                f"Persisted history artifact {self._storage_reference(path)!r} is invalid: "
+                "checksum does not match"
             )
 
     def _publish_create_only(self, path: Path, content: str) -> bool:
@@ -946,11 +949,12 @@ class GitWorkingTreeHistoryRepository:
         self._assert_path_within_history(temp_path)
         fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
         try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle = os.fdopen(fd, "w", encoding="utf-8", newline="\n")
+            fd = -1
+            with handle:
                 handle.write(content)
                 handle.flush()
                 os.fsync(handle.fileno())
-            fd = -1
             try:
                 os.link(temp_path, path)
             except FileExistsError:
@@ -1082,9 +1086,10 @@ class GitWorkingTreeHistoryRepository:
 
     def _path_is_within_history(self, path: Path) -> bool:
         try:
-            return path.resolve(strict=False).is_relative_to(
-                self._history_root.resolve(strict=False)
-            )
+            resolved = path.resolve(strict=False)
+            return resolved.is_relative_to(
+                self._repository_root
+            ) and resolved.is_relative_to(self._history_root)
         except OSError:
             return False
 
