@@ -10,6 +10,7 @@ from semapact.governance import GovernanceDecision
 from semapact.history.models import (
     ChangeSetDecisionLink,
     DeploymentRecord,
+    HistoryStorageIntegrityIssue,
     ReleaseRecord,
     RuntimeObservationRecord,
     RuntimeReconciliationRecord,
@@ -31,6 +32,12 @@ class HistoryConflictError(HistoryRepositoryError):
 
 class HistoryCorruptionError(HistoryRepositoryError):
     """Persisted or supplied historical content fails canonical validation."""
+
+
+class HistoryIntegrityRepository(Protocol):
+    """Backend-specific physical integrity inspection without history mutation."""
+
+    def inspect_history_integrity(self) -> tuple[HistoryStorageIntegrityIssue, ...]: ...
 
 
 class DecisionHistoryRepository(Protocol):
