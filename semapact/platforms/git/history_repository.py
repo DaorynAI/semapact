@@ -6,15 +6,22 @@ pull requests; normal GitOps tooling can version the deterministic files it writ
 
 from __future__ import annotations
 
+import hashlib
+import os
 import re
+import secrets
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 
 from semapact.contractops import ChangeSet, ReleasePlan
-from semapact.contractops.integrity import validate_release_plan_identity
+from semapact.contractops.integrity import (
+    validate_change_set_identity,
+    validate_release_plan_identity,
+)
 from semapact.deployment import DeploymentAuthorization, DeploymentPlan, DeploymentPreview
 from semapact.deployment.models import (
     validate_deployment_authorization_identity,
@@ -27,7 +34,9 @@ from semapact.history import (
     DeploymentRecord,
     HistoryConflictError,
     HistoryCorruptionError,
+    HistoryIntegrityIssueCode,
     HistoryNotFoundError,
+    HistoryStorageIntegrityIssue,
     ReleaseRecord,
     RuntimeObservationRecord,
     RuntimeReconciliationRecord,
@@ -48,6 +57,75 @@ from semapact.utils.deterministic import canonical_compact_json
 
 T = TypeVar("T", bound=BaseModel)
 _SAFE_ARTIFACT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+_CHECKSUM_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+@dataclass(frozen=True)
+class _HistoryKindSpec:
+    model_type: type[BaseModel]
+    id_attribute: str
+    integrity_validator: Callable[[BaseModel], None] | None = None
+
+
+_HISTORY_KIND_SPECS: dict[str, _HistoryKindSpec] = {
+    "decisions": _HistoryKindSpec(GovernanceDecision, "decision_id"),
+    "change_sets": _HistoryKindSpec(
+        ChangeSet,
+        "change_set_id",
+        validate_change_set_identity,
+    ),
+    "change_set_decisions": _HistoryKindSpec(ChangeSetDecisionLink, "decision_id"),
+    "contract_revisions": _HistoryKindSpec(
+        ContractRevision,
+        "revision_id",
+        validate_contract_revision_identity,
+    ),
+    "contract_revision_sources": _HistoryKindSpec(
+        ContractRevisionSource,
+        "source_link_id",
+        validate_contract_revision_source_identity,
+    ),
+    "release_plans": _HistoryKindSpec(
+        ReleasePlan,
+        "release_plan_id",
+        validate_release_plan_identity,
+    ),
+    "release_records": _HistoryKindSpec(
+        ReleaseRecord,
+        "release_record_id",
+        validate_release_record_identity,
+    ),
+    "deployment_plans": _HistoryKindSpec(
+        DeploymentPlan,
+        "deployment_plan_id",
+        validate_deployment_plan_identity,
+    ),
+    "deployment_previews": _HistoryKindSpec(
+        DeploymentPreview,
+        "deployment_preview_id",
+        validate_deployment_preview_identity,
+    ),
+    "deployment_authorizations": _HistoryKindSpec(
+        DeploymentAuthorization,
+        "deployment_authorization_id",
+        validate_deployment_authorization_identity,
+    ),
+    "deployment_records": _HistoryKindSpec(
+        DeploymentRecord,
+        "deployment_record_id",
+        validate_deployment_record_identity,
+    ),
+    "runtime_observations": _HistoryKindSpec(
+        RuntimeObservationRecord,
+        "observation_record_id",
+        validate_runtime_observation_record_identity,
+    ),
+    "runtime_reconciliations": _HistoryKindSpec(
+        RuntimeReconciliationRecord,
+        "runtime_reconciliation_record_id",
+        validate_runtime_reconciliation_record_identity,
+    ),
+}
 
 
 class GitWorkingTreeHistoryRepository:
@@ -59,7 +137,15 @@ class GitWorkingTreeHistoryRepository:
         *,
         state_directory: str | Path = ".semapact/history",
     ) -> None:
-        self._history_root = Path(repository_root) / Path(state_directory)
+        repository_path = Path(repository_root).resolve(strict=False)
+        state_path = Path(state_directory)
+        if state_path.is_absolute():
+            raise ValueError("history state_directory must be repository-relative")
+        history_root = (repository_path / state_path).resolve(strict=False)
+        if not history_root.is_relative_to(repository_path):
+            raise ValueError("history state_directory must remain inside repository_root")
+        self._repository_root = repository_path
+        self._history_root = history_root
 
     def put_decision(self, decision: GovernanceDecision) -> None:
         self._put(
@@ -94,6 +180,7 @@ class GitWorkingTreeHistoryRepository:
             artifact=change_set,
             model_type=ChangeSet,
             id_attribute="change_set_id",
+            integrity_validator=validate_change_set_identity,
         )
 
     def get_change_set(self, change_set_id: str) -> ChangeSet:
@@ -102,6 +189,7 @@ class GitWorkingTreeHistoryRepository:
             artifact_id=change_set_id,
             model_type=ChangeSet,
             id_attribute="change_set_id",
+            integrity_validator=validate_change_set_identity,
         )
 
     def list_change_sets(self, contract_id: str) -> tuple[ChangeSet, ...]:
@@ -110,6 +198,7 @@ class GitWorkingTreeHistoryRepository:
             kind="change_sets",
             model_type=ChangeSet,
             id_attribute="change_set_id",
+            integrity_validator=validate_change_set_identity,
         )
         return tuple(record for record in records if record.contract_id == contract_id)
 
@@ -500,6 +589,133 @@ class GitWorkingTreeHistoryRepository:
             if record.result.observation_source_identifier == source_identifier
         )
 
+    def inspect_history_integrity(self) -> tuple[HistoryStorageIntegrityIssue, ...]:
+        """Inspect physical history artifacts and checksum evidence without mutation."""
+        if not self._history_root.exists():
+            return ()
+
+        issues: list[HistoryStorageIntegrityIssue] = []
+        for path in sorted(self._history_root.rglob("*.json"), key=lambda item: item.as_posix()):
+            if not self._path_is_within_history(path):
+                issues.append(
+                    self._integrity_issue(
+                        HistoryIntegrityIssueCode.UNKNOWN_ARTIFACT_LAYOUT,
+                        path,
+                        detail="resolved artifact path escapes history root",
+                    )
+                )
+                continue
+
+            resolved = self._resolve_history_spec(path)
+            if resolved is None:
+                issues.append(
+                    self._integrity_issue(
+                        HistoryIntegrityIssueCode.UNKNOWN_ARTIFACT_LAYOUT,
+                        path,
+                        detail="artifact path does not match a canonical history layout",
+                    )
+                )
+                continue
+
+            artifact_kind, artifact_id, spec, parent_change_set_id = resolved
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                issues.append(
+                    self._integrity_issue(
+                        HistoryIntegrityIssueCode.ARTIFACT_INVALID,
+                        path,
+                        artifact_kind=artifact_kind,
+                        artifact_id=artifact_id,
+                        detail=f"artifact could not be read: {exc}",
+                    )
+                )
+                continue
+
+            issues.extend(
+                self._inspect_checksum(
+                    path,
+                    raw,
+                    artifact_kind=artifact_kind,
+                    artifact_id=artifact_id,
+                )
+            )
+
+            try:
+                artifact = spec.model_type.model_validate_json(raw)
+                if spec.integrity_validator is not None:
+                    spec.integrity_validator(artifact)
+            except (PydanticValidationError, ValueError, TypeError) as exc:
+                issues.append(
+                    self._integrity_issue(
+                        HistoryIntegrityIssueCode.ARTIFACT_INVALID,
+                        path,
+                        artifact_kind=artifact_kind,
+                        artifact_id=artifact_id,
+                        detail=f"artifact failed canonical validation: {exc}",
+                    )
+                )
+                continue
+
+            actual_id = getattr(artifact, spec.id_attribute)
+            if actual_id != artifact_id:
+                issues.append(
+                    self._integrity_issue(
+                        HistoryIntegrityIssueCode.IDENTITY_MISMATCH,
+                        path,
+                        artifact_kind=artifact_kind,
+                        artifact_id=artifact_id,
+                        detail=(
+                            f"embedded {spec.id_attribute} {actual_id!r} does not match "
+                            f"file identity {artifact_id!r}"
+                        ),
+                    )
+                )
+
+            if (
+                artifact_kind == "change_set_decisions"
+                and parent_change_set_id is not None
+                and isinstance(artifact, ChangeSetDecisionLink)
+                and artifact.change_set_id != parent_change_set_id
+            ):
+                issues.append(
+                    self._integrity_issue(
+                        HistoryIntegrityIssueCode.PATH_PROVENANCE_MISMATCH,
+                        path,
+                        artifact_kind=artifact_kind,
+                        artifact_id=artifact_id,
+                        detail=(
+                            f"embedded change_set_id {artifact.change_set_id!r} does not match "
+                            f"path provenance {parent_change_set_id!r}"
+                        ),
+                    )
+                )
+
+        for checksum_path in sorted(
+            self._history_root.rglob("*.json.sha256"),
+            key=lambda item: item.as_posix(),
+        ):
+            artifact_path = checksum_path.with_name(checksum_path.name.removesuffix(".sha256"))
+            if not artifact_path.is_file():
+                issues.append(
+                    self._integrity_issue(
+                        HistoryIntegrityIssueCode.ORPHAN_CHECKSUM,
+                        checksum_path,
+                        detail="checksum sidecar has no corresponding JSON artifact",
+                    )
+                )
+
+        issues.sort(
+            key=lambda item: (
+                item.storage_reference,
+                item.code.value,
+                item.artifact_kind,
+                item.artifact_id or "",
+                item.detail,
+            )
+        )
+        return tuple(issues)
+
     def _put(
         self,
         *,
@@ -520,6 +736,7 @@ class GitWorkingTreeHistoryRepository:
         )
         path = self._artifact_path(kind, artifact_id)
         path.parent.mkdir(parents=True, exist_ok=True)
+        self._assert_path_within_history(path)
 
         if path.exists():
             self._require_idempotent_existing(
@@ -530,12 +747,11 @@ class GitWorkingTreeHistoryRepository:
                 id_attribute=id_attribute,
                 integrity_validator=integrity_validator,
             )
+            self._ensure_checksum(path)
             return
 
-        try:
-            with path.open("x", encoding="utf-8", newline="\n") as handle:
-                handle.write(canonical)
-        except FileExistsError:
+        created = self._publish_create_only(path, canonical)
+        if not created:
             self._require_idempotent_existing(
                 path,
                 canonical=canonical,
@@ -544,6 +760,7 @@ class GitWorkingTreeHistoryRepository:
                 id_attribute=id_attribute,
                 integrity_validator=integrity_validator,
             )
+        self._ensure_checksum(path)
 
     def _get(
         self,
@@ -577,6 +794,7 @@ class GitWorkingTreeHistoryRepository:
         integrity_validator: Callable[[T], None] | None = None,
     ) -> tuple[T, ...]:
         directory = self._history_root / kind
+        self._assert_path_within_history(directory)
         if not directory.is_dir():
             return ()
 
@@ -626,12 +844,16 @@ class GitWorkingTreeHistoryRepository:
         id_attribute: str,
         integrity_validator: Callable[[T], None] | None = None,
     ) -> T:
+        self._assert_path_within_history(path)
         try:
             raw = path.read_text(encoding="utf-8")
+            self._verify_checksum_if_present(path, raw)
             artifact = model_type.model_validate_json(raw)
             if integrity_validator is not None:
                 integrity_validator(artifact)
-        except (OSError, PydanticValidationError, ValueError) as exc:
+        except HistoryCorruptionError:
+            raise
+        except (OSError, PydanticValidationError, ValueError, TypeError) as exc:
             raise HistoryCorruptionError(
                 f"Persisted {model_type.__name__} {expected_id!r} is invalid"
             ) from exc
@@ -661,7 +883,7 @@ class GitWorkingTreeHistoryRepository:
             validated = model_type.model_validate_json(canonical)
             if integrity_validator is not None:
                 integrity_validator(validated)
-        except (PydanticValidationError, ValueError) as exc:
+        except (PydanticValidationError, ValueError, TypeError) as exc:
             raise HistoryCorruptionError(
                 f"Supplied {model_type.__name__} {expected_id!r} is invalid"
             ) from exc
@@ -672,12 +894,234 @@ class GitWorkingTreeHistoryRepository:
         return canonical
 
     def _artifact_path(self, kind: str, artifact_id: str) -> Path:
-        return self._history_root / kind / f"{artifact_id}.json"
+        path = self._history_root / kind / f"{artifact_id}.json"
+        self._assert_path_within_history(path)
+        return path
+
+    def _ensure_checksum(self, path: Path) -> None:
+        self._assert_path_within_history(path)
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise HistoryCorruptionError(
+                f"Persisted history artifact {self._storage_reference(path)!r} cannot be read"
+            ) from exc
+
+        checksum_path = _checksum_path(path)
+        expected = _checksum_record(raw)
+        if checksum_path.exists():
+            self._verify_checksum_if_present(path, raw)
+            return
+
+        created = self._publish_create_only(checksum_path, expected)
+        if not created:
+            self._verify_checksum_if_present(path, raw)
+
+    def _verify_checksum_if_present(self, path: Path, raw: str) -> None:
+        checksum_path = _checksum_path(path)
+        self._assert_path_within_history(checksum_path)
+        if not checksum_path.exists():
+            return
+        try:
+            checksum_text = checksum_path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise HistoryCorruptionError(
+                f"Persisted history checksum {self._storage_reference(checksum_path)!r} cannot be read"
+            ) from exc
+        if not _CHECKSUM_PATTERN.fullmatch(checksum_text):
+            raise HistoryCorruptionError(
+                f"Persisted history checksum {self._storage_reference(checksum_path)!r} is invalid"
+            )
+        if checksum_text != _checksum_record(raw).strip():
+            raise HistoryCorruptionError(
+                f"Persisted history checksum does not match {self._storage_reference(path)!r}"
+            )
+
+    def _publish_create_only(self, path: Path, content: str) -> bool:
+        """Publish complete content atomically without replacing an existing path."""
+        self._assert_path_within_history(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._assert_path_within_history(path)
+        temp_path = path.parent / f".{path.name}.{secrets.token_hex(8)}.tmp"
+        self._assert_path_within_history(temp_path)
+        fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            fd = -1
+            try:
+                os.link(temp_path, path)
+            except FileExistsError:
+                return False
+            _fsync_directory(path.parent)
+            return True
+        finally:
+            if fd != -1:
+                os.close(fd)
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+    def _inspect_checksum(
+        self,
+        path: Path,
+        raw: str,
+        *,
+        artifact_kind: str,
+        artifact_id: str,
+    ) -> tuple[HistoryStorageIntegrityIssue, ...]:
+        checksum_path = _checksum_path(path)
+        if not checksum_path.is_file():
+            return (
+                self._integrity_issue(
+                    HistoryIntegrityIssueCode.CHECKSUM_MISSING,
+                    path,
+                    artifact_kind=artifact_kind,
+                    artifact_id=artifact_id,
+                    detail="artifact has no SHA-256 checksum sidecar",
+                ),
+            )
+        try:
+            checksum_text = checksum_path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            return (
+                self._integrity_issue(
+                    HistoryIntegrityIssueCode.CHECKSUM_INVALID,
+                    checksum_path,
+                    artifact_kind=artifact_kind,
+                    artifact_id=artifact_id,
+                    detail=f"checksum could not be read: {exc}",
+                ),
+            )
+        if not _CHECKSUM_PATTERN.fullmatch(checksum_text):
+            return (
+                self._integrity_issue(
+                    HistoryIntegrityIssueCode.CHECKSUM_INVALID,
+                    checksum_path,
+                    artifact_kind=artifact_kind,
+                    artifact_id=artifact_id,
+                    detail="checksum sidecar is not canonical sha256:<hex>",
+                ),
+            )
+        if checksum_text != _checksum_record(raw).strip():
+            return (
+                self._integrity_issue(
+                    HistoryIntegrityIssueCode.CHECKSUM_MISMATCH,
+                    path,
+                    artifact_kind=artifact_kind,
+                    artifact_id=artifact_id,
+                    detail="artifact content does not match its checksum sidecar",
+                ),
+            )
+        return ()
+
+    def _resolve_history_spec(
+        self,
+        path: Path,
+    ) -> tuple[str, str, _HistoryKindSpec, str | None] | None:
+        try:
+            relative = path.relative_to(self._history_root)
+        except ValueError:
+            return None
+        parts = relative.parts
+        if not parts:
+            return None
+        artifact_kind = parts[0]
+        spec = _HISTORY_KIND_SPECS.get(artifact_kind)
+        if spec is None:
+            return None
+
+        parent_change_set_id: str | None = None
+        if artifact_kind == "change_set_decisions":
+            if len(parts) != 3 or not parts[2].endswith(".json"):
+                return None
+            try:
+                parent_change_set_id = _safe_artifact_id(parts[1])
+                artifact_id = _safe_artifact_id(parts[2][:-5])
+            except (TypeError, ValueError):
+                return None
+        else:
+            if len(parts) != 2 or not parts[1].endswith(".json"):
+                return None
+            try:
+                artifact_id = _safe_artifact_id(parts[1][:-5])
+            except (TypeError, ValueError):
+                return None
+        return artifact_kind, artifact_id, spec, parent_change_set_id
+
+    def _integrity_issue(
+        self,
+        code: HistoryIntegrityIssueCode,
+        path: Path,
+        *,
+        detail: str,
+        artifact_kind: str | None = None,
+        artifact_id: str | None = None,
+    ) -> HistoryStorageIntegrityIssue:
+        if artifact_kind is None:
+            try:
+                artifact_kind = path.relative_to(self._history_root).parts[0]
+            except (ValueError, IndexError):
+                artifact_kind = "unknown"
+        return HistoryStorageIntegrityIssue(
+            code=code,
+            artifact_kind=artifact_kind,
+            artifact_id=artifact_id,
+            storage_reference=self._storage_reference(path),
+            detail=detail,
+        )
+
+    def _storage_reference(self, path: Path) -> str:
+        try:
+            return path.relative_to(self._repository_root).as_posix()
+        except ValueError:
+            return path.as_posix()
+
+    def _path_is_within_history(self, path: Path) -> bool:
+        try:
+            return path.resolve(strict=False).is_relative_to(
+                self._history_root.resolve(strict=False)
+            )
+        except OSError:
+            return False
+
+    def _assert_path_within_history(self, path: Path) -> None:
+        if not self._path_is_within_history(path):
+            raise ValueError("history path escapes configured history root")
 
 
 def _canonical_model_json(artifact: BaseModel) -> str:
     """Serialize persisted models with aliases so nested ODCS models round-trip."""
     return canonical_compact_json(artifact.model_dump(mode="json", by_alias=True))
+
+
+def _checksum_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.sha256")
+
+
+def _checksum_record(raw: str) -> str:
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return f"sha256:{digest}\n"
+
+
+def _fsync_directory(path: Path) -> None:
+    """Persist directory metadata where the host supports directory fsync."""
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 def _safe_artifact_id(value: str) -> str:
