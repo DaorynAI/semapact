@@ -595,6 +595,14 @@ class GitWorkingTreeHistoryRepository:
         """Inspect physical history artifacts and checksum evidence without mutation."""
         if not self._history_root.exists():
             return ()
+        if not self._path_is_within_history(self._history_root):
+            return (
+                self._integrity_issue(
+                    HistoryIntegrityIssueCode.UNKNOWN_ARTIFACT_LAYOUT,
+                    self._history_root,
+                    detail="resolved history root escapes repository containment",
+                ),
+            )
 
         issues: list[HistoryStorageIntegrityIssue] = []
         for path in sorted(self._history_root.rglob("*.json"), key=lambda item: item.as_posix()):
@@ -697,6 +705,15 @@ class GitWorkingTreeHistoryRepository:
             self._history_root.rglob("*.json.sha256"),
             key=lambda item: item.as_posix(),
         ):
+            if not self._path_is_within_history(checksum_path):
+                issues.append(
+                    self._integrity_issue(
+                        HistoryIntegrityIssueCode.UNKNOWN_ARTIFACT_LAYOUT,
+                        checksum_path,
+                        detail="resolved checksum path escapes history root",
+                    )
+                )
+                continue
             artifact_path = checksum_path.with_name(checksum_path.name.removesuffix(".sha256"))
             if not artifact_path.is_file():
                 issues.append(
@@ -978,6 +995,16 @@ class GitWorkingTreeHistoryRepository:
         artifact_id: str,
     ) -> tuple[HistoryStorageIntegrityIssue, ...]:
         checksum_path = _checksum_path(path)
+        if not self._path_is_within_history(checksum_path):
+            return (
+                self._integrity_issue(
+                    HistoryIntegrityIssueCode.UNKNOWN_ARTIFACT_LAYOUT,
+                    checksum_path,
+                    artifact_kind=artifact_kind,
+                    artifact_id=artifact_id,
+                    detail="resolved checksum path escapes history root",
+                ),
+            )
         if not checksum_path.is_file():
             return (
                 self._integrity_issue(
