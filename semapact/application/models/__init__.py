@@ -9,6 +9,7 @@ from semapact.application.models.evolution import (
     RuntimeEvolution,
 )
 from semapact.application.models.governance import GovernanceAnalysis, GovernanceProposal
+from semapact.application.models.history_integrity import HistoryIntegrityReport
 from semapact.application.models.reconciliation import RuntimeReconciliation
 from semapact.application.models.release import ReleasePlanningResult
 
@@ -18,6 +19,7 @@ __all__ = [
     "DeploymentEvolution",
     "GovernanceAnalysis",
     "GovernanceProposal",
+    "HistoryIntegrityReport",
     "ProposalEvolution",
     "ReleaseEvolution",
     "ReleasePlanningResult",
