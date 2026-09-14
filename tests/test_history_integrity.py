@@ -166,8 +166,14 @@ def test_history_state_directory_cannot_escape_repository_root(tmp_path: Path) -
     with pytest.raises(ValueError, match="repository-relative"):
         GitWorkingTreeHistoryRepository(tmp_path, state_directory=tmp_path / "outside")
 
-    with pytest.raises(ValueError, match="inside repository_root"):
+    with pytest.raises(ValueError, match="must not contain"):
         GitWorkingTreeHistoryRepository(tmp_path, state_directory="../outside")
+
+    with pytest.raises(ValueError, match="must not contain"):
+        GitWorkingTreeHistoryRepository(
+            tmp_path,
+            state_directory="safe/../.semapact/history",
+        )
 
 
 def test_symlink_path_escape_is_rejected(tmp_path: Path) -> None:
@@ -182,6 +188,22 @@ def test_symlink_path_escape_is_rejected(tmp_path: Path) -> None:
         pytest.skip("host does not permit symlink creation")
 
     repository = GitWorkingTreeHistoryRepository(tmp_path)
+    with pytest.raises(ValueError, match="escapes"):
+        repository.put_decision(_decision())
+
+
+def test_history_root_replaced_by_symlink_after_init_is_rejected(tmp_path: Path) -> None:
+    repository = GitWorkingTreeHistoryRepository(tmp_path)
+    history_root = tmp_path / ".semapact" / "history"
+    history_root.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    history_root.rmdir()
+    try:
+        history_root.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("host does not permit symlink creation")
+
     with pytest.raises(ValueError, match="escapes"):
         repository.put_decision(_decision())
 
