@@ -42,7 +42,5 @@ def build_approval_record(
         evidence_references=evidence_references,
     )
     approval_id = compute_approval_record_id(provisional)
-    return ApprovalRecord(
-        **provisional.model_dump(exclude={"approval_id"}),
-        approval_id=approval_id,
-    )
+    payload = provisional.model_dump(exclude={"approval_id"})
+    return ApprovalRecord(approval_id=approval_id, **payload)
