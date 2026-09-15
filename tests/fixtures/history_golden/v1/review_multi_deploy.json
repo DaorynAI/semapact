@@ -1,1 +1,132 @@
-{}
+{
+  "fixtureVersion": "history-v1",
+  "files": {
+    ".semapact/history/change_set_decisions/c2f4ee02-90e5-532a-ac8a-edd43e49f156/14295d1b-b52d-5d8b-8dad-2121529f099c.json": {
+      "checksum": "sha256:d77324f66e332dfdd6cb3ff081e65987a6eaa469d5b84bab2cb425d55e23dd62",
+      "topLevelKeys": ["change_set_id", "decision_id"]
+    },
+    ".semapact/history/change_sets/c2f4ee02-90e5-532a-ac8a-edd43e49f156.json": {
+      "checksum": "sha256:66861c622ee7f42f4340a761d17c16a006bf738ad682c39359c552376ce95005",
+      "topLevelKeys": ["actor_reference", "base_revision_ref", "candidate_revision_ref", "change_set_id", "changes", "context", "contract_id", "source"]
+    },
+    ".semapact/history/contract_revisions/290bd707-017f-56ca-a379-c8879b9ede13.json": {
+      "checksum": "sha256:e70f5404098efaf4cec40f9a021adbba17cad53ed0c57db6984126fdcb84373e",
+      "topLevelKeys": ["content_fingerprint", "contract", "revision_id"]
+    },
+    ".semapact/history/contract_revisions/352d83a9-4ee6-508a-981f-4bc9819263c9.json": {
+      "checksum": "sha256:bf1e3e1836fff7827bc014caccfefd36a01aaf480ecd17eae41c9a8245e5eb9e",
+      "topLevelKeys": ["content_fingerprint", "contract", "revision_id"]
+    },
+    ".semapact/history/contract_revisions/fb437fde-4baa-5dad-a382-c4df381ba412.json": {
+      "checksum": "sha256:be036b579fe23c3d47afb96978c1e05416564b5ad0e30df034803c2c86bbf9c2",
+      "topLevelKeys": ["content_fingerprint", "contract", "revision_id"]
+    },
+    ".semapact/history/decisions/14295d1b-b52d-5d8b-8dad-2121529f099c.json": {
+      "checksum": "sha256:5c0ddb33910feb477c32252d21c318e273e031185f52f4295aa0074dd78bf485",
+      "topLevelKeys": ["breaking", "changes", "context", "contract_id", "decision", "decision_id", "evidence", "policy", "reasons", "required_version_bump", "validation"]
+    },
+    ".semapact/history/deployment_authorizations/87ea9883-2583-51d7-8c25-fe4d1c643dc0.json": {
+      "checksum": "sha256:7a2ea0240736846da3a701253ad913f8a048066e30a20f7680d5385170a687c7",
+      "topLevelKeys": ["allowed", "applied_release_id", "contract_ops_authorization_id", "deployment_authorization_id", "deployment_plan_id"]
+    },
+    ".semapact/history/deployment_authorizations/a1a210ef-25d0-5d00-a105-7e7907d63acb.json": {
+      "checksum": "sha256:915e95cdac4b9eac879221c1ffeef9ab95a8538ed0efbaf1c8f446afc77090cb",
+      "topLevelKeys": ["allowed", "applied_release_id", "contract_ops_authorization_id", "deployment_authorization_id", "deployment_plan_id"]
+    },
+    ".semapact/history/deployment_plans/c684e277-793b-5628-ae09-0b67316306a8.json": {
+      "checksum": "sha256:f6c254152dbfe16ff017f1cc43f40390e5dc59452df730e9701cb81868a98deb",
+      "topLevelKeys": ["actions", "applied_release_id", "contract_id", "deployment_plan_id", "plan_version", "release_plan_id", "released_revision_ref", "selected_version", "target"]
+    },
+    ".semapact/history/deployment_plans/fecc2ad3-b5fe-58a1-99a5-3fb30e28a6c3.json": {
+      "checksum": "sha256:446646a122bfc65c085a084f4bbb52d6f1ac9f6c94a1724061c2f19308c58f2c",
+      "topLevelKeys": ["actions", "applied_release_id", "contract_id", "deployment_plan_id", "plan_version", "release_plan_id", "released_revision_ref", "selected_version", "target"]
+    },
+    ".semapact/history/deployment_previews/6eb94c8f-68ad-546a-8eb4-b1fb27ec21fa.json": {
+      "checksum": "sha256:8a42d5eeaacfed1c35fffd9da860bfb3b7ee6294d2887ac665ce0c6b2f7f500d",
+      "topLevelKeys": ["deployment_plan_id", "deployment_preview_id", "observation_fingerprint", "operations", "platform", "preview_version", "runtime_target", "source_identifier"]
+    },
+    ".semapact/history/deployment_previews/778b10a8-6133-572e-b89b-6d76be994154.json": {
+      "checksum": "sha256:ca3f88358aaea04096290f9cb3d6a4e39218a63aec986dd5b19f93ca8ecd9d9b",
+      "topLevelKeys": ["deployment_plan_id", "deployment_preview_id", "observation_fingerprint", "operations", "platform", "preview_version", "runtime_target", "source_identifier"]
+    },
+    ".semapact/history/deployment_records/61edafd1-bba0-5e2f-8fa1-f48ff7eeaafb.json": {
+      "checksum": "sha256:155b3dd66eca9cb519ccd3f5b3e0a6f3a4d4c430428d96ef0cddf5b6c3392aef",
+      "topLevelKeys": ["actor_reference", "completed_at", "deployment_authorization_id", "deployment_plan_id", "deployment_preview_id", "deployment_record_id", "external_reference", "platform", "release_record_id", "runtime_target", "source_reference", "started_at", "status"]
+    },
+    ".semapact/history/deployment_records/c1cbc2d8-f340-5944-827a-c5bbc8d73835.json": {
+      "checksum": "sha256:17f423508bb8500f00f85c0ae4a9f9d1900e78c9cfff7a2b936e6e1f14357af1",
+      "topLevelKeys": ["actor_reference", "completed_at", "deployment_authorization_id", "deployment_plan_id", "deployment_preview_id", "deployment_record_id", "external_reference", "platform", "release_record_id", "runtime_target", "source_reference", "started_at", "status"]
+    },
+    ".semapact/history/release_plans/45a429c1-9ff4-54da-897a-b02c7ee6027f.json": {
+      "checksum": "sha256:e1f6e06acd06a1b0ff719ddce44430f293b03d65e5586607f13907d6b617b237",
+      "topLevelKeys": ["change_set_id", "contract_id", "decision_id", "preconditions", "release_plan_id", "release_revision_ref", "required_version_bump"]
+    },
+    ".semapact/history/release_records/de7c4ed0-d54a-5a7a-b82e-c626eab39d23.json": {
+      "checksum": "sha256:961815c36c9f21e9ca1a277bb256bdc6571bcd94187a2712f333fa2bf6834b9d",
+      "topLevelKeys": ["actual_version_bump", "applied_release_id", "authority_reference", "authorization_id", "change_set_id", "contract_id", "contract_version", "decision_id", "release_plan_id", "release_record_id", "released_revision_id", "required_version_bump", "review_evidence_action", "review_evidence_reference", "version_authority", "version_resolution_id"]
+    },
+    ".semapact/history/runtime_observations/28a82950-d467-57e8-803f-2b705b201780.json": {
+      "checksum": "sha256:82121d967e651fc1af170a184352e8c5379db6098c5ea569754db9bcf9cca0c2",
+      "topLevelKeys": ["observation", "observation_record_id"]
+    },
+    ".semapact/history/runtime_observations/6b0abefd-7cd6-5bcc-bd2d-714ae994735b.json": {
+      "checksum": "sha256:a7c61cb5589c804785346568eadef629477af3488709ecfc1f179684b2414999",
+      "topLevelKeys": ["observation", "observation_record_id"]
+    },
+    ".semapact/history/runtime_reconciliations/0488eb0b-50c1-549a-af56-48807338098a.json": {
+      "checksum": "sha256:2fb8122baa8e16c488b73d782729cf9aaad5fc5d102bb88879bae8b9c0b522db",
+      "topLevelKeys": ["deployment_record_id", "observation_record_id", "release_record_id", "result", "runtime_reconciliation_record_id", "status"]
+    },
+    ".semapact/history/runtime_reconciliations/b4c58a42-bea7-57da-ab1d-88594e425dfb.json": {
+      "checksum": "sha256:6e41715135cf33b62f19a4a82949bc471a42b6e20a89aa52b0a79854bdd33727",
+      "topLevelKeys": ["deployment_record_id", "observation_record_id", "release_record_id", "result", "runtime_reconciliation_record_id", "status"]
+    }
+  },
+  "evolution": {
+    "contractId": "orders-product",
+    "proposals": [
+      {
+        "changeSetId": "c2f4ee02-90e5-532a-ac8a-edd43e49f156",
+        "decisionId": "14295d1b-b52d-5d8b-8dad-2121529f099c",
+        "decision": "REVIEW",
+        "baseRevisionId": "fb437fde-4baa-5dad-a382-c4df381ba412",
+        "candidateRevisionId": "352d83a9-4ee6-508a-981f-4bc9819263c9",
+        "releases": [
+          {
+            "releaseRecordId": "de7c4ed0-d54a-5a7a-b82e-c626eab39d23",
+            "contractVersion": "1.3.0",
+            "releasedRevisionId": "290bd707-017f-56ca-a379-c8879b9ede13",
+            "deployments": [
+              {
+                "deploymentRecordId": "61edafd1-bba0-5e2f-8fa1-f48ff7eeaafb",
+                "runtimeTarget": "main.stage",
+                "status": "FAILED",
+                "runtime": []
+              },
+              {
+                "deploymentRecordId": "c1cbc2d8-f340-5944-827a-c5bbc8d73835",
+                "runtimeTarget": "main.prod",
+                "status": "SUCCEEDED",
+                "runtime": [
+                  {
+                    "reconciliationRecordId": "0488eb0b-50c1-549a-af56-48807338098a",
+                    "observationRecordId": "28a82950-d467-57e8-803f-2b705b201780",
+                    "status": "DRIFT"
+                  },
+                  {
+                    "reconciliationRecordId": "b4c58a42-bea7-57da-ab1d-88594e425dfb",
+                    "observationRecordId": "6b0abefd-7cd6-5bcc-bd2d-714ae994735b",
+                    "status": "IN_SYNC"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "unlinkedReleaseIds": [],
+    "unlinkedRuntimeIds": [],
+    "brokenReferences": []
+  }
+}
