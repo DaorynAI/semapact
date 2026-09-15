@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
 
@@ -17,6 +18,40 @@ class ObservationModel(BaseModel):
     """Shared immutable base for observation models."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class ObservedEvidenceClass(str, Enum):
+    """Descriptive class for observed evidence, never a governance verdict."""
+
+    STRUCTURAL = "STRUCTURAL"
+    SEMANTIC = "SEMANTIC"
+    OPERATIONAL = "OPERATIONAL"
+
+
+class ObservedEvidenceKind(str, Enum):
+    """Provider-neutral kinds of evidence carried by an observation."""
+
+    PHYSICAL_SCHEMA = "PHYSICAL_SCHEMA"
+    OWNER = "OWNER"
+    COMMENT = "COMMENT"
+    TAG = "TAG"
+    CONSTRAINT = "CONSTRAINT"
+    RELATIONSHIP = "RELATIONSHIP"
+
+
+_EVIDENCE_CLASSES = {
+    ObservedEvidenceKind.PHYSICAL_SCHEMA: ObservedEvidenceClass.STRUCTURAL,
+    ObservedEvidenceKind.OWNER: ObservedEvidenceClass.OPERATIONAL,
+    ObservedEvidenceKind.COMMENT: ObservedEvidenceClass.SEMANTIC,
+    ObservedEvidenceKind.TAG: ObservedEvidenceClass.SEMANTIC,
+    ObservedEvidenceKind.CONSTRAINT: ObservedEvidenceClass.STRUCTURAL,
+    ObservedEvidenceKind.RELATIONSHIP: ObservedEvidenceClass.STRUCTURAL,
+}
+
+
+def classify_observed_evidence(kind: ObservedEvidenceKind) -> ObservedEvidenceClass:
+    """Return the descriptive evidence class for one provider-neutral kind."""
+    return _EVIDENCE_CLASSES[kind]
 
 
 class ObservedAssetIdentity(ObservationModel):
@@ -53,20 +88,83 @@ class ObservedPropertyIdentity(ObservationModel):
         return (*self.asset.canonical_key, self.property.casefold())
 
 
+class ObservedTag(ObservationModel):
+    """One normalized platform tag assignment."""
+
+    key: str
+    value: str | None = None
+    provenance: str | None = None
+
+
+class ObservedConstraintKind(str, Enum):
+    """Constraint semantics that a provider can identify without inference."""
+
+    PRIMARY_KEY = "PRIMARY_KEY"
+    UNIQUE = "UNIQUE"
+    NAMED = "NAMED"
+
+
+class ObservedConstraint(ObservationModel):
+    """Normalized non-relational constraint evidence for one asset."""
+
+    kind: ObservedConstraintKind
+    properties: tuple[str, ...] = ()
+    name: str | None = None
+    provenance: str | None = None
+
+
+class ObservedRelationshipKind(str, Enum):
+    """Relationship semantics that a provider reports explicitly."""
+
+    FOREIGN_KEY = "FOREIGN_KEY"
+
+
+class ObservedRelationshipDirection(str, Enum):
+    """Direction from the asset carrying the relationship evidence."""
+
+    OUTBOUND = "OUTBOUND"
+
+
+class ObservedRelationship(ObservationModel):
+    """Normalized explicit relationship evidence between observed assets.
+
+    ``target_reference`` preserves provider evidence when the target cannot be
+    normalized into a platform-local asset identity. Empty property tuples mean
+    the provider did not identify those columns; they must never be inferred.
+    """
+
+    kind: ObservedRelationshipKind
+    source_asset: ObservedAssetIdentity
+    source_properties: tuple[str, ...] = ()
+    target_asset: ObservedAssetIdentity | None = None
+    target_properties: tuple[str, ...] = ()
+    target_reference: str | None = None
+    direction: ObservedRelationshipDirection = ObservedRelationshipDirection.OUTBOUND
+    name: str | None = None
+    provenance: str | None = None
+
+
 class ObservedProperty(ObservationModel):
-    """Observed physical property/column state."""
+    """Observed physical and semantic property/column state."""
 
     identity: ObservedPropertyIdentity
     physical_type: str | None = None
     nullable: bool | None = None
+    comment: str | None = None
+    tags: tuple[ObservedTag, ...] = ()
 
 
 class ObservedAsset(ObservationModel):
-    """Observed physical state for one external asset."""
+    """Observed physical, semantic, and operational state for one external asset."""
 
     identity: ObservedAssetIdentity
     asset_type: str | None = None
+    owner: str | None = None
+    comment: str | None = None
+    tags: tuple[ObservedTag, ...] = ()
     properties: tuple[ObservedProperty, ...] = ()
+    constraints: tuple[ObservedConstraint, ...] = ()
+    relationships: tuple[ObservedRelationship, ...] = ()
 
 
 class ObservedPlatformState(ObservationModel):
