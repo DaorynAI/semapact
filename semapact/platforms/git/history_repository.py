@@ -452,120 +452,159 @@ class GitWorkingTreeHistoryRepository:
 
     def inspect_history_integrity(self) -> tuple[HistoryStorageIntegrityIssue, ...]:
         """Inspect physical history artifacts and checksum evidence without mutation."""
+        root_issue = self._inspect_history_root()
+        if root_issue is not None:
+            return (root_issue,)
+
+        issues = [
+            *self._inspect_history_artifacts(),
+            *self._inspect_orphan_checksums(),
+        ]
+        return tuple(sorted(issues, key=_integrity_issue_sort_key))
+
+    def _inspect_history_root(self) -> HistoryStorageIntegrityIssue | None:
         if not self._history_root.exists():
-            return ()
-        if not self._path_is_within_history(self._history_root):
+            return None
+        if self._path_is_within_history(self._history_root):
+            return None
+        return self._integrity_issue(
+            HistoryIntegrityIssueCode.UNKNOWN_ARTIFACT_LAYOUT,
+            self._history_root,
+            detail="resolved history root escapes repository containment",
+        )
+
+    def _inspect_history_artifacts(self) -> list[HistoryStorageIntegrityIssue]:
+        if not self._history_root.exists():
+            return []
+
+        issues: list[HistoryStorageIntegrityIssue] = []
+        for path in sorted(self._history_root.rglob("*.json"), key=Path.as_posix):
+            issues.extend(self._inspect_history_artifact(path))
+        return issues
+
+    def _inspect_history_artifact(
+        self,
+        path: Path,
+    ) -> tuple[HistoryStorageIntegrityIssue, ...]:
+        if not self._path_is_within_history(path):
             return (
                 self._integrity_issue(
                     HistoryIntegrityIssueCode.UNKNOWN_ARTIFACT_LAYOUT,
-                    self._history_root,
-                    detail="resolved history root escapes repository containment",
+                    path,
+                    detail="resolved artifact path escapes history root",
                 ),
             )
 
-        issues: list[HistoryStorageIntegrityIssue] = []
-        for path in sorted(
-            self._history_root.rglob("*.json"),
-            key=lambda item: item.as_posix(),
-        ):
-            if not self._path_is_within_history(path):
-                issues.append(
-                    self._integrity_issue(
-                        HistoryIntegrityIssueCode.UNKNOWN_ARTIFACT_LAYOUT,
-                        path,
-                        detail="resolved artifact path escapes history root",
-                    )
-                )
-                continue
-
-            resolved = self._resolve_history_spec(path)
-            if resolved is None:
-                issues.append(
-                    self._integrity_issue(
-                        HistoryIntegrityIssueCode.UNKNOWN_ARTIFACT_LAYOUT,
-                        path,
-                        detail="artifact path does not match a canonical history layout",
-                    )
-                )
-                continue
-
-            spec, artifact_id, parent_change_set_id = resolved
-            try:
-                raw = path.read_text(encoding="utf-8")
-            except OSError as exc:
-                issues.append(
-                    self._integrity_issue(
-                        HistoryIntegrityIssueCode.ARTIFACT_INVALID,
-                        path,
-                        artifact_kind=spec.directory,
-                        artifact_id=artifact_id,
-                        detail=f"artifact could not be read: {exc}",
-                    )
-                )
-                continue
-
-            issues.extend(
-                self._inspect_checksum(
+        resolved = self._resolve_history_spec(path)
+        if resolved is None:
+            return (
+                self._integrity_issue(
+                    HistoryIntegrityIssueCode.UNKNOWN_ARTIFACT_LAYOUT,
                     path,
-                    raw,
+                    detail="artifact path does not match a canonical history layout",
+                ),
+            )
+
+        spec, artifact_id, parent_change_set_id = resolved
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return (
+                self._integrity_issue(
+                    HistoryIntegrityIssueCode.ARTIFACT_INVALID,
+                    path,
                     artifact_kind=spec.directory,
                     artifact_id=artifact_id,
+                    detail=f"artifact could not be read: {exc}",
+                ),
+            )
+
+        issues = list(
+            self._inspect_checksum(
+                path,
+                raw,
+                artifact_kind=spec.directory,
+                artifact_id=artifact_id,
+            )
+        )
+
+        try:
+            artifact = spec.model_type.model_validate_json(raw)
+            if spec.integrity_validator is not None:
+                spec.integrity_validator(artifact)
+        except (PydanticValidationError, ValueError, TypeError) as exc:
+            issues.append(
+                self._integrity_issue(
+                    HistoryIntegrityIssueCode.ARTIFACT_INVALID,
+                    path,
+                    artifact_kind=spec.directory,
+                    artifact_id=artifact_id,
+                    detail=f"artifact failed canonical validation: {exc}",
+                )
+            )
+            return tuple(issues)
+
+        actual_id = getattr(artifact, spec.id_attribute)
+        if actual_id != artifact_id:
+            issues.append(
+                self._integrity_issue(
+                    HistoryIntegrityIssueCode.IDENTITY_MISMATCH,
+                    path,
+                    artifact_kind=spec.directory,
+                    artifact_id=artifact_id,
+                    detail=(
+                        f"embedded {spec.id_attribute} {actual_id!r} does not match "
+                        f"file identity {artifact_id!r}"
+                    ),
                 )
             )
 
-            try:
-                artifact = spec.model_type.model_validate_json(raw)
-                if spec.integrity_validator is not None:
-                    spec.integrity_validator(artifact)
-            except (PydanticValidationError, ValueError, TypeError) as exc:
-                issues.append(
-                    self._integrity_issue(
-                        HistoryIntegrityIssueCode.ARTIFACT_INVALID,
-                        path,
-                        artifact_kind=spec.directory,
-                        artifact_id=artifact_id,
-                        detail=f"artifact failed canonical validation: {exc}",
-                    )
-                )
-                continue
+        provenance_issue = self._inspect_path_provenance(
+            path,
+            spec=spec,
+            artifact=artifact,
+            artifact_id=artifact_id,
+            parent_change_set_id=parent_change_set_id,
+        )
+        if provenance_issue is not None:
+            issues.append(provenance_issue)
 
-            actual_id = getattr(artifact, spec.id_attribute)
-            if actual_id != artifact_id:
-                issues.append(
-                    self._integrity_issue(
-                        HistoryIntegrityIssueCode.IDENTITY_MISMATCH,
-                        path,
-                        artifact_kind=spec.directory,
-                        artifact_id=artifact_id,
-                        detail=(
-                            f"embedded {spec.id_attribute} {actual_id!r} does not match "
-                            f"file identity {artifact_id!r}"
-                        ),
-                    )
-                )
+        return tuple(issues)
 
-            if (
-                spec is _CHANGE_SET_DECISIONS
-                and parent_change_set_id is not None
-                and isinstance(artifact, ChangeSetDecisionLink)
-                and artifact.change_set_id != parent_change_set_id
-            ):
-                issues.append(
-                    self._integrity_issue(
-                        HistoryIntegrityIssueCode.PATH_PROVENANCE_MISMATCH,
-                        path,
-                        artifact_kind=spec.directory,
-                        artifact_id=artifact_id,
-                        detail=(
-                            f"embedded change_set_id {artifact.change_set_id!r} does not match "
-                            f"path provenance {parent_change_set_id!r}"
-                        ),
-                    )
-                )
+    def _inspect_path_provenance(
+        self,
+        path: Path,
+        *,
+        spec: _HistoryKindSpec[BaseModel],
+        artifact: BaseModel,
+        artifact_id: str,
+        parent_change_set_id: str | None,
+    ) -> HistoryStorageIntegrityIssue | None:
+        if spec is not _CHANGE_SET_DECISIONS or parent_change_set_id is None:
+            return None
+        if not isinstance(artifact, ChangeSetDecisionLink):
+            return None
+        if artifact.change_set_id == parent_change_set_id:
+            return None
+        return self._integrity_issue(
+            HistoryIntegrityIssueCode.PATH_PROVENANCE_MISMATCH,
+            path,
+            artifact_kind=spec.directory,
+            artifact_id=artifact_id,
+            detail=(
+                f"embedded change_set_id {artifact.change_set_id!r} does not match "
+                f"path provenance {parent_change_set_id!r}"
+            ),
+        )
 
+    def _inspect_orphan_checksums(self) -> list[HistoryStorageIntegrityIssue]:
+        if not self._history_root.exists():
+            return []
+
+        issues: list[HistoryStorageIntegrityIssue] = []
         for checksum_path in sorted(
             self._history_root.rglob("*.json.sha256"),
-            key=lambda item: item.as_posix(),
+            key=Path.as_posix,
         ):
             if not self._path_is_within_history(checksum_path):
                 issues.append(
@@ -576,6 +615,7 @@ class GitWorkingTreeHistoryRepository:
                     )
                 )
                 continue
+
             artifact_path = checksum_path.with_name(
                 checksum_path.name.removesuffix(".sha256")
             )
@@ -587,17 +627,7 @@ class GitWorkingTreeHistoryRepository:
                         detail="checksum sidecar has no corresponding JSON artifact",
                     )
                 )
-
-        issues.sort(
-            key=lambda item: (
-                item.storage_reference,
-                item.code.value,
-                item.artifact_kind,
-                item.artifact_id or "",
-                item.detail,
-            )
-        )
-        return tuple(issues)
+        return issues
 
     def _put(
         self,
@@ -665,7 +695,7 @@ class GitWorkingTreeHistoryRepository:
             return ()
 
         records: list[T] = []
-        for artifact_path in sorted(path.glob("*.json"), key=lambda item: item.name):
+        for artifact_path in sorted(path.glob("*.json"), key=_path_name):
             artifact_id = _safe_artifact_id(artifact_path.stem)
             records.append(
                 self._read_validated(
@@ -961,6 +991,22 @@ class GitWorkingTreeHistoryRepository:
     def _assert_path_within_history(self, path: Path) -> None:
         if not self._path_is_within_history(path):
             raise ValueError("history path escapes configured history root")
+
+
+def _integrity_issue_sort_key(
+    issue: HistoryStorageIntegrityIssue,
+) -> tuple[str, str, str, str, str]:
+    return (
+        issue.storage_reference,
+        issue.code.value,
+        issue.artifact_kind,
+        issue.artifact_id or "",
+        issue.detail,
+    )
+
+
+def _path_name(path: Path) -> str:
+    return path.name
 
 
 def _canonical_model_json(artifact: BaseModel) -> str:
