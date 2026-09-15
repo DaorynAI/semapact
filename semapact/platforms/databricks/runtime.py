@@ -5,10 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
-from semapact.observation.databricks import observe_databricks_table
 from semapact.observation.fingerprint import with_observed_state_fingerprint
-from semapact.observation.models import ObservedAssetIdentity, ObservedPlatformState
+from semapact.observation.models import ObservedAsset, ObservedAssetIdentity, ObservedPlatformState
 from semapact.observation.providers import RuntimeAssetBinding, RuntimeAssetSpec
+from semapact.platforms.databricks.observation import (
+    databricks_evidence_availability,
+    observe_databricks_table,
+)
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
 
 
@@ -42,7 +45,7 @@ class DatabricksRuntimeProvider:
             )
             for asset in assets
         )
-        return tuple(sorted(bindings, key=lambda item: item.governed_asset))
+        return tuple(sorted(bindings, key=_binding_sort_key))
 
     def observe(
         self,
@@ -51,10 +54,10 @@ class DatabricksRuntimeProvider:
     ) -> ObservedPlatformState:
         """Observe every bound UC asset; missing tables remain absent evidence."""
         captured_at = datetime.now(timezone.utc)
-        assets = []
+        assets: list[ObservedAsset] = []
         not_found_error = _load_databricks_not_found_error()
 
-        for binding in sorted(bindings, key=lambda item: item.governed_asset):
+        for binding in sorted(bindings, key=_binding_sort_key):
             identity = binding.observed_asset
             if identity.platform.casefold() != self.key:
                 raise ValueError("Databricks provider received a non-Databricks binding")
@@ -79,9 +82,14 @@ class DatabricksRuntimeProvider:
             source_identifier=self._source_identifier,
             assets=tuple(assets),
             captured_at=captured_at,
+            evidence_availability=databricks_evidence_availability(self._client),
             fingerprint=None,
         )
         return with_observed_state_fingerprint(state)
+
+
+def _binding_sort_key(binding: RuntimeAssetBinding) -> str:
+    return binding.governed_asset
 
 
 def _load_databricks_not_found_error() -> type[BaseException]:

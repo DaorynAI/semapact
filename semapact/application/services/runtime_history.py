@@ -16,7 +16,11 @@ from semapact.history.integrity import (
     compute_runtime_observation_record_id,
     compute_runtime_reconciliation_record_id,
 )
-from semapact.observation import ObservedPlatformState, fingerprint_observed_state
+from semapact.observation import (
+    ObservedPlatformState,
+    fingerprint_observed_state,
+    with_observed_state_fingerprint,
+)
 from semapact.reconciliation import (
     ReconciliationResult,
     classify_reconciliation_status,
@@ -58,23 +62,24 @@ class RuntimeHistoryService:
                 f"result must be ReconciliationResult, got {type(result).__name__}"
             )
 
-        _validate_observation_result_link(observation, result)
+        canonical_observation = _canonical_observation(observation)
+        _validate_observation_result_link(canonical_observation, result)
         release = _load_optional_release(self._releases, release_record_id)
         deployment = _load_optional_deployment(
             self._deployments,
             deployment_record_id,
         )
         _validate_optional_history_links(
-            observation,
+            canonical_observation,
             result,
             release=release,
             deployment=deployment,
         )
 
-        observation_record_id = compute_runtime_observation_record_id(observation)
+        observation_record_id = compute_runtime_observation_record_id(canonical_observation)
         observation_record = RuntimeObservationRecord(
             observation_record_id=observation_record_id,
-            observation=observation,
+            observation=canonical_observation,
         )
 
         status = classify_reconciliation_status(result)
@@ -109,6 +114,20 @@ class RuntimeHistoryService:
         return record
 
 
+def _canonical_observation(observation: ObservedPlatformState) -> ObservedPlatformState:
+    semantic_fingerprint = fingerprint_observed_state(observation)
+    if (
+        observation.fingerprint is not None
+        and observation.fingerprint != semantic_fingerprint
+    ):
+        raise ValueError(
+            "ObservedPlatformState fingerprint does not match canonical semantic content"
+        )
+    if observation.fingerprint is not None:
+        return observation
+    return with_observed_state_fingerprint(observation)
+
+
 def _validate_observation_result_link(
     observation: ObservedPlatformState,
     result: ReconciliationResult,
@@ -117,10 +136,7 @@ def _validate_observation_result_link(
         raise ValueError(
             "ReconciliationResult source does not match ObservedPlatformState"
         )
-    observation_fingerprint = observation.fingerprint or fingerprint_observed_state(
-        observation
-    )
-    if observation_fingerprint != result.observation_fingerprint:
+    if observation.fingerprint != result.observation_fingerprint:
         raise ValueError(
             "ReconciliationResult fingerprint does not match ObservedPlatformState"
         )

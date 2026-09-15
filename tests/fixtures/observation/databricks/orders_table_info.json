@@ -4,27 +4,53 @@
   "schema_name": "silver",
   "full_name": "main.silver.orders",
   "table_type": "MANAGED",
+  "owner": "data-platform@example.com",
+  "comment": "Curated customer orders",
   "columns": [
     {
       "name": "customer_id",
       "type_name": "STRING",
       "type_text": "string",
       "position": 1,
-      "nullable": false
+      "nullable": false,
+      "comment": "Customer business identifier"
     },
     {
       "name": "note",
       "type_name": "STRING",
       "type_text": "string",
       "position": 2,
-      "nullable": true
+      "nullable": true,
+      "comment": null
     },
     {
       "name": "order_id",
       "type_name": "BIGINT",
       "type_text": "bigint",
       "position": 0,
-      "nullable": false
+      "nullable": false,
+      "comment": "Order business identifier"
+    }
+  ],
+  "table_constraints": [
+    {
+      "foreign_key_constraint": {
+        "name": "fk_orders_customer",
+        "child_columns": ["customer_id"],
+        "parent_table": "main.silver.customers",
+        "parent_columns": ["customer_id"]
+      }
+    },
+    {
+      "primary_key_constraint": {
+        "name": "pk_orders",
+        "child_columns": ["order_id"]
+      }
+    },
+    {
+      "named_table_constraint": {
+        "name": "named_orders_constraint"
+      }
     }
   ]
 }
