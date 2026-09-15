@@ -8,17 +8,17 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from semapact.observation import databricks as databricks_observation
-from semapact.observation.databricks import (
-    map_databricks_table_info,
-    observe_databricks_table,
-)
 from semapact.observation.models import (
     ObservedConstraintKind,
     ObservedPlatformState,
     ObservedRelationshipDirection,
     ObservedRelationshipKind,
     serialize_observed_state,
+)
+from semapact.platforms.databricks import observation as databricks_observation
+from semapact.platforms.databricks.observation import (
+    map_databricks_table_info,
+    observe_databricks_table,
 )
 
 FIXTURE = (
