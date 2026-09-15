@@ -100,7 +100,7 @@ def test_databricks_table_info_maps_to_platform_neutral_observation() -> None:
     assert state.captured_at == CAPTURED_AT
     assert state.fingerprint == (
         "obs-v2:sha256:"
-        "85fd6b22461aa53d25d0c55e35235ff9c7c544f96e88e5d9c67f9051cb6e7bc7"
+        "2b4f9ae77d71ee7623d2cd6e152b86bccdbe14d850902631fd93c8040df72660"
     )
 
     availability = _availability_by_kind(state)
@@ -139,6 +139,7 @@ def test_databricks_table_info_maps_to_platform_neutral_observation() -> None:
     assert asset.properties[2].nullable is True
 
     assert [item.kind for item in asset.constraints] == [
+        ObservedConstraintKind.FOREIGN_KEY,
         ObservedConstraintKind.NAMED,
         ObservedConstraintKind.PRIMARY_KEY,
     ]
@@ -148,6 +149,12 @@ def test_databricks_table_info_maps_to_platform_neutral_observation() -> None:
     assert primary_key.name == "pk_orders"
     assert primary_key.properties == ("order_id",)
     assert primary_key.provenance == "unity_catalog"
+    foreign_key = next(
+        item for item in asset.constraints if item.kind is ObservedConstraintKind.FOREIGN_KEY
+    )
+    assert foreign_key.name == "fk_orders_customer"
+    assert foreign_key.properties == ("customer_id",)
+    assert foreign_key.provenance == "unity_catalog"
 
     assert len(asset.relationships) == 1
     relationship = asset.relationships[0]
@@ -317,6 +324,11 @@ def test_foreign_key_with_unresolved_parent_preserves_partial_evidence() -> None
     )
     relationship = state.assets[0].relationships[0]
 
+    assert state.assets[0].constraints == (
+        state.assets[0].constraints[0],
+    )
+    assert state.assets[0].constraints[0].kind is ObservedConstraintKind.FOREIGN_KEY
+    assert state.assets[0].constraints[0].properties == ("customer_id",)
     assert relationship.target_asset is None
     assert relationship.target_reference == "unqualified-parent"
     assert relationship.target_properties == ()
@@ -335,6 +347,9 @@ def test_mapper_accepts_official_databricks_sdk_table_info_when_extra_is_install
     assert state.assets[0].identity.namespace == ("main", "silver")
     assert state.assets[0].properties[0].identity.property == "order_id"
     assert state.assets[0].owner == "data-platform@example.com"
+    assert next(
+        item for item in state.assets[0].constraints if item.kind is ObservedConstraintKind.FOREIGN_KEY
+    ).name == "fk_orders_customer"
     assert state.assets[0].relationships[0].name == "fk_orders_customer"
     assert state.fingerprint is not None
 
