@@ -6,7 +6,7 @@ and ``source_identifier`` so repeated captures of the same platform state have
 the same fingerprint.
 
 Version ``obs-v2`` extends the physical observation payload with normalized
-owner, comments, tags, constraints, and explicit relationship evidence.
+owner, comments, tags, constraints, relationships, and evidence availability.
 Provider-specific normalization remains the responsibility of the provider
 adapter before it constructs the platform-neutral observation model.
 """
@@ -17,14 +17,15 @@ import hashlib
 import json
 from typing import Any
 
-from semapact.observation.models import (
-    ObservedAsset,
-    ObservedConstraint,
-    ObservedPlatformState,
-    ObservedProperty,
-    ObservedRelationship,
-    ObservedTag,
+from semapact.observation.canonical import (
+    canonical_constraint_payload,
+    canonical_evidence_availability_payload,
+    canonical_relationship_payload,
+    canonical_tag_payload,
+    normalize_casefold_text,
+    normalize_optional_text,
 )
+from semapact.observation.models import ObservedAsset, ObservedPlatformState, ObservedProperty
 
 OBSERVED_STATE_FINGERPRINT_VERSION = "obs-v2"
 OBSERVED_STATE_FINGERPRINT_ALGORITHM = "sha256"
@@ -37,7 +38,10 @@ def canonical_observed_state_payload(state: ObservedPlatformState) -> dict[str, 
 
     return {
         "fingerprint_version": OBSERVED_STATE_FINGERPRINT_VERSION,
-        "platform": state.platform.casefold(),
+        "platform": state.platform.strip().casefold(),
+        "evidence_availability": canonical_evidence_availability_payload(
+            state.evidence_availability
+        ),
         "assets": assets,
     }
 
@@ -60,18 +64,18 @@ def with_observed_state_fingerprint(state: ObservedPlatformState) -> ObservedPla
 def _canonical_asset(asset: ObservedAsset) -> dict[str, object]:
     properties = [_canonical_property(prop) for prop in asset.properties]
     properties.sort(key=_canonical_json)
-    tags = [_canonical_tag(tag) for tag in asset.tags]
+    tags = [canonical_tag_payload(tag) for tag in asset.tags]
     tags.sort(key=_canonical_json)
-    constraints = [_canonical_constraint(item) for item in asset.constraints]
+    constraints = [canonical_constraint_payload(item) for item in asset.constraints]
     constraints.sort(key=_canonical_json)
-    relationships = [_canonical_relationship(item) for item in asset.relationships]
+    relationships = [canonical_relationship_payload(item) for item in asset.relationships]
     relationships.sort(key=_canonical_json)
 
     return {
         "identity": list(asset.identity.canonical_key),
-        "asset_type": _normalize_optional_text(asset.asset_type),
-        "owner": _normalize_optional_text(asset.owner),
-        "comment": _normalize_optional_text(asset.comment),
+        "asset_type": normalize_casefold_text(asset.asset_type),
+        "owner": normalize_optional_text(asset.owner),
+        "comment": normalize_optional_text(asset.comment),
         "tags": tags,
         "properties": properties,
         "constraints": constraints,
@@ -80,59 +84,15 @@ def _canonical_asset(asset: ObservedAsset) -> dict[str, object]:
 
 
 def _canonical_property(prop: ObservedProperty) -> dict[str, object]:
-    tags = [_canonical_tag(tag) for tag in prop.tags]
+    tags = [canonical_tag_payload(tag) for tag in prop.tags]
     tags.sort(key=_canonical_json)
     return {
         "identity": list(prop.identity.canonical_key),
-        "physical_type": _normalize_optional_text(prop.physical_type),
+        "physical_type": normalize_casefold_text(prop.physical_type),
         "nullable": prop.nullable,
-        "comment": _normalize_optional_text(prop.comment),
+        "comment": normalize_optional_text(prop.comment),
         "tags": tags,
     }
-
-
-def _canonical_tag(tag: ObservedTag) -> dict[str, object]:
-    return {
-        "key": tag.key.strip(),
-        "value": _normalize_optional_text(tag.value),
-        "provenance": _normalize_optional_text(tag.provenance),
-    }
-
-
-def _canonical_constraint(constraint: ObservedConstraint) -> dict[str, object]:
-    return {
-        "kind": constraint.kind.value,
-        "properties": [item.casefold() for item in constraint.properties],
-        "name": _normalize_optional_text(constraint.name),
-        "provenance": _normalize_optional_text(constraint.provenance),
-    }
-
-
-def _canonical_relationship(relationship: ObservedRelationship) -> dict[str, object]:
-    target_asset = relationship.target_asset
-    return {
-        "kind": relationship.kind.value,
-        "source_asset": list(relationship.source_asset.canonical_key),
-        "source_properties": [item.casefold() for item in relationship.source_properties],
-        "target_asset": list(target_asset.canonical_key) if target_asset is not None else None,
-        "target_properties": [item.casefold() for item in relationship.target_properties],
-        # Once a target is normalized, its canonical identity is authoritative for the
-        # fingerprint. Keep the raw provider reference only for unresolved evidence.
-        "target_reference": (
-            None
-            if target_asset is not None
-            else _normalize_optional_text(relationship.target_reference)
-        ),
-        "direction": relationship.direction.value,
-        "name": _normalize_optional_text(relationship.name),
-        "provenance": _normalize_optional_text(relationship.provenance),
-    }
-
-
-def _normalize_optional_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    return value.strip()
 
 
 def _canonical_json(value: Any) -> str:
