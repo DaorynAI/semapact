@@ -1,5 +1,14 @@
 """Platform-neutral observation domain for SemaPact read-side state."""
 
+from semapact.observation.classification import (
+    ObservedEvidenceClass,
+    ObservedEvidenceClassCount,
+    ObservedEvidenceCount,
+    ObservedEvidenceKind,
+    ObservedEvidenceMetrics,
+    classify_observed_evidence,
+    summarize_observed_evidence,
+)
 from semapact.observation.fingerprint import (
     OBSERVED_STATE_FINGERPRINT_ALGORITHM,
     OBSERVED_STATE_FINGERPRINT_VERSION,
@@ -12,8 +21,6 @@ from semapact.observation.models import (
     ObservedAssetIdentity,
     ObservedConstraint,
     ObservedConstraintKind,
-    ObservedEvidenceClass,
-    ObservedEvidenceKind,
     ObservedPlatformState,
     ObservedProperty,
     ObservedPropertyIdentity,
@@ -21,7 +28,6 @@ from semapact.observation.models import (
     ObservedRelationshipDirection,
     ObservedRelationshipKind,
     ObservedTag,
-    classify_observed_evidence,
     serialize_observed_state,
 )
 from semapact.observation.providers import (
@@ -39,7 +45,10 @@ __all__ = [
     "ObservedConstraint",
     "ObservedConstraintKind",
     "ObservedEvidenceClass",
+    "ObservedEvidenceClassCount",
+    "ObservedEvidenceCount",
     "ObservedEvidenceKind",
+    "ObservedEvidenceMetrics",
     "ObservedPlatformState",
     "ObservedProperty",
     "ObservedPropertyIdentity",
@@ -55,5 +64,6 @@ __all__ = [
     "classify_observed_evidence",
     "fingerprint_observed_state",
     "serialize_observed_state",
+    "summarize_observed_evidence",
     "with_observed_state_fingerprint",
 ]
