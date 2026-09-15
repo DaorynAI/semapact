@@ -20,7 +20,6 @@ from open_data_contract_standard.model import OpenDataContractStandard
 from semapact.importers.unity_relationships import (
     enrich_unity_contract_relationships,
 )
-from semapact.importers.unity_lineage import enrich_unity_lineage
 
 LOGGER = logging.getLogger(__name__)
 
@@ -61,17 +60,19 @@ def import_unity_contract(
     table_fqn: str,
     workspace_url: str | None = None,
     token: str | None = None,
-    sql_http_path: str | None = None,
-    extract_lineage: bool = False,
 ) -> OpenDataContractStandard:
-    """Import a Unity Catalog contract using datacontract-cli's unity importer.
+    """Import Unity Catalog metadata into ODCS using datacontract-cli.
+
+    Runtime lineage is deliberately excluded from this importer. Lineage and
+    query history are observation evidence rather than authoritative contract
+    semantics and therefore must not mutate the imported ODCS contract.
 
     Raises ``ValueError`` when required credentials are missing.
     """
     from semapact.core.config import config_manager
+
     workspace_url = workspace_url or config_manager.get("databricks.workspace_url")
     token = token or config_manager.get("databricks.token")
-    sql_http_path = sql_http_path or config_manager.get("databricks.sql_http_path")
     profile = config_manager.get("databricks.profile")
 
     if not profile and (not workspace_url or not token):
@@ -86,18 +87,9 @@ def import_unity_contract(
             source=None,
             unity_table_full_name=[table_fqn],
         )
-        enriched = enrich_unity_contract_relationships(
+        return enrich_unity_contract_relationships(
             imported,
             table_fqn=table_fqn,
             workspace_url=workspace_url,
             token=token,
         )
-        if extract_lineage:
-            enriched = enrich_unity_lineage(
-                enriched,
-                table_fqn=table_fqn,
-                workspace_url=workspace_url,
-                token=token,
-                sql_http_path=sql_http_path,
-            )
-        return enriched
