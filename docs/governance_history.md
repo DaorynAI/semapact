@@ -7,15 +7,15 @@ store and retrieve those exact immutable models.
 The persistence boundary is capability-oriented:
 
 ```text
-GovernanceDecision   ChangeSet   ContractRevision   RevisionSource
-        ↓                ↓               ↓                ↓
-DecisionHistory      ChangeSetHistory    RevisionHistory   RevisionSourceHistory
-Repository           Repository          Repository        Repository
-          \              |                  |              /
-           \             |                  |             /
-             GitWorkingTreeHistoryRepository
-                           ↓
-                 .semapact/history/
+GovernanceDecision   ChangeSet   ApprovalRecord   ContractRevision   RevisionSource
+        ↓                ↓             ↓                 ↓                ↓
+DecisionHistory      ChangeSetHistory  ApprovalHistory  RevisionHistory   RevisionSourceHistory
+Repository           Repository       Repository       Repository        Repository
+          \              |               |                |              /
+           \             |               |                |             /
+                 GitWorkingTreeHistoryRepository
+                              ↓
+                    .semapact/history/
 ```
 
 Callers depend only on the narrow typed repository capability they need. A physical
@@ -98,18 +98,71 @@ ContractRevision
 Therefore the same canonical contract content has the same revision ID wherever it is
 observed, while all known source references can still be retained independently.
 
+## Approval history
+
+`ApprovalRecord` is an immutable review event owned by `semapact/approval/`. It records
+what one actor explicitly did against one exact version-resolved ContractOps context:
+
+```text
+ApprovalRecord
+├── approval_id
+├── decision_id
+├── change_set_id
+├── release_plan_id
+├── version_resolution_id
+├── operation
+├── action
+├── actor_reference
+├── recorded_at
+├── scope_reference?
+├── capability_reference?
+├── comment?
+└── evidence_references[]
+```
+
+The approval ID is deterministic over the complete normalized event payload. The
+explicit timezone-aware timestamp is part of that payload, so two actions by the same
+actor against the same release context remain distinct historical events when they
+occur at different times. Evidence references are normalized deterministically before
+identity calculation.
+
+Persistence does not decide which approval should control a workflow. Multiple
+reviewers, approvals, rejections, and request-changes actions coexist as independent
+records. There is deliberately no implicit `latest wins`, quorum, or reviewer
+precedence rule in the repository.
+
+A selected durable approval can be projected losslessly into the existing M2
+`ReviewAuthorizationEvidence` contract:
+
+```text
+ApprovalRecord
+      ↓ explicit projection
+ReviewAuthorizationEvidence
+      ↓
+authorize_contract_operation(...)
+```
+
+The approval ID becomes the evidence reference. M2 remains responsible for exact
+context matching and for the semantics of APPROVE, REJECT, and REQUEST_CHANGES.
+Persisting an approval by itself therefore never rewrites `GovernanceDecision` and
+never grants authorization outside the normal ContractOps boundary.
+
+Approval history is separate from ODCS. Reviewer identity, comments, capabilities,
+and evidence references are governance-history facts, not contract fields.
+
 ## Persistence semantics
 
 For supported artifacts:
 
 - writing identical content under the same artifact ID is idempotent;
-- writing different content under an existing artifact ID fails closed;
+- writing different or identity-inconsistent content under an existing artifact ID
+  fails closed;
 - reads rehydrate the canonical domain model and invoke domain integrity validation
   before trusting persisted content;
 - the embedded artifact ID must match the requested/file identity;
 - malformed or semantically inconsistent persisted content fails closed;
 - missing IDs produce an explicit history not-found error;
-- contract-scoped listings are deterministic.
+- scoped listings are deterministic.
 
 `ChangeContext` remains part of `ChangeSet` and round-trips with it. History state is
 not written into canonical ODCS contracts.
