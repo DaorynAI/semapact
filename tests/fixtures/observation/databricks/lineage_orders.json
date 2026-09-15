@@ -1,0 +1,54 @@
+{
+  "table": [
+    {
+      "source_table_full_name": "main.raw.orders",
+      "target_table_full_name": "main.silver.orders",
+      "statement_id": "stmt-1",
+      "event_time": "2026-09-15T10:00:00+00:00",
+      "event_id": "event-1",
+      "record_id": "table-record-1",
+      "created_by": "pipeline@example.com",
+      "direct_access": true
+    }
+  ],
+  "column": [
+    {
+      "source_table_full_name": "main.raw.orders",
+      "source_column_name": "raw_id",
+      "target_table_full_name": "main.silver.orders",
+      "target_column_name": "order_id",
+      "statement_id": "stmt-1",
+      "event_time": "2026-09-15T10:00:00+00:00",
+      "event_id": "event-1",
+      "record_id": "column-record-1",
+      "created_by": "pipeline@example.com",
+      "direct_access": true
+    },
+    {
+      "source_table_full_name": "main.raw.orders",
+      "source_column_name": "raw_customer_id",
+      "target_table_full_name": "main.silver.orders",
+      "target_column_name": "customer_id",
+      "statement_id": "stmt-1",
+      "event_time": "2026-09-15T10:00:00+00:00",
+      "event_id": "event-1",
+      "record_id": "column-record-2",
+      "created_by": "pipeline@example.com",
+      "direct_access": true
+    }
+  ],
+  "query": [
+    {
+      "source_table_full_name": "main.raw.orders",
+      "target_table_full_name": "main.silver.orders",
+      "statement_id": "stmt-1",
+      "event_time": "2026-09-15T10:00:00+00:00",
+      "event_id": "event-1",
+      "record_id": "table-record-1",
+      "created_by": "pipeline@example.com",
+      "direct_access": true,
+      "statement_text": "INSERT INTO main.silver.orders SELECT * FROM main.raw.orders",
+      "statement_type": "INSERT"
+    }
+  ]
+}
