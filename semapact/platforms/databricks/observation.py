@@ -339,6 +339,14 @@ def _governance_structure(
 
         foreign_key = item.get("foreign_key_constraint")
         if isinstance(foreign_key, Mapping):
+            constraint = ObservedConstraint(
+                kind=ObservedConstraintKind.FOREIGN_KEY,
+                properties=_string_tuple(foreign_key.get("child_columns")),
+                name=_text(foreign_key.get("name")),
+                provenance=UNITY_CATALOG_PROVENANCE,
+            )
+            constraints[canonical_constraint_key(constraint)] = constraint
+
             relationship = _foreign_key_relationship(
                 foreign_key,
                 source_identity=source_identity,
