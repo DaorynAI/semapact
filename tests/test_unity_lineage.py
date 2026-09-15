@@ -1,6 +1,8 @@
 import builtins
-import pytest
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
+
+import pytest
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
     SchemaObject,
@@ -8,6 +10,8 @@ from open_data_contract_standard.model import (
 )
 
 from semapact.importers.unity_lineage import enrich_unity_lineage
+
+EVENT_TIME = datetime(2026, 9, 15, 10, 0, tzinfo=timezone.utc)
 
 
 def test_enrich_unity_lineage_no_http_path():
@@ -51,23 +55,43 @@ def test_enrich_unity_lineage_success(mock_sql_connect):
             self.__dict__.update(kwargs)
 
     def execute_side_effect(query, params):
+        common = dict(
+            target_table_full_name="main.sales.orders",
+            statement_id="stmt-1",
+            event_time=EVENT_TIME,
+            event_id="event-1",
+            record_id="record-1",
+            created_by="pipeline@example.com",
+            direct_access=True,
+        )
         if "system.access.column_lineage" in query:
             mock_cursor.fetchall.return_value = [
                 Row(
                     source_table_full_name="main.sales.raw_orders",
                     source_column_name="raw_id",
                     target_column_name="id",
+                    **common,
                 ),
                 Row(
                     source_table_full_name="main.sales.raw_orders",
                     source_column_name="raw_amount",
                     target_column_name="amount",
+                    **common,
                 ),
             ]
-        elif "system.access.query_history" in query:
-            mock_cursor.fetchone.return_value = Row(
-                statement_text="INSERT INTO main.sales.orders SELECT raw_id as id, raw_amount as amount FROM main.sales.raw_orders"
-            )
+        elif "system.query.history" in query:
+            mock_cursor.fetchall.return_value = [
+                Row(
+                    source_table_full_name="main.sales.raw_orders",
+                    statement_text="INSERT INTO main.sales.orders SELECT raw_id as id, raw_amount as amount FROM main.sales.raw_orders",
+                    statement_type="INSERT",
+                    **common,
+                )
+            ]
+        else:
+            mock_cursor.fetchall.return_value = [
+                Row(source_table_full_name="main.sales.raw_orders", **common)
+            ]
 
     mock_cursor.execute.side_effect = execute_side_effect
 
@@ -91,13 +115,12 @@ def test_enrich_unity_lineage_success(mock_sql_connect):
         "main.sales.raw_orders.raw_amount"
     ]
 
-    assert (
-        fields["id"].transformLogic
-        == "INSERT INTO main.sales.orders SELECT raw_id as id, raw_amount as amount FROM main.sales.raw_orders"
-    )
-    assert (
-        fields["amount"].transformLogic
-        == "INSERT INTO main.sales.orders SELECT raw_id as id, raw_amount as amount FROM main.sales.raw_orders"
+    statement = "INSERT INTO main.sales.orders SELECT raw_id as id, raw_amount as amount FROM main.sales.raw_orders"
+    assert fields["id"].transformLogic == statement
+    assert fields["amount"].transformLogic == statement
+    assert any(
+        "system.query.history" in call.args[0]
+        for call in mock_cursor.execute.call_args_list
     )
 
 
