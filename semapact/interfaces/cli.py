@@ -22,6 +22,9 @@ def _add_effective_date_argument(
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    from semapact.contractops import ReviewEvidenceAction
+    from semapact.governance import GovernanceOperation
+
     parser = argparse.ArgumentParser(prog="semapact")
     subparsers = parser.add_subparsers(dest="command", required=False)
 
@@ -219,6 +222,51 @@ def _build_parser() -> argparse.ArgumentParser:
     pr_parser.add_argument("--description", required=True)
     pr_parser.add_argument("--paths", nargs="*")
     pr_parser.add_argument("--push", action="store_true")
+
+    approval_parser = subparsers.add_parser(
+        "approval",
+        help="Record explicit governance review evidence",
+    )
+    approval_subparsers = approval_parser.add_subparsers(
+        dest="approval_command", required=True
+    )
+    approval_record_parser = approval_subparsers.add_parser(
+        "record",
+        help="Persist one explicit external review event as immutable approval history",
+    )
+    approval_record_parser.add_argument(
+        "--repository-root",
+        default=".",
+        help="Repository root containing .semapact/history (default: current directory)",
+    )
+    approval_record_parser.add_argument("--decision-id", required=True)
+    approval_record_parser.add_argument("--change-set-id", required=True)
+    approval_record_parser.add_argument("--release-plan-id", required=True)
+    approval_record_parser.add_argument("--version-resolution-id", required=True)
+    approval_record_parser.add_argument(
+        "--operation",
+        required=True,
+        choices=[item.value for item in GovernanceOperation],
+    )
+    approval_record_parser.add_argument(
+        "--action",
+        required=True,
+        choices=[item.value for item in ReviewEvidenceAction],
+    )
+    approval_record_parser.add_argument("--actor-reference", required=True)
+    approval_record_parser.add_argument(
+        "--recorded-at",
+        required=True,
+        help="Timezone-aware ISO-8601 timestamp from the external review event",
+    )
+    approval_record_parser.add_argument("--scope-reference")
+    approval_record_parser.add_argument("--capability-reference")
+    approval_record_parser.add_argument("--comment")
+    approval_record_parser.add_argument(
+        "--evidence-reference",
+        action="append",
+        help="Stable external review evidence reference; may be provided multiple times",
+    )
 
     release_parser = subparsers.add_parser(
         "release", help="Per-contract release workflow helpers"
@@ -494,6 +542,15 @@ def main() -> int:
             payload = run_create_pr(args)
             print(json.dumps(payload, indent=2, sort_keys=True))
             return 0
+
+        if args.command == "approval":
+            from semapact.interfaces.commands.approval_cmd import run_approval_record
+
+            if args.approval_command == "record":
+                payload = run_approval_record(args)
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return 0
+            parser.error(f"Unknown approval command: {args.approval_command}")
 
         if args.command == "reconcile":
             from semapact.interfaces.commands.reconcile_cmd import run_reconcile
