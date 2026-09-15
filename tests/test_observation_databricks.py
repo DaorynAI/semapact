@@ -8,6 +8,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from semapact.observation import (
+    ObservedEvidenceAvailabilityStatus,
+    ObservedEvidenceKind,
+    summarize_observed_evidence,
+)
 from semapact.observation.models import (
     ObservedConstraintKind,
     ObservedPlatformState,
@@ -78,6 +83,10 @@ class _FakeWorkspaceClient:
             self.entity_tag_assignments = _FakeEntityTagsApi(assignments)
 
 
+def _availability_by_kind(state: ObservedPlatformState):
+    return {item.kind: item.status for item in state.evidence_availability}
+
+
 def test_databricks_table_info_maps_to_platform_neutral_observation() -> None:
     state = map_databricks_table_info(
         _FakeSdkObject(_payload()),
@@ -91,8 +100,16 @@ def test_databricks_table_info_maps_to_platform_neutral_observation() -> None:
     assert state.captured_at == CAPTURED_AT
     assert state.fingerprint == (
         "obs-v2:sha256:"
-        "dd2cecb77be9dff60c30e7c5b7bb70de59877419c32f548ae0107a4bdcf43520"
+        "85fd6b22461aa53d25d0c55e35235ff9c7c544f96e88e5d9c67f9051cb6e7bc7"
     )
+
+    availability = _availability_by_kind(state)
+    assert availability[ObservedEvidenceKind.PHYSICAL_SCHEMA] is ObservedEvidenceAvailabilityStatus.AVAILABLE
+    assert availability[ObservedEvidenceKind.OWNER] is ObservedEvidenceAvailabilityStatus.AVAILABLE
+    assert availability[ObservedEvidenceKind.COMMENT] is ObservedEvidenceAvailabilityStatus.AVAILABLE
+    assert availability[ObservedEvidenceKind.TAG] is ObservedEvidenceAvailabilityStatus.UNKNOWN
+    assert availability[ObservedEvidenceKind.CONSTRAINT] is ObservedEvidenceAvailabilityStatus.AVAILABLE
+    assert availability[ObservedEvidenceKind.RELATIONSHIP] is ObservedEvidenceAvailabilityStatus.AVAILABLE
 
     assert len(state.assets) == 1
     asset = state.assets[0]
@@ -216,6 +233,10 @@ def test_observe_databricks_table_reads_and_normalizes_table_and_column_tags() -
     assert [(item.key, item.value) for item in customer.tags] == [("PII", "true")]
     assert all(item.provenance == "unity_catalog" for item in state.assets[0].tags)
     assert state.fingerprint is not None
+    metrics = summarize_observed_evidence(state)
+    tag_metric = next(item for item in metrics.by_kind if item.kind is ObservedEvidenceKind.TAG)
+    assert tag_metric.availability is ObservedEvidenceAvailabilityStatus.AVAILABLE
+    assert tag_metric.count == 3
 
     tag_calls = client.entity_tag_assignments.calls
     assert ("tables", "main.silver.orders") in tag_calls
@@ -255,7 +276,7 @@ def test_tag_api_iteration_order_does_not_change_observation() -> None:
     assert first.fingerprint == second.fingerprint
 
 
-def test_observe_databricks_table_keeps_physical_only_client_compatible() -> None:
+def test_observe_databricks_table_marks_missing_tag_capability_unavailable() -> None:
     client = _FakeWorkspaceClient(_FakeSdkObject(_payload()))
 
     state = observe_databricks_table(
@@ -267,6 +288,13 @@ def test_observe_databricks_table_keeps_physical_only_client_compatible() -> Non
 
     assert state.assets[0].tags == ()
     assert all(item.tags == () for item in state.assets[0].properties)
+    tag_metric = next(
+        item
+        for item in summarize_observed_evidence(state).by_kind
+        if item.kind is ObservedEvidenceKind.TAG
+    )
+    assert tag_metric.count == 0
+    assert tag_metric.availability is ObservedEvidenceAvailabilityStatus.UNAVAILABLE
 
 
 def test_foreign_key_with_unresolved_parent_preserves_partial_evidence() -> None:
