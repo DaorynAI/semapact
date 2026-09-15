@@ -67,12 +67,13 @@ class ObservedConstraintKind(str, Enum):
     """Constraint semantics that a provider can identify without inference."""
 
     PRIMARY_KEY = "PRIMARY_KEY"
+    FOREIGN_KEY = "FOREIGN_KEY"
     UNIQUE = "UNIQUE"
     NAMED = "NAMED"
 
 
 class ObservedConstraint(ObservationModel):
-    """Normalized non-relational constraint evidence for one asset."""
+    """Normalized constraint evidence for one asset."""
 
     kind: ObservedConstraintKind
     properties: tuple[str, ...] = ()
