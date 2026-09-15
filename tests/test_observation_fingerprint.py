@@ -10,9 +10,17 @@ from semapact.observation.fingerprint import (
 from semapact.observation.models import (
     ObservedAsset,
     ObservedAssetIdentity,
+    ObservedConstraint,
+    ObservedConstraintKind,
+    ObservedEvidenceClass,
+    ObservedEvidenceKind,
     ObservedPlatformState,
     ObservedProperty,
     ObservedPropertyIdentity,
+    ObservedRelationship,
+    ObservedRelationshipKind,
+    ObservedTag,
+    classify_observed_evidence,
 )
 
 CAPTURED_AT = datetime(2026, 8, 30, 3, 0, tzinfo=timezone.utc)
@@ -27,6 +35,11 @@ def _orders_asset(
     physical_types: dict[str, str] | None = None,
     nullable: dict[str, bool | None] | None = None,
     asset_type: str = "MANAGED",
+    owner: str | None = None,
+    comment: str | None = None,
+    tags: tuple[ObservedTag, ...] = (),
+    constraints: tuple[ObservedConstraint, ...] = (),
+    relationships: tuple[ObservedRelationship, ...] = (),
 ) -> ObservedAsset:
     identity = ObservedAssetIdentity(
         platform=platform,
@@ -46,6 +59,9 @@ def _orders_asset(
     return ObservedAsset(
         identity=identity,
         asset_type=asset_type,
+        owner=owner,
+        comment=comment,
+        tags=tags,
         properties=tuple(
             ObservedProperty(
                 identity=ObservedPropertyIdentity(asset=identity, property=name),
@@ -54,6 +70,8 @@ def _orders_asset(
             )
             for name in property_order
         ),
+        constraints=constraints,
+        relationships=relationships,
     )
 
 
@@ -78,10 +96,10 @@ def test_observed_state_fingerprint_has_stable_versioned_golden_value() -> None:
     state = _state()
 
     assert fingerprint_observed_state(state) == (
-        "obs-v1:sha256:"
-        "cc72fb5e20b673784b0847f6f903c05178b88c3d88ffb25f830da0a373457287"
+        "obs-v2:sha256:"
+        "e6ab4dc487457c6e2ad7a248994e8494526841a42c93d9f08ad5b369b057ebdb"
     )
-    assert canonical_observed_state_payload(state)["fingerprint_version"] == "obs-v1"
+    assert canonical_observed_state_payload(state)["fingerprint_version"] == "obs-v2"
 
 
 def test_observation_envelope_fields_do_not_change_semantic_fingerprint() -> None:
@@ -165,6 +183,128 @@ def test_governance_relevant_observed_changes_change_fingerprint() -> None:
     assert fingerprint_observed_state(changed_property_type) != baseline
     assert fingerprint_observed_state(changed_nullability) != baseline
     assert fingerprint_observed_state(changed_property_identity) != baseline
+
+
+def test_governance_metadata_changes_change_fingerprint() -> None:
+    baseline = fingerprint_observed_state(_state())
+    identity = _orders_asset().identity
+    customer = ObservedAssetIdentity(
+        platform="databricks",
+        namespace=("main", "silver"),
+        asset="customers",
+    )
+
+    variants = (
+        _orders_asset(owner="data-team@example.com"),
+        _orders_asset(comment="Curated orders"),
+        _orders_asset(tags=(ObservedTag(key="Domain", value="Sales"),)),
+        _orders_asset(
+            constraints=(
+                ObservedConstraint(
+                    kind=ObservedConstraintKind.PRIMARY_KEY,
+                    properties=("order_id",),
+                    name="pk_orders",
+                ),
+            )
+        ),
+        _orders_asset(
+            relationships=(
+                ObservedRelationship(
+                    kind=ObservedRelationshipKind.FOREIGN_KEY,
+                    source_asset=identity,
+                    source_properties=("customer_id",),
+                    target_asset=customer,
+                    target_properties=("customer_id",),
+                    name="fk_orders_customer",
+                ),
+            )
+        ),
+    )
+
+    assert all(
+        fingerprint_observed_state(_state(assets=(asset,))) != baseline
+        for asset in variants
+    )
+
+
+def test_tag_constraint_and_relationship_order_do_not_change_fingerprint() -> None:
+    identity = _orders_asset().identity
+    customer = ObservedAssetIdentity(
+        platform="databricks",
+        namespace=("main", "silver"),
+        asset="customers",
+    )
+    tags = (
+        ObservedTag(key="Domain", value="Sales"),
+        ObservedTag(key="Sensitivity", value="Internal"),
+    )
+    constraints = (
+        ObservedConstraint(
+            kind=ObservedConstraintKind.PRIMARY_KEY,
+            properties=("order_id",),
+            name="pk_orders",
+        ),
+        ObservedConstraint(
+            kind=ObservedConstraintKind.NAMED,
+            name="constraint_b",
+        ),
+    )
+    relationships = (
+        ObservedRelationship(
+            kind=ObservedRelationshipKind.FOREIGN_KEY,
+            source_asset=identity,
+            source_properties=("customer_id",),
+            target_asset=customer,
+            target_properties=("customer_id",),
+            name="fk_customer",
+        ),
+        ObservedRelationship(
+            kind=ObservedRelationshipKind.FOREIGN_KEY,
+            source_asset=identity,
+            source_properties=("order_id",),
+            target_asset=customer,
+            target_properties=("legacy_order_id",),
+            name="fk_legacy_order",
+        ),
+    )
+
+    left = _state(
+        assets=(
+            _orders_asset(
+                tags=tags,
+                constraints=constraints,
+                relationships=relationships,
+            ),
+        )
+    )
+    right = _state(
+        assets=(
+            _orders_asset(
+                tags=tuple(reversed(tags)),
+                constraints=tuple(reversed(constraints)),
+                relationships=tuple(reversed(relationships)),
+            ),
+        )
+    )
+
+    assert fingerprint_observed_state(left) == fingerprint_observed_state(right)
+
+
+def test_evidence_classification_is_descriptive_and_provider_neutral() -> None:
+    assert (
+        classify_observed_evidence(ObservedEvidenceKind.PHYSICAL_SCHEMA)
+        is ObservedEvidenceClass.STRUCTURAL
+    )
+    assert (
+        classify_observed_evidence(ObservedEvidenceKind.RELATIONSHIP)
+        is ObservedEvidenceClass.STRUCTURAL
+    )
+    assert (
+        classify_observed_evidence(ObservedEvidenceKind.COMMENT)
+        is ObservedEvidenceClass.SEMANTIC
+    )
+    assert classify_observed_evidence(ObservedEvidenceKind.TAG) is ObservedEvidenceClass.SEMANTIC
+    assert classify_observed_evidence(ObservedEvidenceKind.OWNER) is ObservedEvidenceClass.OPERATIONAL
 
 
 def test_with_observed_state_fingerprint_returns_immutable_copy() -> None:
