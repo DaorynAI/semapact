@@ -13,6 +13,7 @@ from semapact.observation import (
     ObservedAsset,
     ObservedAssetIdentity,
     ObservedPlatformState,
+    fingerprint_observed_state,
     with_observed_state_fingerprint,
 )
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
@@ -26,23 +27,32 @@ from semapact.reconciliation import (
 )
 
 
+def _raw_observation(
+    at: datetime,
+    *,
+    asset_type: str = "TABLE",
+    source: str = "workspace:test",
+) -> ObservedPlatformState:
+    return ObservedPlatformState(
+        platform="databricks",
+        source_identifier=source,
+        assets=(
+            ObservedAsset(
+                identity=ObservedAssetIdentity(
+                    platform="databricks",
+                    namespace=("catalog", "schema"),
+                    asset="orders",
+                ),
+                asset_type=asset_type,
+            ),
+        ),
+        captured_at=at,
+    )
+
+
 def _observation(at: datetime, *, asset_type: str = "TABLE", source: str = "workspace:test") -> ObservedPlatformState:
     return with_observed_state_fingerprint(
-        ObservedPlatformState(
-            platform="databricks",
-            source_identifier=source,
-            assets=(
-                ObservedAsset(
-                    identity=ObservedAssetIdentity(
-                        platform="databricks",
-                        namespace=("catalog", "schema"),
-                        asset="orders",
-                    ),
-                    asset_type=asset_type,
-                ),
-            ),
-            captured_at=at,
-        )
+        _raw_observation(at, asset_type=asset_type, source=source)
     )
 
 
@@ -151,6 +161,40 @@ def test_round_trip_and_idempotency(tmp_path: Path) -> None:
     assert backend.get_runtime_observation_record(first.observation_record_id).observation == observation
     assert backend.get_runtime_reconciliation_record(first.runtime_reconciliation_record_id) == first
     assert first.status is RuntimeDriftStatus.IN_SYNC
+
+
+def test_missing_fingerprint_is_materialized_before_history_persistence(tmp_path: Path) -> None:
+    service, backend = _service(tmp_path)
+    observation = _raw_observation(datetime(2026, 9, 13, 1, tzinfo=timezone.utc))
+    semantic_fingerprint = fingerprint_observed_state(observation)
+    result = ReconciliationResult(
+        contract_id="orders-product",
+        contract_version="1.3.0",
+        observation_source_identifier=observation.source_identifier,
+        observation_fingerprint=semantic_fingerprint,
+    )
+
+    record = service.record_reconciliation(observation, result)
+    persisted = backend.get_runtime_observation_record(record.observation_record_id)
+
+    assert observation.fingerprint is None
+    assert persisted.observation.fingerprint == semantic_fingerprint
+
+
+def test_stale_materialized_fingerprint_is_rejected(tmp_path: Path) -> None:
+    service, _ = _service(tmp_path)
+    observation = _raw_observation(datetime(2026, 9, 13, 1, tzinfo=timezone.utc)).model_copy(
+        update={"fingerprint": "stale"}
+    )
+    result = ReconciliationResult(
+        contract_id="orders-product",
+        contract_version="1.3.0",
+        observation_source_identifier=observation.source_identifier,
+        observation_fingerprint=fingerprint_observed_state(observation),
+    )
+
+    with pytest.raises(ValueError, match="canonical semantic content"):
+        service.record_reconciliation(observation, result)
 
 
 def test_same_semantic_state_at_different_times_keeps_both_observations(tmp_path: Path) -> None:
