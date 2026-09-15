@@ -464,15 +464,17 @@ def _evolution_projection(chain) -> dict[str, object]:
 
 
 def _history_files(root: Path) -> dict[str, object]:
+    """Snapshot persisted schema and exact canonical content through its checksum seal."""
     history_root = root / ".semapact" / "history"
     files: dict[str, object] = {}
-    for path in sorted(
-        (item for item in history_root.rglob("*") if item.is_file()),
-        key=Path.as_posix,
-    ):
+    for path in sorted(history_root.rglob("*.json"), key=Path.as_posix):
         relative = path.relative_to(root).as_posix()
-        text = path.read_text(encoding="utf-8")
-        files[relative] = json.loads(text) if path.suffix == ".json" else text.strip()
+        content = json.loads(path.read_text(encoding="utf-8"))
+        checksum_path = path.with_name(f"{path.name}.sha256")
+        files[relative] = {
+            "checksum": checksum_path.read_text(encoding="utf-8").strip(),
+            "topLevelKeys": sorted(content),
+        }
     return files
 
 
