@@ -91,7 +91,7 @@ def test_databricks_table_info_maps_to_platform_neutral_observation() -> None:
     assert state.captured_at == CAPTURED_AT
     assert state.fingerprint == (
         "obs-v2:sha256:"
-        "b7dc182c7a85c1a076a44a3f7850d5643ac61f41bd3020b9a995adae6283ce8b"
+        "dd2cecb77be9dff60c30e7c5b7bb70de59877419c32f548ae0107a4bdcf43520"
     )
 
     assert len(state.assets) == 1
