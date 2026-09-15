@@ -11,7 +11,9 @@ import json
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
+
+from semapact.observation.evidence import ObservedEvidenceAvailability
 
 
 class ObservationModel(BaseModel):
@@ -131,6 +133,20 @@ class ObservedAsset(ObservationModel):
     constraints: tuple[ObservedConstraint, ...] = ()
     relationships: tuple[ObservedRelationship, ...] = ()
 
+    @model_validator(mode="after")
+    def _validate_nested_identity(self) -> ObservedAsset:
+        for prop in self.properties:
+            if prop.identity.asset.canonical_key != self.identity.canonical_key:
+                raise ValueError(
+                    "Observed property asset identity must match its containing asset"
+                )
+        for relationship in self.relationships:
+            if relationship.source_asset.canonical_key != self.identity.canonical_key:
+                raise ValueError(
+                    "Observed relationship source identity must match its containing asset"
+                )
+        return self
+
 
 class ObservedPlatformState(ObservationModel):
     """Point-in-time platform observation independent from governed ODCS state.
@@ -139,13 +155,32 @@ class ObservedPlatformState(ObservationModel):
     observed state. Provider adapters may populate it through the shared
     fingerprint capability; manually constructed observations may leave it
     unset until fingerprinting is requested.
+
+    ``evidence_availability`` records whether each provider-neutral evidence
+    kind was actually observable. Unspecified kinds are treated as ``UNKNOWN``
+    by shared classification and fingerprinting logic.
     """
 
     platform: str
     source_identifier: str
     assets: tuple[ObservedAsset, ...]
     captured_at: datetime
+    evidence_availability: tuple[ObservedEvidenceAvailability, ...] = ()
     fingerprint: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_state_identity(self) -> ObservedPlatformState:
+        platform = self.platform.casefold()
+        for asset in self.assets:
+            if asset.identity.platform.casefold() != platform:
+                raise ValueError(
+                    "Observed asset platform must match ObservedPlatformState.platform"
+                )
+
+        kinds = [entry.kind for entry in self.evidence_availability]
+        if len(kinds) != len(set(kinds)):
+            raise ValueError("Observed evidence availability must contain each kind at most once")
+        return self
 
 
 def serialize_observed_state(state: ObservedPlatformState) -> str:
