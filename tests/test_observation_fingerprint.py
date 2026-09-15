@@ -290,6 +290,31 @@ def test_tag_constraint_and_relationship_order_do_not_change_fingerprint() -> No
     assert fingerprint_observed_state(left) == fingerprint_observed_state(right)
 
 
+def test_resolved_relationship_reference_spelling_does_not_change_fingerprint() -> None:
+    source = _orders_asset().identity
+    target = ObservedAssetIdentity(
+        platform="databricks",
+        namespace=("main", "silver"),
+        asset="customers",
+    )
+
+    def state_for(reference: str) -> ObservedPlatformState:
+        relationship = ObservedRelationship(
+            kind=ObservedRelationshipKind.FOREIGN_KEY,
+            source_asset=source,
+            source_properties=("customer_id",),
+            target_asset=target,
+            target_properties=("customer_id",),
+            target_reference=reference,
+            name="fk_orders_customer",
+        )
+        return _state(assets=(_orders_asset(relationships=(relationship,)),))
+
+    assert fingerprint_observed_state(
+        state_for("main.silver.customers")
+    ) == fingerprint_observed_state(state_for("MAIN.SILVER.CUSTOMERS"))
+
+
 def test_evidence_classification_is_descriptive_and_provider_neutral() -> None:
     assert (
         classify_observed_evidence(ObservedEvidenceKind.PHYSICAL_SCHEMA)
