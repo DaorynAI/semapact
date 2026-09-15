@@ -1,20 +1,29 @@
 """Databricks observation adapter backed by the official Databricks SDK.
 
-The adapter consumes the same ``WorkspaceClient.tables.get(...) -> TableInfo``
-boundary used by datacontract-cli, but projects that source metadata into
-SemaPact's platform-neutral observation model instead of into ODCS.
+This module contains Databricks/Unity Catalog extraction only. It maps provider
+metadata into SemaPact's canonical platform-neutral observation model; shared
+classification, metrics, canonicalization, and fingerprint semantics remain in
+``semapact.observation``.
 
-Authentication and credential resolution are caller concerns. This module
-accepts an already initialized/authenticated ``WorkspaceClient`` and must not
-resolve PATs, OAuth credentials, Azure identity, profiles, service principals,
-or other authentication mechanisms itself.
+Authentication and credential resolution are caller concerns. Callers supply an
+already initialized/authenticated ``WorkspaceClient``.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Protocol, cast
 
+from semapact.observation.canonical import (
+    canonical_constraint_key,
+    canonical_relationship_key,
+    normalize_observed_tags,
+)
+from semapact.observation.evidence import (
+    ObservedEvidenceAvailability,
+    ObservedEvidenceAvailabilityStatus,
+    ObservedEvidenceKind,
+)
 from semapact.observation.fingerprint import with_observed_state_fingerprint
 from semapact.observation.models import (
     ObservedAsset,
@@ -51,7 +60,18 @@ class _EntityTagAssignmentsApiLike(Protocol):
 
 class _WorkspaceClientLike(Protocol):
     tables: _TablesApiLike
-    entity_tag_assignments: _EntityTagAssignmentsApiLike
+
+
+def databricks_evidence_availability(
+    client: WorkspaceClient | _WorkspaceClientLike,
+) -> tuple[ObservedEvidenceAvailability, ...]:
+    """Describe which canonical evidence kinds this client can observe."""
+    tag_status = (
+        ObservedEvidenceAvailabilityStatus.AVAILABLE
+        if _entity_tag_assignments_api(client) is not None
+        else ObservedEvidenceAvailabilityStatus.UNAVAILABLE
+    )
+    return _table_info_evidence_availability(tag_status=tag_status)
 
 
 def observe_databricks_table(
@@ -61,18 +81,9 @@ def observe_databricks_table(
     source_identifier: str,
     captured_at: datetime | None = None,
 ) -> ObservedPlatformState:
-    """Observe one Databricks table without generating or mutating an ODCS contract.
-
-    ``client`` is expected to be an already initialized/authenticated official
-    ``databricks.sdk.WorkspaceClient`` in production. Authentication method and
-    credential resolution are intentionally outside this adapter's scope.
-    The client is injectable so core observation tests require no live
-    Databricks workspace.
-
-    Tag assignments are read through the official SDK when that API is exposed
-    by the supplied client. Read errors are not suppressed: an observation must
-    not silently represent unreadable governance evidence as absent evidence.
-    """
+    """Observe one Unity Catalog table without mutating governed contract state."""
+    table_fqn = table_fqn.strip()
+    source_identifier = source_identifier.strip()
     if not table_fqn:
         raise ValueError("table_fqn is required for Databricks observation")
     if not source_identifier:
@@ -85,15 +96,16 @@ def observe_databricks_table(
     metadata = _sdk_mapping(table, context="Databricks TableInfo")
     identity = _asset_identity(metadata, table_fqn=table_fqn)
     canonical_table_fqn = ".".join((*identity.namespace, identity.asset))
+    tag_api = _entity_tag_assignments_api(client)
 
     table_tags = _read_entity_tags(
-        client,
+        tag_api,
         entity_type="tables",
         entity_name=canonical_table_fqn,
     )
     column_tags = {
         column_name: _read_entity_tags(
-            client,
+            tag_api,
             entity_type="columns",
             entity_name=f"{canonical_table_fqn}.{column_name}",
         )
@@ -107,6 +119,13 @@ def observe_databricks_table(
         table_fqn=table_fqn,
         table_tags=table_tags,
         column_tags=column_tags,
+        evidence_availability=_table_info_evidence_availability(
+            tag_status=(
+                ObservedEvidenceAvailabilityStatus.AVAILABLE
+                if tag_api is not None
+                else ObservedEvidenceAvailabilityStatus.UNAVAILABLE
+            )
+        ),
     )
 
 
@@ -118,9 +137,11 @@ def map_databricks_table_info(
     table_fqn: str | None = None,
     table_tags: tuple[ObservedTag, ...] = (),
     column_tags: Mapping[str, tuple[ObservedTag, ...]] | None = None,
+    evidence_availability: tuple[ObservedEvidenceAvailability, ...] | None = None,
 ) -> ObservedPlatformState:
-    """Project an SDK ``TableInfo`` into fingerprinted platform-neutral state."""
+    """Project one SDK ``TableInfo`` into canonical platform-neutral state."""
     _require_aware_datetime(captured_at)
+    source_identifier = source_identifier.strip()
     if not source_identifier:
         raise ValueError("source_identifier is required for Databricks observation")
 
@@ -135,7 +156,7 @@ def map_databricks_table_info(
         asset_type=_text(metadata.get("table_type")),
         owner=_text(metadata.get("owner")),
         comment=_text(metadata.get("comment")),
-        tags=_normalize_tags(table_tags),
+        tags=normalize_observed_tags(table_tags),
         properties=_properties(
             metadata.get("columns"),
             identity=identity,
@@ -150,9 +171,45 @@ def map_databricks_table_info(
         source_identifier=source_identifier.rstrip("/"),
         assets=(asset,),
         captured_at=captured_at,
+        evidence_availability=(
+            evidence_availability
+            if evidence_availability is not None
+            else _table_info_evidence_availability(
+                tag_status=ObservedEvidenceAvailabilityStatus.UNKNOWN
+            )
+        ),
         fingerprint=None,
     )
     return with_observed_state_fingerprint(state)
+
+
+def _table_info_evidence_availability(
+    *,
+    tag_status: ObservedEvidenceAvailabilityStatus,
+) -> tuple[ObservedEvidenceAvailability, ...]:
+    statuses = {
+        ObservedEvidenceKind.PHYSICAL_SCHEMA: ObservedEvidenceAvailabilityStatus.AVAILABLE,
+        ObservedEvidenceKind.OWNER: ObservedEvidenceAvailabilityStatus.AVAILABLE,
+        ObservedEvidenceKind.COMMENT: ObservedEvidenceAvailabilityStatus.AVAILABLE,
+        ObservedEvidenceKind.TAG: tag_status,
+        ObservedEvidenceKind.CONSTRAINT: ObservedEvidenceAvailabilityStatus.AVAILABLE,
+        ObservedEvidenceKind.RELATIONSHIP: ObservedEvidenceAvailabilityStatus.AVAILABLE,
+    }
+    return tuple(
+        ObservedEvidenceAvailability(kind=kind, status=statuses[kind])
+        for kind in ObservedEvidenceKind
+    )
+
+
+def _entity_tag_assignments_api(
+    client: WorkspaceClient | _WorkspaceClientLike,
+) -> _EntityTagAssignmentsApiLike | None:
+    api = getattr(client, "entity_tag_assignments", None)
+    if api is None:
+        return None
+    if not callable(getattr(api, "list", None)):
+        raise TypeError("Databricks entity_tag_assignments must expose list()")
+    return cast(_EntityTagAssignmentsApiLike, api)
 
 
 def _asset_identity(
@@ -217,7 +274,7 @@ def _properties(
                     physical_type=_text(item.get("type_text") or item.get("type_name")),
                     nullable=nullable,
                     comment=_text(item.get("comment")),
-                    tags=_normalize_tags(column_tags.get(name, ())),
+                    tags=normalize_observed_tags(column_tags.get(name, ())),
                 ),
             )
         )
@@ -259,7 +316,7 @@ def _governance_structure(
                 name=_text(primary_key.get("name")),
                 provenance=UNITY_CATALOG_PROVENANCE,
             )
-            constraints[_constraint_key(constraint)] = constraint
+            constraints[canonical_constraint_key(constraint)] = constraint
 
         unique = item.get("unique_constraint")
         if isinstance(unique, Mapping):
@@ -269,7 +326,7 @@ def _governance_structure(
                 name=_text(unique.get("name")),
                 provenance=UNITY_CATALOG_PROVENANCE,
             )
-            constraints[_constraint_key(constraint)] = constraint
+            constraints[canonical_constraint_key(constraint)] = constraint
 
         named = item.get("named_table_constraint")
         if isinstance(named, Mapping):
@@ -278,7 +335,7 @@ def _governance_structure(
                 name=_text(named.get("name")),
                 provenance=UNITY_CATALOG_PROVENANCE,
             )
-            constraints[_constraint_key(constraint)] = constraint
+            constraints[canonical_constraint_key(constraint)] = constraint
 
         foreign_key = item.get("foreign_key_constraint")
         if isinstance(foreign_key, Mapping):
@@ -286,11 +343,11 @@ def _governance_structure(
                 foreign_key,
                 source_identity=source_identity,
             )
-            relationships[_relationship_key(relationship)] = relationship
+            relationships[canonical_relationship_key(relationship)] = relationship
 
     return (
-        tuple(sorted(constraints.values(), key=_constraint_key)),
-        tuple(sorted(relationships.values(), key=_relationship_key)),
+        tuple(sorted(constraints.values(), key=canonical_constraint_key)),
+        tuple(sorted(relationships.values(), key=canonical_relationship_key)),
     )
 
 
@@ -322,36 +379,12 @@ def _foreign_key_relationship(
     )
 
 
-def _constraint_key(constraint: ObservedConstraint) -> tuple[object, ...]:
-    return (
-        constraint.kind.value,
-        tuple(item.casefold() for item in constraint.properties),
-        (constraint.name or "").casefold(),
-        constraint.provenance or "",
-    )
-
-
-def _relationship_key(relationship: ObservedRelationship) -> tuple[object, ...]:
-    return (
-        relationship.kind.value,
-        relationship.source_asset.canonical_key,
-        tuple(item.casefold() for item in relationship.source_properties),
-        relationship.target_asset.canonical_key if relationship.target_asset else (),
-        tuple(item.casefold() for item in relationship.target_properties),
-        (relationship.target_reference or "").casefold(),
-        relationship.direction.value,
-        (relationship.name or "").casefold(),
-        relationship.provenance or "",
-    )
-
-
 def _read_entity_tags(
-    client: WorkspaceClient | _WorkspaceClientLike,
+    api: _EntityTagAssignmentsApiLike | None,
     *,
     entity_type: str,
     entity_name: str,
 ) -> tuple[ObservedTag, ...]:
-    api = getattr(client, "entity_tag_assignments", None)
     if api is None:
         return ()
 
@@ -368,16 +401,7 @@ def _read_entity_tags(
                 provenance=UNITY_CATALOG_PROVENANCE,
             )
         )
-    return _normalize_tags(tags)
-
-
-def _normalize_tags(value: Iterable[ObservedTag]) -> tuple[ObservedTag, ...]:
-    unique = {_tag_key(tag): tag for tag in value}
-    return tuple(sorted(unique.values(), key=_tag_key))
-
-
-def _tag_key(tag: ObservedTag) -> tuple[str, str, str]:
-    return (tag.key, tag.value or "", tag.provenance or "")
+    return normalize_observed_tags(tags)
 
 
 def _column_names(value: Any) -> tuple[str, ...]:
