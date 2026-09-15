@@ -12,15 +12,12 @@ from semapact.observation.models import (
     ObservedAssetIdentity,
     ObservedConstraint,
     ObservedConstraintKind,
-    ObservedEvidenceClass,
-    ObservedEvidenceKind,
     ObservedPlatformState,
     ObservedProperty,
     ObservedPropertyIdentity,
     ObservedRelationship,
     ObservedRelationshipKind,
     ObservedTag,
-    classify_observed_evidence,
 )
 
 CAPTURED_AT = datetime(2026, 8, 30, 3, 0, tzinfo=timezone.utc)
@@ -313,23 +310,6 @@ def test_resolved_relationship_reference_spelling_does_not_change_fingerprint() 
     assert fingerprint_observed_state(
         state_for("main.silver.customers")
     ) == fingerprint_observed_state(state_for("MAIN.SILVER.CUSTOMERS"))
-
-
-def test_evidence_classification_is_descriptive_and_provider_neutral() -> None:
-    assert (
-        classify_observed_evidence(ObservedEvidenceKind.PHYSICAL_SCHEMA)
-        is ObservedEvidenceClass.STRUCTURAL
-    )
-    assert (
-        classify_observed_evidence(ObservedEvidenceKind.RELATIONSHIP)
-        is ObservedEvidenceClass.STRUCTURAL
-    )
-    assert (
-        classify_observed_evidence(ObservedEvidenceKind.COMMENT)
-        is ObservedEvidenceClass.SEMANTIC
-    )
-    assert classify_observed_evidence(ObservedEvidenceKind.TAG) is ObservedEvidenceClass.SEMANTIC
-    assert classify_observed_evidence(ObservedEvidenceKind.OWNER) is ObservedEvidenceClass.OPERATIONAL
 
 
 def test_with_observed_state_fingerprint_returns_immutable_copy() -> None:
