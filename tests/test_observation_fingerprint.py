@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from semapact.observation.evidence import (
+    ObservedEvidenceAvailability,
+    ObservedEvidenceAvailabilityStatus,
+    ObservedEvidenceKind,
+)
 from semapact.observation.fingerprint import (
     canonical_observed_state_payload,
     fingerprint_observed_state,
@@ -78,6 +83,7 @@ def _state(
     platform: str = "databricks",
     source_identifier: str = "https://adb.example",
     captured_at: datetime = CAPTURED_AT,
+    evidence_availability: tuple[ObservedEvidenceAvailability, ...] = (),
     fingerprint: str | None = None,
 ) -> ObservedPlatformState:
     return ObservedPlatformState(
@@ -85,6 +91,7 @@ def _state(
         source_identifier=source_identifier,
         assets=assets or (_orders_asset(),),
         captured_at=captured_at,
+        evidence_availability=evidence_availability,
         fingerprint=fingerprint,
     )
 
@@ -94,7 +101,7 @@ def test_observed_state_fingerprint_has_stable_versioned_golden_value() -> None:
 
     assert fingerprint_observed_state(state) == (
         "obs-v2:sha256:"
-        "e6ab4dc487457c6e2ad7a248994e8494526841a42c93d9f08ad5b369b057ebdb"
+        "3d0e3c3c84d97eb1b1f494625a2d7fb1cd174d2ba248545fe4d54928a2d19a1b"
     )
     assert canonical_observed_state_payload(state)["fingerprint_version"] == "obs-v2"
 
@@ -124,6 +131,12 @@ def test_asset_property_order_and_identity_case_do_not_change_fingerprint() -> N
         namespace=("MAIN", "SILVER"),
         asset_name="ORDERS",
         property_order=("note", "customer_id", "order_id"),
+        asset_type="managed",
+        physical_types={
+            "order_id": "BIGINT",
+            "customer_id": "STRING",
+            "note": "STRING",
+        },
     )
 
     left = _state(assets=(first, second))
@@ -222,6 +235,25 @@ def test_governance_metadata_changes_change_fingerprint() -> None:
         fingerprint_observed_state(_state(assets=(asset,))) != baseline
         for asset in variants
     )
+
+
+def test_evidence_availability_changes_semantic_fingerprint() -> None:
+    available = (
+        ObservedEvidenceAvailability(
+            kind=ObservedEvidenceKind.TAG,
+            status=ObservedEvidenceAvailabilityStatus.AVAILABLE,
+        ),
+    )
+    unavailable = (
+        ObservedEvidenceAvailability(
+            kind=ObservedEvidenceKind.TAG,
+            status=ObservedEvidenceAvailabilityStatus.UNAVAILABLE,
+        ),
+    )
+
+    assert fingerprint_observed_state(
+        _state(evidence_availability=available)
+    ) != fingerprint_observed_state(_state(evidence_availability=unavailable))
 
 
 def test_tag_constraint_and_relationship_order_do_not_change_fingerprint() -> None:
