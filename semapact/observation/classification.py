@@ -2,30 +2,15 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from pydantic import BaseModel, ConfigDict, Field
 
-from pydantic import BaseModel, ConfigDict
-
+from semapact.observation.evidence import (
+    ObservedEvidenceAvailabilityStatus,
+    ObservedEvidenceClass,
+    ObservedEvidenceKind,
+    resolve_evidence_availability,
+)
 from semapact.observation.models import ObservedPlatformState
-
-
-class ObservedEvidenceClass(str, Enum):
-    """Descriptive class for observed evidence, never a governance verdict."""
-
-    STRUCTURAL = "STRUCTURAL"
-    SEMANTIC = "SEMANTIC"
-    OPERATIONAL = "OPERATIONAL"
-
-
-class ObservedEvidenceKind(str, Enum):
-    """Provider-neutral kinds of evidence carried by an observation."""
-
-    PHYSICAL_SCHEMA = "PHYSICAL_SCHEMA"
-    OWNER = "OWNER"
-    COMMENT = "COMMENT"
-    TAG = "TAG"
-    CONSTRAINT = "CONSTRAINT"
-    RELATIONSHIP = "RELATIONSHIP"
 
 
 class ObservationMetricModel(BaseModel):
@@ -35,24 +20,25 @@ class ObservationMetricModel(BaseModel):
 
 
 class ObservedEvidenceCount(ObservationMetricModel):
-    """Deterministic count for one provider-neutral evidence kind."""
+    """Deterministic count and coverage state for one evidence kind."""
 
     kind: ObservedEvidenceKind
     evidence_class: ObservedEvidenceClass
-    count: int
+    availability: ObservedEvidenceAvailabilityStatus
+    count: int = Field(ge=0)
 
 
 class ObservedEvidenceClassCount(ObservationMetricModel):
     """Deterministic aggregate count for one evidence class."""
 
     evidence_class: ObservedEvidenceClass
-    count: int
+    count: int = Field(ge=0)
 
 
 class ObservedEvidenceMetrics(ObservationMetricModel):
     """Standard evidence metrics derived from canonical observed state."""
 
-    total: int
+    total: int = Field(ge=0)
     by_kind: tuple[ObservedEvidenceCount, ...]
     by_class: tuple[ObservedEvidenceClassCount, ...]
 
@@ -77,8 +63,8 @@ def summarize_observed_evidence(state: ObservedPlatformState) -> ObservedEvidenc
 
     ``PHYSICAL_SCHEMA`` counts one item per observed asset plus one item per
     observed property. Other kinds count their canonical evidence objects or
-    populated scalar values. Providers only map source metadata into the
-    platform-neutral observation model; they do not define their own metrics.
+    populated scalar values. Availability is reported independently from count,
+    so zero evidence is never confused with unsupported or unknown evidence.
     """
     counts = {kind: 0 for kind in ObservedEvidenceKind}
 
@@ -102,6 +88,10 @@ def summarize_observed_evidence(state: ObservedPlatformState) -> ObservedEvidenc
         ObservedEvidenceCount(
             kind=kind,
             evidence_class=classify_observed_evidence(kind),
+            availability=resolve_evidence_availability(
+                state.evidence_availability,
+                kind,
+            ),
             count=counts[kind],
         )
         for kind in ObservedEvidenceKind
