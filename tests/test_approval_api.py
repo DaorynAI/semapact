@@ -7,6 +7,7 @@ from pathlib import Path
 from semapact import ApprovalRecord, ApprovalService
 from semapact.contractops import ReviewEvidenceAction
 from semapact.governance import GovernanceOperation
+from semapact.interfaces.cli import _build_parser
 from semapact.interfaces.commands.approval_cmd import run_approval_record
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
 
@@ -43,6 +44,38 @@ def test_public_approval_service_records_through_typed_history_port(tmp_path: Pa
         version_resolution_id=record.version_resolution_id,
         operation=record.operation,
     ) == (record,)
+
+
+def test_cli_parser_exposes_approval_record_command() -> None:
+    args = _build_parser().parse_args(
+        [
+            "approval",
+            "record",
+            "--decision-id",
+            "decision-1",
+            "--change-set-id",
+            "change-set-1",
+            "--release-plan-id",
+            "release-plan-1",
+            "--version-resolution-id",
+            "version-resolution-1",
+            "--operation",
+            "PUBLISH",
+            "--action",
+            "APPROVE",
+            "--actor-reference",
+            "github:user:alice",
+            "--recorded-at",
+            "2026-09-16T01:00:00Z",
+            "--evidence-reference",
+            "github:repo:DaorynAI/example:pull:42:review:1001",
+        ]
+    )
+
+    assert args.command == "approval"
+    assert args.approval_command == "record"
+    assert args.operation == "PUBLISH"
+    assert args.action == "APPROVE"
 
 
 def test_cli_adapter_records_external_review_evidence_without_provider_policy(
