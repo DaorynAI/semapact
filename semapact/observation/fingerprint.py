@@ -109,17 +109,20 @@ def _canonical_constraint(constraint: ObservedConstraint) -> dict[str, object]:
 
 
 def _canonical_relationship(relationship: ObservedRelationship) -> dict[str, object]:
+    target_asset = relationship.target_asset
     return {
         "kind": relationship.kind.value,
         "source_asset": list(relationship.source_asset.canonical_key),
         "source_properties": [item.casefold() for item in relationship.source_properties],
-        "target_asset": (
-            list(relationship.target_asset.canonical_key)
-            if relationship.target_asset is not None
-            else None
-        ),
+        "target_asset": list(target_asset.canonical_key) if target_asset is not None else None,
         "target_properties": [item.casefold() for item in relationship.target_properties],
-        "target_reference": _normalize_optional_text(relationship.target_reference),
+        # Once a target is normalized, its canonical identity is authoritative for the
+        # fingerprint. Keep the raw provider reference only for unresolved evidence.
+        "target_reference": (
+            None
+            if target_asset is not None
+            else _normalize_optional_text(relationship.target_reference)
+        ),
         "direction": relationship.direction.value,
         "name": _normalize_optional_text(relationship.name),
         "provenance": _normalize_optional_text(relationship.provenance),
