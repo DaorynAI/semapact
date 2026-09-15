@@ -20,46 +20,11 @@ class ObservationModel(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class ObservedEvidenceClass(str, Enum):
-    """Descriptive class for observed evidence, never a governance verdict."""
-
-    STRUCTURAL = "STRUCTURAL"
-    SEMANTIC = "SEMANTIC"
-    OPERATIONAL = "OPERATIONAL"
-
-
-class ObservedEvidenceKind(str, Enum):
-    """Provider-neutral kinds of evidence carried by an observation."""
-
-    PHYSICAL_SCHEMA = "PHYSICAL_SCHEMA"
-    OWNER = "OWNER"
-    COMMENT = "COMMENT"
-    TAG = "TAG"
-    CONSTRAINT = "CONSTRAINT"
-    RELATIONSHIP = "RELATIONSHIP"
-
-
-_EVIDENCE_CLASSES = {
-    ObservedEvidenceKind.PHYSICAL_SCHEMA: ObservedEvidenceClass.STRUCTURAL,
-    ObservedEvidenceKind.OWNER: ObservedEvidenceClass.OPERATIONAL,
-    ObservedEvidenceKind.COMMENT: ObservedEvidenceClass.SEMANTIC,
-    ObservedEvidenceKind.TAG: ObservedEvidenceClass.SEMANTIC,
-    ObservedEvidenceKind.CONSTRAINT: ObservedEvidenceClass.STRUCTURAL,
-    ObservedEvidenceKind.RELATIONSHIP: ObservedEvidenceClass.STRUCTURAL,
-}
-
-
-def classify_observed_evidence(kind: ObservedEvidenceKind) -> ObservedEvidenceClass:
-    """Return the descriptive evidence class for one provider-neutral kind."""
-    return _EVIDENCE_CLASSES[kind]
-
-
 class ObservedAssetIdentity(ObservationModel):
     """Platform-local identity for one observed asset.
 
-    ``namespace`` is intentionally provider-neutral. A Databricks adapter may
-    populate it with ``(catalog, schema)`` while another platform may use a
-    different hierarchy without changing the domain model.
+    ``namespace`` is intentionally provider-neutral so adapters can map their
+    own hierarchy without changing the observation domain model.
     """
 
     platform: str
