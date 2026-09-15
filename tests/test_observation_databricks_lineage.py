@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import inspect
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 from semapact.observation import (
@@ -13,6 +15,17 @@ from semapact.platforms.databricks import lineage as databricks_lineage
 from semapact.platforms.databricks.lineage import observe_databricks_lineage
 
 CAPTURED_AT = datetime(2026, 9, 15, 10, 0, tzinfo=timezone.utc)
+FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "observation"
+    / "databricks"
+    / "lineage_orders.json"
+)
+
+
+def _fixture() -> dict[str, list[dict[str, object]]]:
+    return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
 
 class _FakeCursor:
@@ -21,69 +34,19 @@ class _FakeCursor:
         self.fail = fail or set()
         self._rows = []
         self.queries: list[str] = []
+        self.fixture = _fixture()
 
     def execute(self, query: str, parameters: tuple[str, ...] | None = None) -> None:
         self.queries.append(query)
         if "system.access.column_lineage" in query:
             kind = "column"
-            rows = [
-                SimpleNamespace(
-                    source_table_full_name="main.raw.orders",
-                    source_column_name="raw_id",
-                    target_table_full_name="main.silver.orders",
-                    target_column_name="order_id",
-                    statement_id="stmt-1",
-                    event_time=CAPTURED_AT,
-                    event_id="event-1",
-                    record_id="column-record-1",
-                    created_by="pipeline@example.com",
-                    direct_access=True,
-                ),
-                SimpleNamespace(
-                    source_table_full_name="main.raw.orders",
-                    source_column_name="raw_customer_id",
-                    target_table_full_name="main.silver.orders",
-                    target_column_name="customer_id",
-                    statement_id="stmt-1",
-                    event_time=CAPTURED_AT,
-                    event_id="event-1",
-                    record_id="column-record-2",
-                    created_by="pipeline@example.com",
-                    direct_access=True,
-                ),
-            ]
         elif "system.query.history" in query:
             kind = "query"
-            rows = [
-                SimpleNamespace(
-                    source_table_full_name="main.raw.orders",
-                    target_table_full_name="main.silver.orders",
-                    statement_id="stmt-1",
-                    event_time=CAPTURED_AT,
-                    event_id="event-1",
-                    record_id="table-record-1",
-                    created_by="pipeline@example.com",
-                    direct_access=True,
-                    statement_text="INSERT INTO main.silver.orders SELECT * FROM main.raw.orders",
-                    statement_type="INSERT",
-                )
-            ]
         else:
             kind = "table"
-            rows = [
-                SimpleNamespace(
-                    source_table_full_name="main.raw.orders",
-                    target_table_full_name="main.silver.orders",
-                    statement_id="stmt-1",
-                    event_time=CAPTURED_AT,
-                    event_id="event-1",
-                    record_id="table-record-1",
-                    created_by="pipeline@example.com",
-                    direct_access=True,
-                )
-            ]
         if kind in self.fail:
             raise PermissionError(f"no access to {kind}")
+        rows = [SimpleNamespace(**item) for item in self.fixture[kind]]
         self._rows = list(reversed(rows)) if self.reverse else rows
 
     def fetchall(self):
@@ -136,6 +99,7 @@ def test_databricks_lineage_is_normalized_without_odcs_mutation() -> None:
         "INSERT INTO main.silver.orders SELECT * FROM main.raw.orders"
     )
     assert query.capture_context.event_reference == "event-1"
+    assert query.capture_context.recorded_at == CAPTURED_AT
     assert query.capture_context.actor_reference == "pipeline@example.com"
 
     assert all(
