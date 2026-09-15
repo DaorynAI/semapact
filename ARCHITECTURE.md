@@ -103,6 +103,7 @@ These are application DTOs, not new governance/release/deployment authorities.
 ### Import/export and compatibility workflows
 
 - `semapact/importers/` projects explicitly imported external metadata into ODCS and contains no lifecycle policy;
+- runtime observation evidence is not an importer source of canonical ODCS semantics; evidence-assisted bootstrap or enrichment must produce an explicit proposal/candidate for normal governance rather than mutate a governed contract;
 - `semapact/exporters/` and `quality/` are read-only projections;
 - `semapact/devops/` and parts of `core/` contain stable compatibility workflows and must not become a second canonical ContractOps implementation.
 
@@ -192,6 +193,8 @@ Provider execution success is not convergence proof.
 
 Observation captures platform-neutral runtime evidence. It never mutates ODCS or invokes governance.
 
+Lineage is time-varying runtime evidence, not canonical contract truth. Table/column lineage and query history may support provenance, impact analysis, reconciliation, or an explicit contract proposal, but observation must not directly project them into authoritative ODCS fields such as `transformSourceObjects` or `transformLogic`.
+
 Reconciliation compares governed desired state with fresh observation and yields the existing status vocabulary:
 
 ```text
@@ -226,3 +229,4 @@ Rules:
 7. **Interfaces stay thin** — CLI/API/UI parse, delegate, and render; they do not become a second business-logic implementation.
 8. **Compatibility is not ownership** — legacy import paths may re-export canonical implementations but must not accumulate new logic.
 9. **One canonical contract model** — SemaPact reuses ODCS rather than maintaining a parallel contract schema.
+10. **Evidence is not contract truth** — runtime evidence may inform analysis or an explicit governed proposal, but it never silently mutates canonical ODCS semantics.
