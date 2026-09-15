@@ -65,7 +65,7 @@
           "subject": "asset"
         }
       ],
-      "observation_fingerprint": "obs-v2:sha256:ff59930b348f0ae695cdc32e1d2f601118c1ca35c391aa420db6e2830da19844",
+      "observation_fingerprint": "obs-v2:sha256:60be8d78af2750b7f2c467a5bca05accd4ac3c8807c7fbfac338f97baf6e6fb5",
       "observation_source_identifier": "https://adb.example",
       "unverified_paths": [
         "schema[orders].properties[created_at].nullability",
@@ -79,7 +79,7 @@
       "contract_id": "orders-contract",
       "contract_version": "1.2.3",
       "differences": [],
-      "observation_fingerprint": "obs-v2:sha256:0fbb2c9c5859ad8da43cce8e382df5b83d61af1ca1692b81a5ecc33b5f7f615d",
+      "observation_fingerprint": "obs-v2:sha256:4e449f416efc0fa80a087c1cae27d1779aae1231994ac29f85e6d02489501c86",
       "observation_source_identifier": "https://adb.example",
       "unverified_paths": []
     },
@@ -90,7 +90,7 @@
       "contract_id": "orders-contract",
       "contract_version": "1.2.3",
       "differences": [],
-      "observation_fingerprint": "obs-v2:sha256:f76aeee6e6201d1ec4f517ae4e1cc14fb756e632cdb16090009b195b44100b13",
+      "observation_fingerprint": "obs-v2:sha256:00c4be0a6fb125118be257697d907e311c94273a5af60d4996e355481fc3131f",
       "observation_source_identifier": "https://adb.example",
       "unverified_paths": [
         "schema[orders].properties[id].nullability",
