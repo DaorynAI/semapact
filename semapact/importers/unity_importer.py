@@ -60,15 +60,27 @@ def import_unity_contract(
     table_fqn: str,
     workspace_url: str | None = None,
     token: str | None = None,
+    sql_http_path: str | None = None,
+    extract_lineage: bool = False,
 ) -> OpenDataContractStandard:
     """Import Unity Catalog metadata into ODCS using datacontract-cli.
 
-    Runtime lineage is deliberately excluded from this importer. Lineage and
-    query history are observation evidence rather than authoritative contract
-    semantics and therefore must not mutate the imported ODCS contract.
+    Runtime lineage is deliberately excluded from this importer. The legacy
+    lineage-related keyword arguments remain temporarily accepted so existing
+    callers fail with an explicit boundary error instead of a Python signature
+    error. They must not trigger ODCS mutation.
 
-    Raises ``ValueError`` when required credentials are missing.
+    Raises ``ValueError`` when credentials are missing or lineage enrichment is
+    requested through the import boundary.
     """
+    del sql_http_path
+
+    if extract_lineage:
+        raise ValueError(
+            "Unity lineage is runtime observation evidence and can no longer be "
+            "projected into ODCS during import"
+        )
+
     from semapact.core.config import config_manager
 
     workspace_url = workspace_url or config_manager.get("databricks.workspace_url")
