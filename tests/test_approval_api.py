@@ -4,7 +4,7 @@ from argparse import Namespace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from semapact import ApprovalRecord, ApprovalService
+from semapact import ApprovalRecord, ApprovalRecordService
 from semapact.contractops import ReviewEvidenceAction
 from semapact.governance import GovernanceOperation
 from semapact.interfaces.cli import _build_parser
@@ -29,9 +29,11 @@ def _event() -> dict[str, object]:
     }
 
 
-def test_public_approval_service_records_through_typed_history_port(tmp_path: Path) -> None:
+def test_public_approval_record_service_records_through_typed_history_port(
+    tmp_path: Path,
+) -> None:
     repository = GitWorkingTreeHistoryRepository(tmp_path)
-    service = ApprovalService(repository)
+    service = ApprovalRecordService(repository)
 
     record = service.record_review_action(**_event())
 
