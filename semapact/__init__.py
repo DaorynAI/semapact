@@ -11,7 +11,10 @@ from typing import Any
 
 _EXPORTS: dict[str, tuple[str, str]] = {
     "ApprovalRecord": ("semapact.approval", "ApprovalRecord"),
-    "ApprovalService": ("semapact.application.services.approval", "ApprovalService"),
+    "ApprovalRecordService": (
+        "semapact.application.services.approval",
+        "ApprovalRecordService",
+    ),
     "ContractLoader": ("semapact.core.loader", "ContractLoader"),
     "load_contract": ("semapact.core.loader", "load_contract"),
     "ContractValidator": ("semapact.core.validator", "ContractValidator"),
