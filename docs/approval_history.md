@@ -14,7 +14,7 @@ GitHub / GitLab / Azure DevOps review event
                  ↓
         trusted CI / adapter
                  ↓
-          ApprovalService
+      ApprovalRecordService
                  ↓
            ApprovalRecord
                  ↓
@@ -22,6 +22,10 @@ GitHub / GitLab / Azure DevOps review event
                  ↓
         .semapact/history/
 ```
+
+`ApprovalRecordService` is deliberately named after the artifact it manages. It records
+and queries approval evidence; it does not itself approve a change, select a reviewer,
+or grant authorization.
 
 The external provider owns the review interaction. SemaPact records the explicit fact
 that the provider supplied: actor, action, provider timestamp, exact ContractOps scope,
@@ -75,12 +79,12 @@ The same application API is available from the public Python package:
 ```python
 from datetime import datetime, timezone
 
-from semapact import ApprovalService
+from semapact import ApprovalRecordService
 from semapact.contractops import ReviewEvidenceAction
 from semapact.governance import GovernanceOperation
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
 
-service = ApprovalService(GitWorkingTreeHistoryRepository("."))
+service = ApprovalRecordService(GitWorkingTreeHistoryRepository("."))
 record = service.record_review_action(
     decision_id="...",
     change_set_id="...",
@@ -96,7 +100,7 @@ record = service.record_review_action(
 ```
 
 Callers using another future persistence backend can provide the same
-`ApprovalHistoryRepository` capability without changing `ApprovalService`.
+`ApprovalHistoryRepository` capability without changing `ApprovalRecordService`.
 
 ## Trust boundary
 
