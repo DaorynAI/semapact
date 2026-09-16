@@ -5,7 +5,7 @@ from __future__ import annotations
 from argparse import Namespace
 from datetime import datetime
 
-from semapact.application.services.approval import ApprovalRecordService
+from semapact.application.services.approval_record import ApprovalRecordService
 from semapact.contractops import ReviewEvidenceAction
 from semapact.governance import GovernanceOperation
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
