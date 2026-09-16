@@ -10,16 +10,16 @@ from semapact.governance import GovernanceOperation
 from semapact.history import ApprovalHistoryRepository
 
 
-class ApprovalService:
-    """Record and query immutable approval facts without owning review policy.
+class ApprovalRecordService:
+    """Record and query immutable ApprovalRecord facts without owning approval policy.
 
     External surfaces such as CLI, CI integrations, SDK callers, or a future UI
     provide an explicit review event. This service normalizes that event through the
     canonical ApprovalRecord builder and persists the resulting artifact through the
     typed history capability.
 
-    The service deliberately does not discover provider approvals, choose a winning
-    approval, apply quorum rules, or authorize ContractOps actions.
+    The service deliberately does not approve a change, discover provider approvals,
+    choose a winning approval, apply quorum rules, or authorize ContractOps actions.
     """
 
     def __init__(self, approvals: ApprovalHistoryRepository) -> None:
