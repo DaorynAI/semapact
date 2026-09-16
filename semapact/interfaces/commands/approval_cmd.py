@@ -5,7 +5,7 @@ from __future__ import annotations
 from argparse import Namespace
 from datetime import datetime
 
-from semapact.application.services.approval import ApprovalService
+from semapact.application.services.approval import ApprovalRecordService
 from semapact.contractops import ReviewEvidenceAction
 from semapact.governance import GovernanceOperation
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
@@ -14,7 +14,7 @@ from semapact.platforms.git import GitWorkingTreeHistoryRepository
 def run_approval_record(args: Namespace) -> dict[str, object]:
     """Record one explicit review event through the application service boundary."""
     recorded_at = _parse_timestamp(args.recorded_at)
-    service = ApprovalService(
+    service = ApprovalRecordService(
         GitWorkingTreeHistoryRepository(args.repository_root),
     )
     record = service.record_review_action(
