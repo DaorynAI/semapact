@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from semapact.approval.models import ApprovalRecord
 from semapact.contractops import ChangeSet, ReleasePlan
 from semapact.deployment import DeploymentAuthorization, DeploymentPlan, DeploymentPreview
 from semapact.governance import GovernanceDecision
+from semapact.governance.gate import GovernanceOperation
 from semapact.history.models import (
     ChangeSetDecisionLink,
     DeploymentRecord,
@@ -65,6 +67,23 @@ class ChangeSetDecisionLinkHistoryRepository(Protocol):
         self,
         change_set_id: str,
     ) -> tuple[ChangeSetDecisionLink, ...]: ...
+
+
+class ApprovalHistoryRepository(Protocol):
+    """Persistence capability for immutable ApprovalRecord history only."""
+
+    def put_approval_record(self, record: ApprovalRecord) -> None: ...
+    def get_approval_record(self, approval_id: str) -> ApprovalRecord: ...
+
+    def list_approval_records_for_context(
+        self,
+        *,
+        decision_id: str,
+        change_set_id: str,
+        release_plan_id: str,
+        version_resolution_id: str,
+        operation: GovernanceOperation,
+    ) -> tuple[ApprovalRecord, ...]: ...
 
 
 class ContractRevisionHistoryRepository(Protocol):

@@ -15,6 +15,7 @@ from semapact.history.models import (
     RuntimeReconciliationRecord,
 )
 from semapact.history.repository import (
+    ApprovalHistoryRepository,
     ChangeSetDecisionLinkHistoryRepository,
     ChangeSetHistoryRepository,
     ContractRevisionHistoryRepository,
@@ -36,6 +37,7 @@ from semapact.history.repository import (
 )
 
 __all__ = [
+    "ApprovalHistoryRepository",
     "ChangeSetDecisionLink",
     "ChangeSetDecisionLinkHistoryRepository",
     "ChangeSetHistoryRepository",

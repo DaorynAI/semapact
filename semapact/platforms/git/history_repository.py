@@ -17,6 +17,8 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 
+from semapact.approval.integrity import validate_approval_record_identity
+from semapact.approval.models import ApprovalRecord
 from semapact.contractops import ChangeSet, ReleasePlan
 from semapact.contractops.integrity import (
     validate_change_set_identity,
@@ -29,6 +31,7 @@ from semapact.deployment.models import (
     validate_deployment_preview_identity,
 )
 from semapact.governance import GovernanceDecision
+from semapact.governance.gate import GovernanceOperation
 from semapact.history import (
     ChangeSetDecisionLink,
     DeploymentRecord,
@@ -85,6 +88,12 @@ _CHANGE_SET_DECISIONS = _HistoryKindSpec(
     "change_set_decisions",
     ChangeSetDecisionLink,
     "decision_id",
+)
+_APPROVAL_RECORDS = _HistoryKindSpec(
+    "approval_records",
+    ApprovalRecord,
+    "approval_id",
+    validate_approval_record_identity,
 )
 _CONTRACT_REVISIONS = _HistoryKindSpec(
     "contract_revisions",
@@ -153,6 +162,7 @@ _HISTORY_KIND_SPECS: dict[str, _HistoryKindSpec[BaseModel]] = {
         _DECISIONS,
         _CHANGE_SETS,
         _CHANGE_SET_DECISIONS,
+        _APPROVAL_RECORDS,
         _CONTRACT_REVISIONS,
         _CONTRACT_REVISION_SOURCES,
         _RELEASE_PLANS,
@@ -245,6 +255,43 @@ class GitWorkingTreeHistoryRepository:
                     "Persisted ChangeSetDecisionLink does not match its ChangeSet path"
                 )
         return records
+
+    def put_approval_record(self, record: ApprovalRecord) -> None:
+        self._put(_APPROVAL_RECORDS, record.approval_id, record)
+
+    def get_approval_record(self, approval_id: str) -> ApprovalRecord:
+        return self._get(_APPROVAL_RECORDS, approval_id)
+
+    def list_approval_records_for_context(
+        self,
+        *,
+        decision_id: str,
+        change_set_id: str,
+        release_plan_id: str,
+        version_resolution_id: str,
+        operation: GovernanceOperation,
+    ) -> tuple[ApprovalRecord, ...]:
+        decision_id = _required_text(decision_id, "decision_id")
+        change_set_id = _required_text(change_set_id, "change_set_id")
+        release_plan_id = _required_text(release_plan_id, "release_plan_id")
+        version_resolution_id = _required_text(
+            version_resolution_id,
+            "version_resolution_id",
+        )
+        if not isinstance(operation, GovernanceOperation):
+            raise TypeError(
+                "operation must be GovernanceOperation, "
+                f"got {type(operation).__name__}"
+            )
+        return tuple(
+            record
+            for record in self._list(_APPROVAL_RECORDS)
+            if record.decision_id == decision_id
+            and record.change_set_id == change_set_id
+            and record.release_plan_id == release_plan_id
+            and record.version_resolution_id == version_resolution_id
+            and record.operation is operation
+        )
 
     def put_revision(self, revision: ContractRevision) -> None:
         self._put(_CONTRACT_REVISIONS, revision.revision_id, revision)
