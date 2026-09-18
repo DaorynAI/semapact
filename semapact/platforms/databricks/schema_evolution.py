@@ -73,6 +73,24 @@ def plan_databricks_schema_evolution(
     validate_databricks_identifier(schema_name, "schema")
     validate_databricks_desired_schema(table_name=table_name, desired=desired)
 
+    if observed is not None:
+        if observed.identity.platform.casefold() != "databricks":
+            raise ValidationError(
+                "Databricks schema evolution requires Databricks runtime evidence"
+            )
+        expected_namespace = (catalog.casefold(), schema_name.casefold())
+        actual_namespace = tuple(
+            part.casefold() for part in observed.identity.namespace
+        )
+        if actual_namespace != expected_namespace:
+            raise ValidationError(
+                "Observed asset is outside the requested Databricks namespace"
+            )
+        if observed.identity.asset.casefold() != table_name.casefold():
+            raise ValidationError(
+                "Observed asset does not match the requested Databricks table"
+            )
+
     if observed is None:
         return NativeOperation(
             kind=NativeOperationKind.CREATE,
