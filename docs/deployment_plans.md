@@ -2,6 +2,24 @@
 
 SemaPact treats a released ODCS contract as governed desired state, not as an executable SQL, Terraform, or platform program.
 
+The released contract is the authoritative artifact. SemaPact does **not** require a separate DDL build artifact before deployment. SQL and other provider-native commands are derived only after an exact released desired state is compared with an exact runtime target.
+
+```text
+AppliedContractRelease
+        = governed desired state
+                +
+ObservedPlatformState
+        = point-in-time runtime state
+                ↓
+semantic runtime transition assessment
+                ↓
+provider-native operation compilation
+                ↓
+DeploymentPreview
+```
+
+This matters because one release may require different native operations in different environments. A missing table may require CREATE in one target, an additive ALTER in another, and NO_OP in a target that already satisfies the governed state. A pre-built DDL script cannot represent those three runtime states without becoming another mutable source of truth.
+
 The deployment planning boundary is therefore:
 
 ```text
@@ -40,6 +58,21 @@ Planning sees released desired state only. Without observed runtime state SemaPa
 Likewise, an object that exists in runtime but is absent from one contract must not be interpreted as safe to drop. The contract may not own that object.
 
 Concrete provider-native operations therefore begin at the platform adapter boundary, where validation and preview combine the DeploymentPlan with provider semantics and fresh runtime evidence.
+
+Provider preview should keep **transition semantics** separate from SQL rendering. Conceptually:
+
+```text
+desired schema + observed schema
+        ↓
+semantic transition
+  CREATE_ASSET / ADD_PROPERTY / NO_OP / unsupported
+        ↓
+provider compiler
+        ↓
+CREATE / ALTER / NO_OP native operation
+```
+
+The semantic transition layer is an internal planning boundary, not a new release artifact or authorization authority. This lets compatible execution families share transition semantics while keeping provider-specific naming, capability checks, SQL rendering, authentication, and execution in their adapters.
 
 ## Identity and physical binding
 
@@ -127,6 +160,8 @@ For an all-`NO_OP` preview, `--warehouse-id` may be omitted because no native mu
 Execution requires the exact plan, exact preview, and exact `DeploymentAuthorization`. The adapter re-observes the target, validates the authorized runtime source and observation fingerprint, re-derives the expected preview for integrity/freshness validation, and executes only the supplied operations when the artifacts still match.
 
 Provider execution success is not convergence proof.
+
+Complete DDL export remains a useful inspection or integration utility, especially for creating new assets, but export is not a lifecycle phase. Exported SQL is derived output; deployment planning remains responsible for comparing the exact released contract with fresh runtime evidence before any mutation is authorized.
 
 ### Verify
 
