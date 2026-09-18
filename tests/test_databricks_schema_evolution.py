@@ -181,5 +181,5 @@ def test_pure_planner_rejects_observation_for_different_asset() -> None:
             )
         }
     )
-    with pytest.raises(ValidationError, match="observed asset"):
+    with pytest.raises(ValidationError, match="Observed asset"):
         _plan(_schema(_property("id", "BIGINT", required=True)), observed)
