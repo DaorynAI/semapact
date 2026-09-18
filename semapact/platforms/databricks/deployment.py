@@ -28,6 +28,9 @@ from semapact.platforms.databricks.schema_evolution import (
     validate_databricks_desired_schema,
     validate_databricks_identifier,
 )
+from semapact.platforms.databricks.sql_compiler import (
+    compile_databricks_schema_transition,
+)
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
 from semapact.runtime import RuntimeAssetSpec
 
@@ -106,14 +109,18 @@ class DatabricksDeploymentAdapter:
         for action in plan.actions:
             desired = SchemaObject.model_validate_json(action.desired_state_json)
             observed = observed_by_asset.get(action.physical_name.casefold())
+            transition = plan_databricks_schema_evolution(
+                runtime_target=plan.target.runtime_target,
+                governed_asset=action.governed_asset,
+                table_name=action.physical_name,
+                desired=desired,
+                observed=observed,
+            )
             operations.append(
-                plan_databricks_schema_evolution(
+                compile_databricks_schema_transition(
                     catalog=catalog,
                     schema_name=schema_name,
-                    governed_asset=action.governed_asset,
-                    table_name=action.physical_name,
-                    desired=desired,
-                    observed=observed,
+                    transition=transition,
                 )
             )
 
