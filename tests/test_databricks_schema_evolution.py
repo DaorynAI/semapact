@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from open_data_contract_standard.model import SchemaObject, SchemaProperty
 
-from semapact.deployment.models import NativeOperationKind
+from semapact.deployment.models import NativeOperation, NativeOperationKind
 from semapact.exceptions import ValidationError
 from semapact.observation.models import (
     ObservedAsset,
@@ -70,7 +70,7 @@ def _observed(
 def _plan(
     desired: SchemaObject,
     observed: ObservedAsset | None,
-):
+) -> NativeOperation:
     return plan_databricks_schema_evolution(
         catalog="main",
         schema_name="silver",
@@ -169,3 +169,17 @@ def test_desired_schema_validation_rejects_unsafe_physical_type() -> None:
             table_name="orders",
             desired=_schema(_property("id", "STRING);DROP")),
         )
+
+
+def test_pure_planner_rejects_observation_for_different_asset() -> None:
+    observed = _observed(("id", "bigint", False)).model_copy(
+        update={
+            "identity": ObservedAssetIdentity(
+                platform="databricks",
+                namespace=("main", "silver"),
+                asset="customers",
+            )
+        }
+    )
+    with pytest.raises(ValidationError, match="observed asset"):
+        _plan(_schema(_property("id", "BIGINT", required=True)), observed)
