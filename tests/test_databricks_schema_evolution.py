@@ -3,7 +3,11 @@ from __future__ import annotations
 import pytest
 from open_data_contract_standard.model import SchemaObject, SchemaProperty
 
-from semapact.deployment.models import NativeOperation, NativeOperationKind
+from semapact.deployment.models import NativeOperationKind
+from semapact.deployment.schema_transitions import (
+    SchemaTransition,
+    SchemaTransitionKind,
+)
 from semapact.exceptions import ValidationError
 from semapact.observation.models import (
     ObservedAsset,
@@ -14,6 +18,9 @@ from semapact.observation.models import (
 from semapact.platforms.databricks.schema_evolution import (
     plan_databricks_schema_evolution,
     validate_databricks_desired_schema,
+)
+from semapact.platforms.databricks.sql_compiler import (
+    compile_databricks_schema_transition,
 )
 
 
@@ -70,10 +77,9 @@ def _observed(
 def _plan(
     desired: SchemaObject,
     observed: ObservedAsset | None,
-) -> NativeOperation:
+) -> SchemaTransition:
     return plan_databricks_schema_evolution(
-        catalog="main",
-        schema_name="silver",
+        runtime_target="main.silver",
         governed_asset="orders",
         table_name="orders",
         desired=desired,
@@ -81,12 +87,26 @@ def _plan(
     )
 
 
-def test_pure_planner_creates_missing_managed_delta_table() -> None:
-    operation = _plan(
+def _compile(transition: SchemaTransition):
+    return compile_databricks_schema_transition(
+        catalog="main",
+        schema_name="silver",
+        transition=transition,
+    )
+
+
+def test_planner_and_compiler_create_missing_managed_delta_table() -> None:
+    transition = _plan(
         _schema(_property("id", "BIGINT", required=True)),
         None,
     )
 
+    assert transition.kind is SchemaTransitionKind.CREATE_ASSET
+    assert transition.columns[0].name == "id"
+    assert transition.columns[0].physical_type == "BIGINT"
+    assert transition.columns[0].nullable is False
+
+    operation = _compile(transition)
     assert operation.kind is NativeOperationKind.CREATE
     assert operation.statement == (
         "CREATE TABLE `main`.`silver`.`orders` "
@@ -94,8 +114,8 @@ def test_pure_planner_creates_missing_managed_delta_table() -> None:
     )
 
 
-def test_pure_planner_adds_only_missing_nullable_columns() -> None:
-    operation = _plan(
+def test_planner_and_compiler_add_only_missing_nullable_columns() -> None:
+    transition = _plan(
         _schema(
             _property("id", "BIGINT", required=True),
             _property("note", "STRING"),
@@ -103,6 +123,10 @@ def test_pure_planner_adds_only_missing_nullable_columns() -> None:
         _observed(("id", "bigint", False)),
     )
 
+    assert transition.kind is SchemaTransitionKind.ADD_PROPERTIES
+    assert [column.name for column in transition.columns] == ["note"]
+
+    operation = _compile(transition)
     assert operation.kind is NativeOperationKind.ALTER
     assert operation.statement == (
         "ALTER TABLE `main`.`silver`.`orders` "
@@ -110,8 +134,8 @@ def test_pure_planner_adds_only_missing_nullable_columns() -> None:
     )
 
 
-def test_pure_planner_no_ops_when_governed_shape_is_satisfied() -> None:
-    operation = _plan(
+def test_planner_no_ops_when_governed_shape_is_satisfied() -> None:
+    transition = _plan(
         _schema(_property("id", "BIGINT", required=True)),
         _observed(
             ("id", "bigint", False),
@@ -119,8 +143,20 @@ def test_pure_planner_no_ops_when_governed_shape_is_satisfied() -> None:
         ),
     )
 
+    assert transition.kind is SchemaTransitionKind.NO_OP
+    assert transition.columns == ()
+
+    operation = _compile(transition)
     assert operation.kind is NativeOperationKind.NO_OP
     assert operation.statement is None
+
+
+def test_desired_type_normalization_reuses_datacontract_mapping() -> None:
+    transition = _plan(
+        _schema(_property("id", "integer", required=True)),
+        None,
+    )
+    assert transition.columns[0].physical_type == "INT"
 
 
 @pytest.mark.parametrize(
@@ -146,7 +182,7 @@ def test_pure_planner_no_ops_when_governed_shape_is_satisfied() -> None:
         ),
     ],
 )
-def test_pure_planner_fails_closed_on_unsafe_existing_mutation(
+def test_planner_fails_closed_on_unsafe_existing_mutation(
     desired: SchemaObject,
     observed: ObservedAsset,
     message: str,
@@ -155,7 +191,7 @@ def test_pure_planner_fails_closed_on_unsafe_existing_mutation(
         _plan(desired, observed)
 
 
-def test_pure_planner_rejects_non_managed_asset() -> None:
+def test_planner_rejects_non_managed_asset() -> None:
     with pytest.raises(ValidationError, match="MANAGED"):
         _plan(
             _schema(_property("id", "BIGINT", required=True)),
@@ -171,7 +207,7 @@ def test_desired_schema_validation_rejects_unsafe_physical_type() -> None:
         )
 
 
-def test_pure_planner_rejects_observation_for_different_asset() -> None:
+def test_planner_rejects_observation_for_different_asset() -> None:
     observed = _observed(("id", "bigint", False)).model_copy(
         update={
             "identity": ObservedAssetIdentity(
