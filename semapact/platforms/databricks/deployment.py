@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import re
 import time
 from typing import Any
 
-from open_data_contract_standard.model import SchemaObject, SchemaProperty
+from open_data_contract_standard.model import SchemaObject
 
 from semapact.deployment.models import (
     DeploymentActionKind,
@@ -22,33 +21,16 @@ from semapact.deployment.models import (
 )
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.observation.fingerprint import fingerprint_observed_state
-from semapact.observation.models import ObservedAsset, ObservedPlatformState
+from semapact.observation.models import ObservedPlatformState
 from semapact.observation.providers import RuntimeProvider
+from semapact.platforms.databricks.schema_evolution import (
+    plan_databricks_schema_evolution,
+    validate_databricks_desired_schema,
+    validate_databricks_identifier,
+)
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
 from semapact.runtime import RuntimeAssetSpec
 
-_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
-_DECIMAL_RE = re.compile(r"^DECIMAL\((\d{1,2}),(\d{1,2})\)$")
-_CHAR_RE = re.compile(r"^(CHAR|VARCHAR)\((\d+)\)$")
-_PRIMITIVE_TYPES = {
-    "BIGINT",
-    "BINARY",
-    "BOOLEAN",
-    "BYTE",
-    "DATE",
-    "DOUBLE",
-    "FLOAT",
-    "INT",
-    "INTEGER",
-    "LONG",
-    "REAL",
-    "SHORT",
-    "SMALLINT",
-    "STRING",
-    "TIMESTAMP",
-    "TIMESTAMP_NTZ",
-    "TINYINT",
-}
 _TERMINAL_STATES = {"SUCCEEDED", "FAILED", "CANCELED", "CLOSED"}
 
 
@@ -84,8 +66,8 @@ class DatabricksDeploymentAdapter:
                 f"Databricks adapter cannot deploy platform '{plan.target.platform}'"
             )
         catalog, schema_name = parse_databricks_runtime_target(plan.target.runtime_target)
-        _validate_identifier(catalog, "catalog")
-        _validate_identifier(schema_name, "schema")
+        validate_databricks_identifier(catalog, "catalog")
+        validate_databricks_identifier(schema_name, "schema")
 
         physical_assets: set[str] = set()
         for action in plan.actions:
@@ -93,7 +75,7 @@ class DatabricksDeploymentAdapter:
                 raise ValidationError(
                     f"Unsupported deployment action kind: {action.kind.value}"
                 )
-            _validate_identifier(action.physical_name, "asset")
+            validate_databricks_identifier(action.physical_name, "asset")
             asset_key = action.physical_name.casefold()
             if asset_key in physical_assets:
                 raise ValidationError(
@@ -102,7 +84,10 @@ class DatabricksDeploymentAdapter:
                 )
             physical_assets.add(asset_key)
             desired = SchemaObject.model_validate_json(action.desired_state_json)
-            _desired_columns(desired)
+            validate_databricks_desired_schema(
+                table_name=action.physical_name,
+                desired=desired,
+            )
 
     def preview(
         self,
@@ -121,44 +106,16 @@ class DatabricksDeploymentAdapter:
         for action in plan.actions:
             desired = SchemaObject.model_validate_json(action.desired_state_json)
             observed = observed_by_asset.get(action.physical_name.casefold())
-            if observed is None:
-                statement = _create_table_statement(
+            operations.append(
+                plan_databricks_schema_evolution(
                     catalog=catalog,
                     schema_name=schema_name,
+                    governed_asset=action.governed_asset,
                     table_name=action.physical_name,
                     desired=desired,
+                    observed=observed,
                 )
-                operations.append(
-                    NativeOperation(
-                        kind=NativeOperationKind.CREATE,
-                        governed_asset=action.governed_asset,
-                        statement=statement,
-                    )
-                )
-                continue
-
-            additions = _required_additions(desired, observed)
-            if additions:
-                statement = _add_columns_statement(
-                    catalog=catalog,
-                    schema_name=schema_name,
-                    table_name=action.physical_name,
-                    additions=additions,
-                )
-                operations.append(
-                    NativeOperation(
-                        kind=NativeOperationKind.ALTER,
-                        governed_asset=action.governed_asset,
-                        statement=statement,
-                    )
-                )
-            else:
-                operations.append(
-                    NativeOperation(
-                        kind=NativeOperationKind.NO_OP,
-                        governed_asset=action.governed_asset,
-                    )
-                )
+            )
 
         ordered = tuple(operations)
         assert observed_state.fingerprint is not None
@@ -320,157 +277,6 @@ def _validate_observation(
         if asset_key in seen:
             raise ValidationError("Runtime evidence contains duplicate asset identities")
         seen.add(asset_key)
-
-
-def _desired_columns(
-    desired: SchemaObject,
-) -> tuple[tuple[str, str, bool], ...]:
-    columns: list[tuple[str, str, bool]] = []
-    seen: set[str] = set()
-    for prop in desired.properties or []:
-        physical_name = _property_physical_name(prop)
-        _validate_identifier(physical_name, "column")
-        key = physical_name.casefold()
-        if key in seen:
-            raise ValidationError(
-                f"Duplicate physical column binding in desired schema: '{physical_name}'"
-            )
-        seen.add(key)
-        physical_type = getattr(prop, "physicalType", None)
-        if physical_type is None or not str(physical_type).strip():
-            raise ValidationError(
-                f"Databricks deployment requires physicalType for column '{physical_name}'"
-            )
-        rendered_type = _render_type(str(physical_type))
-        columns.append((physical_name, rendered_type, bool(getattr(prop, "required", False))))
-    if not columns:
-        raise ValidationError("Databricks deployment requires at least one schema property")
-    return tuple(columns)
-
-
-def _required_additions(
-    desired: SchemaObject,
-    observed: ObservedAsset,
-) -> tuple[tuple[str, str, bool], ...]:
-    if (observed.asset_type or "").strip().casefold() != "managed":
-        raise ValidationError(
-            "Existing Databricks asset must be a MANAGED table for deployment mutation"
-        )
-
-    observed_columns = {
-        prop.identity.property.casefold(): prop for prop in observed.properties
-    }
-    additions: list[tuple[str, str, bool]] = []
-    for name, desired_type, required in _desired_columns(desired):
-        current = observed_columns.get(name.casefold())
-        if current is None:
-            if required:
-                raise ValidationError(
-                    f"Cannot add required column '{name}' without a safe default"
-                )
-            additions.append((name, desired_type, required))
-            continue
-        if current.physical_type is None:
-            raise ValidationError(f"Observed type is unknown for column '{name}'")
-        current_type = _render_type(current.physical_type)
-        if current_type != desired_type:
-            raise ValidationError(
-                f"Unsupported existing column type mutation for '{name}': "
-                f"{current_type} -> {desired_type}"
-            )
-        if current.nullable is None:
-            raise ValidationError(f"Observed nullability is unknown for column '{name}'")
-        desired_nullable = not required
-        if current.nullable is not desired_nullable:
-            raise ValidationError(
-                f"Unsupported existing column nullability mutation for '{name}'"
-            )
-    return tuple(additions)
-
-
-def _property_physical_name(prop: SchemaProperty) -> str:
-    physical = getattr(prop, "physicalName", None)
-    if physical is not None and str(physical).strip():
-        return str(physical).strip()
-    name = getattr(prop, "name", None)
-    if name is None or not str(name).strip():
-        raise ValidationError("Schema property name is required for deployment binding")
-    return str(name).strip()
-
-
-def _create_table_statement(
-    *,
-    catalog: str,
-    schema_name: str,
-    table_name: str,
-    desired: SchemaObject,
-) -> str:
-    columns = []
-    for name, physical_type, required in _desired_columns(desired):
-        suffix = " NOT NULL" if required else ""
-        columns.append(f"{_quote_identifier(name)} {physical_type}{suffix}")
-    column_sql = ", ".join(columns)
-    return (
-        f"CREATE TABLE {_qualified_name(catalog, schema_name, table_name)} "
-        f"({column_sql}) USING DELTA"
-    )
-
-
-def _add_columns_statement(
-    *,
-    catalog: str,
-    schema_name: str,
-    table_name: str,
-    additions: tuple[tuple[str, str, bool], ...],
-) -> str:
-    columns = ", ".join(
-        f"{_quote_identifier(name)} {physical_type}"
-        for name, physical_type, _required in additions
-    )
-    return (
-        f"ALTER TABLE {_qualified_name(catalog, schema_name, table_name)} "
-        f"ADD COLUMNS ({columns})"
-    )
-
-
-def _qualified_name(catalog: str, schema_name: str, table_name: str) -> str:
-    return ".".join(
-        _quote_identifier(part) for part in (catalog, schema_name, table_name)
-    )
-
-
-def _quote_identifier(value: str) -> str:
-    _validate_identifier(value, "identifier")
-    return f"`{value}`"
-
-
-def _validate_identifier(value: str, role: str) -> None:
-    if not _IDENTIFIER_RE.fullmatch(value):
-        raise ValidationError(
-            f"Unsupported Databricks {role} identifier for M1 deployment: '{value}'"
-        )
-
-
-def _render_type(value: str) -> str:
-    normalized = re.sub(r"\s+", "", value.strip().upper())
-    if normalized in _PRIMITIVE_TYPES:
-        return normalized
-
-    decimal = _DECIMAL_RE.fullmatch(normalized)
-    if decimal:
-        precision = int(decimal.group(1))
-        scale = int(decimal.group(2))
-        if 1 <= precision <= 38 and 0 <= scale <= precision:
-            return f"DECIMAL({precision},{scale})"
-        raise ValidationError(f"Unsupported Databricks DECIMAL type: '{value}'")
-
-    char_type = _CHAR_RE.fullmatch(normalized)
-    if char_type:
-        length = int(char_type.group(2))
-        if length > 0:
-            return f"{char_type.group(1)}({length})"
-
-    raise ValidationError(f"Unsupported Databricks physicalType: '{value}'")
 
 
 def _statement_state(response: Any) -> str:
