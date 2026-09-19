@@ -19,6 +19,7 @@ from semapact.deployment.models import (
 )
 from semapact.deployment.providers import DeploymentPlatform, NativeOperationExecutor
 from semapact.deployment.schema_transitions import plan_additive_schema_transition
+from semapact.deployment.verification import verify_deployment_convergence
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.observation.fingerprint import fingerprint_observed_state
 from semapact.observation.models import ObservedPlatformState
@@ -151,6 +152,14 @@ class DeploymentOrchestrator(DeploymentAdapter):
             source_identifier=observed_state.source_identifier,
             observation_fingerprint=observed_state.fingerprint,
             operations=ordered,
+        )
+
+    def verify(self, plan: DeploymentPlan):
+        """Verify convergence through the same configured runtime provider."""
+        self.validate(plan)
+        return verify_deployment_convergence(
+            plan,
+            self._platform.runtime_provider,
         )
 
     def execute(
