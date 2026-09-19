@@ -182,6 +182,10 @@ See [`docs/contractops_phases.md`](docs/contractops_phases.md) and [`docs/versio
 `semapact deployment` exposes a canonical CLI/CI surface:
 
 ```text
+assess
+→ base/candidate governance + fresh runtime DeploymentAssessment
+→ read-only / non-executable
+
 plan
 → DeploymentPlan
 
@@ -329,7 +333,19 @@ pip install "semapact[databricks]"
 
 The Databricks SDK owns authentication-provider selection. SemaPact forwards supported connection hints rather than implementing a separate credential system.
 
-After an exact `AppliedContractRelease` and deployment authorization have been produced, the runtime path is exposed through:
+Before approval, assess the candidate contract against the selected Databricks target without creating execution authority:
+
+```bash
+semapact deployment assess \
+  --base ./contracts/orders.yaml \
+  --candidate ./contracts/orders.candidate.yaml \
+  --base-revision-ref git:abc123 \
+  --candidate-revision-ref git:def456 \
+  --effective-date 2026-09-20 \
+  --server production
+```
+
+After an exact `AppliedContractRelease` and deployment authorization have been produced, the canonical runtime path remains:
 
 ```bash
 semapact deployment plan --help
