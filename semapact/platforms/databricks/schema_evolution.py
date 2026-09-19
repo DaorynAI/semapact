@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from datacontract.export.sql_type_converter import convert_to_databricks
+import re
+
 import sqlglot
-from sqlglot import exp
+from datacontract.export.sql_type_converter import convert_to_databricks
 from open_data_contract_standard.model import SchemaObject, SchemaProperty
+from sqlglot import exp
 
 from semapact.deployment.schema_transitions import (
     SchemaColumnState,
@@ -17,12 +19,13 @@ from semapact.observation.models import ObservedAsset
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
 
 
-_IDENTIFIER_RE = __import__("re").compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 _UNRESOLVED_DATABRICKS_TYPES = {
     exp.DataType.Type.UNKNOWN,
     exp.DataType.Type.USERDEFINED,
     exp.DataType.Type.NULL,
 }
+
 
 def validate_databricks_desired_schema(
     *,
