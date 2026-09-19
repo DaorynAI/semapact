@@ -79,9 +79,19 @@ def run_deployment_execute(args: argparse.Namespace) -> DeploymentCommandResult:
 
     from semapact.platforms.runtime_registry import create_deployment_adapter
 
+    execution_config = None
+    if plan.target.platform == "databricks":
+        from semapact.platforms.databricks.deployment import (
+            DatabricksDeploymentExecutionConfig,
+        )
+
+        execution_config = DatabricksDeploymentExecutionConfig(
+            warehouse_id=args.warehouse_id,
+        )
+
     adapter = create_deployment_adapter(
         plan.target.platform,
-        execution_options={"warehouse_id": args.warehouse_id},
+        execution_config=execution_config,
     )
     DeploymentService().execute(
         plan,
