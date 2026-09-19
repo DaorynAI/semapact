@@ -379,6 +379,42 @@ def _build_parser() -> argparse.ArgumentParser:
     release_prs_parser.add_argument("--pat-token")
     release_prs_parser.add_argument("--push", action="store_true")
 
+
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Check production prerequisites for the contract-selected runtime",
+    )
+    doctor_parser.add_argument(
+        "--contract", required=True, help="Path or URL to the governed ODCS contract"
+    )
+    doctor_parser.add_argument(
+        "--server",
+        help="Contract server identifier when the contract defines multiple servers",
+    )
+    doctor_parser.add_argument(
+        "--platform",
+        help="Fallback runtime provider when the contract defines no servers",
+    )
+    doctor_parser.add_argument(
+        "--runtime",
+        help="Fallback provider-local runtime target when the contract defines no servers",
+    )
+    doctor_parser.add_argument(
+        "--warehouse-id",
+        help="Databricks SQL warehouse used for read-only Statement Execution readiness checks",
+    )
+    doctor_parser.add_argument(
+        "--repository-root",
+        default=".",
+        help="Repository root containing governance history (default: current directory)",
+    )
+    doctor_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
     reconcile_parser = subparsers.add_parser(
         "reconcile",
         help="Compare a governed data product with its runtime implementation",
@@ -551,6 +587,15 @@ def main() -> int:
                 print(json.dumps(payload, indent=2, sort_keys=True))
                 return 0
             parser.error(f"Unknown approval command: {args.approval_command}")
+
+
+        if args.command == "doctor":
+            from semapact.interfaces.commands.doctor_cmd import run_doctor
+            from semapact.interfaces.outcomes import exit_code_from_outcome
+
+            result = run_doctor(args)
+            print(result.output)
+            return int(exit_code_from_outcome(result.outcome))
 
         if args.command == "reconcile":
             from semapact.interfaces.commands.reconcile_cmd import run_reconcile
