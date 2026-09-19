@@ -12,9 +12,8 @@ from semapact.deployment.schema_transitions import (
     SchemaTransitionKind,
 )
 from semapact.exceptions import ValidationError
-from semapact.schema import validate_simple_sql_identifier
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
-from semapact.schema import SchemaPropertyState
+from semapact.schema import SchemaPropertyState, validate_simple_sql_identifier
 
 
 class DatabricksTransitionCompiler(TransitionCompiler):
