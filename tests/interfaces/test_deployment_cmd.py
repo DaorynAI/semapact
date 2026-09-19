@@ -7,12 +7,18 @@ from open_data_contract_standard.model import OpenDataContractStandard, SchemaOb
 import pytest
 
 from semapact.contractops import AppliedContractRelease
+from semapact.deployment import (
+    DeploymentAdapter,
+    DeploymentTarget,
+    build_deployment_plan,
+)
 from semapact.contractops.integrity import compute_applied_release_id
 from semapact.exceptions import ValidationError
 from semapact.interfaces import cli
 from semapact.interfaces.commands import deployment_cmd
 from semapact.interfaces.commands.deployment_cmd import DeploymentCommandResult
 from semapact.interfaces.outcomes import ProcessOutcome
+from semapact.reconciliation import ReconciliationResult
 
 SOURCE_REFERENCE = "https://workspace.example"
 
@@ -180,3 +186,70 @@ def test_main_preserves_verification_outcome_semantics(
 
     assert cli.main() == expected_exit
     assert capsys.readouterr().out.strip() == "verification"
+
+
+
+def test_verify_command_uses_unified_deployment_adapter(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = build_deployment_plan(
+        _release(),
+        DeploymentTarget(
+            platform="databricks",
+            runtime_target="main.silver",
+            source_reference=SOURCE_REFERENCE,
+        ),
+    )
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(plan.model_dump_json(), encoding="utf-8")
+
+    class _Adapter(DeploymentAdapter):
+        key = "databricks"
+
+        def __init__(self) -> None:
+            self.verify_calls = 0
+
+        def validate(self, plan):
+            raise AssertionError("CLI should call the service entrypoint")
+
+        def preview(self, plan):
+            raise AssertionError("preview should not be called")
+
+        def execute(self, plan, preview, authorization):
+            raise AssertionError("execute should not be called")
+
+        def verify(self, plan):
+            self.verify_calls += 1
+            return ReconciliationResult(
+                contract_id=plan.contract_id,
+                contract_version=plan.selected_version,
+                observation_source_identifier=SOURCE_REFERENCE,
+                observation_fingerprint="obs-v2:sha256:test",
+            )
+
+    adapter = _Adapter()
+
+    import semapact.platforms.runtime_registry as runtime_registry
+
+    monkeypatch.setattr(
+        runtime_registry,
+        "create_deployment_adapter",
+        lambda platform: adapter,
+    )
+
+    args = cli._build_parser().parse_args(
+        [
+            "deployment",
+            "verify",
+            "--plan",
+            str(plan_path),
+            "--output",
+            "json",
+        ]
+    )
+    result = deployment_cmd.run_deployment_verify(args)
+
+    assert result.outcome is ProcessOutcome.SUCCESS
+    assert adapter.verify_calls == 1
+    assert json.loads(result.output)["status"] == "IN_SYNC"
