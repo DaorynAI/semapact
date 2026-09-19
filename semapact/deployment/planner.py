@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from open_data_contract_standard.model import SchemaObject
+from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject
 
 from semapact.contractops.execution_models import AppliedContractRelease
 from semapact.contractops.integrity import validate_applied_release_identity
@@ -38,26 +38,7 @@ def build_deployment_plan(
 
     validate_applied_release_identity(release)
     contract = release.to_contract()
-    asset_specs = runtime_asset_specs_from_contract(contract)
-    specs_by_asset = {spec.governed_asset: spec for spec in asset_specs}
-
-    actions: list[DeploymentAction] = []
-    for schema in contract.schema_ or []:
-        raw_name = getattr(schema, "name", None)
-        if raw_name is None:
-            raise RuntimeError("Governed schema identity unexpectedly missing")
-        governed_asset = normalize_identity_name(str(raw_name), "Schema")
-        spec = specs_by_asset[governed_asset]
-        actions.append(
-            DeploymentAction(
-                kind=DeploymentActionKind.ENSURE_ASSET_STATE,
-                governed_asset=governed_asset,
-                physical_name=spec.physical_name,
-                desired_state_json=_canonical_schema_json(schema),
-            )
-        )
-
-    ordered_actions = tuple(sorted(actions, key=lambda action: action.governed_asset))
+    ordered_actions = build_deployment_actions(contract)
     deployment_plan_id = compute_deployment_plan_id(
         applied_release_id=release.applied_release_id,
         contract_id=release.contract_id,
@@ -78,6 +59,42 @@ def build_deployment_plan(
         target=target,
         actions=ordered_actions,
     )
+
+
+def build_deployment_actions(
+    contract: OpenDataContractStandard,
+) -> tuple[DeploymentAction, ...]:
+    """Project candidate/released ODCS state into provider-neutral desired actions.
+
+    Actions are desired-state facts only. They are not executable authority until
+    they are bound into an exact DeploymentPlan derived from an AppliedContractRelease.
+    """
+    if not isinstance(contract, OpenDataContractStandard):
+        raise TypeError(
+            "contract must be OpenDataContractStandard, "
+            f"got {type(contract).__name__}"
+        )
+
+    asset_specs = runtime_asset_specs_from_contract(contract)
+    specs_by_asset = {spec.governed_asset: spec for spec in asset_specs}
+
+    actions: list[DeploymentAction] = []
+    for schema in contract.schema_ or []:
+        raw_name = getattr(schema, "name", None)
+        if raw_name is None:
+            raise RuntimeError("Governed schema identity unexpectedly missing")
+        governed_asset = normalize_identity_name(str(raw_name), "Schema")
+        spec = specs_by_asset[governed_asset]
+        actions.append(
+            DeploymentAction(
+                kind=DeploymentActionKind.ENSURE_ASSET_STATE,
+                governed_asset=governed_asset,
+                physical_name=spec.physical_name,
+                desired_state_json=_canonical_schema_json(schema),
+            )
+        )
+
+    return tuple(sorted(actions, key=lambda action: action.governed_asset))
 
 
 def _canonical_schema_json(schema: SchemaObject) -> str:
