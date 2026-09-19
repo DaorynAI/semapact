@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
 from open_data_contract_standard.model import OpenDataContractStandard, Server
 
 from semapact.deployment import DeploymentAdapter, DeploymentExecutionConfig
+from semapact.exceptions import ValidationError
 from semapact.platforms.factories import PlatformFactory
 from semapact.platforms import runtime_registry
 
@@ -93,3 +96,21 @@ def test_one_factory_loader_extends_all_platform_composition_paths(
     assert provider is factory.provider
     assert adapter is factory.adapter
     assert factory.execution_config == DeploymentExecutionConfig(platform="fake")
+
+
+
+def test_registry_rejects_execution_config_for_another_platform(
+    monkeypatch,
+) -> None:
+    factory = _FakePlatformFactory()
+    monkeypatch.setitem(
+        runtime_registry._PLATFORM_FACTORY_LOADERS,
+        "fake",
+        lambda: factory,
+    )
+
+    with pytest.raises(ValidationError, match="config platform"):
+        runtime_registry.create_deployment_adapter(
+            "fake",
+            execution_config=DeploymentExecutionConfig(platform="other"),
+        )
