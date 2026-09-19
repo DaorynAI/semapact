@@ -56,6 +56,7 @@ def reconcile_governed_contract(
     """
     governed_assets = build_schema_index(contract)
     mapper = schema_mapper or _PASSTHROUGH_SCHEMA_MAPPER
+    desired_uses_physical_identity = schema_mapper is not None
     if asset_bindings is None:
         observed_assets = _build_observed_asset_index(observation)
     else:
@@ -69,6 +70,7 @@ def reconcile_governed_contract(
         _governed_snapshot(
             governed_assets,
             mapper=mapper,
+            rebind_physical_identity=desired_uses_physical_identity,
         ),
         _observed_snapshot(
             governed_assets=governed_assets,
@@ -94,18 +96,19 @@ def _governed_snapshot(
     governed_assets: dict[str, SchemaObject],
     *,
     mapper: SchemaMapper,
+    rebind_physical_identity: bool,
 ) -> SchemaSnapshot:
     assets = []
     for asset_key, governed_schema in governed_assets.items():
-        property_bindings = build_physical_property_bindings(
-            governed_schema.properties or []
-        )
         mapped = mapper.map_desired_asset(
             governed_schema,
             asset_identity=asset_key,
         )
-        assets.append(
-            mapped.model_copy(
+        if rebind_physical_identity:
+            property_bindings = build_physical_property_bindings(
+                governed_schema.properties or []
+            )
+            mapped = mapped.model_copy(
                 update={
                     "properties": tuple(
                         prop.model_copy(
@@ -120,7 +123,7 @@ def _governed_snapshot(
                     )
                 }
             )
-        )
+        assets.append(mapped)
     return SchemaSnapshot(assets=tuple(assets))
 
 
