@@ -24,6 +24,7 @@ from semapact.deployment.schema_transitions import (
     AdditiveSchemaTransitionPlanner,
     SchemaTransition,
     SchemaTransitionKind,
+    SchemaTransitionPlanner,
 )
 from semapact.observation.fingerprint import with_observed_state_fingerprint
 from semapact.observation.models import (
@@ -63,6 +64,24 @@ class _RuntimeProvider:
         return self.state
 
 
+class _AlwaysNoOpPlanner(SchemaTransitionPlanner):
+    key = "always-no-op"
+
+    def plan(
+        self,
+        *,
+        governed_asset,
+        physical_name,
+        desired_columns,
+        comparison,
+    ):
+        return SchemaTransition(
+            kind=SchemaTransitionKind.NO_OP,
+            governed_asset=governed_asset,
+            physical_name=physical_name,
+        )
+
+
 class _Compiler(TransitionCompiler):
     key = "fake"
 
@@ -92,10 +111,15 @@ class _Compiler(TransitionCompiler):
 class _Platform(DeploymentPlatform):
     key = "fake"
 
-    def __init__(self, runtime_provider: _RuntimeProvider) -> None:
+    def __init__(
+        self,
+        runtime_provider: _RuntimeProvider,
+        *,
+        transition_planner: SchemaTransitionPlanner | None = None,
+    ) -> None:
         self.runtime_provider = runtime_provider
         self.schema_mapper = PassThroughSchemaMapper()
-        self.transition_planner = AdditiveSchemaTransitionPlanner()
+        self.transition_planner = transition_planner or AdditiveSchemaTransitionPlanner()
         self.transition_compiler = _Compiler()
 
     def validate_target(self, target: DeploymentTarget) -> None:
@@ -219,6 +243,27 @@ def test_generic_orchestrator_owns_observe_preview_freshness_and_execute() -> No
 
     assert runtime_provider.observe_calls == 2
     assert executor.operations == [preview.operations[0]]
+
+
+def test_generic_orchestrator_delegates_transition_policy_to_platform() -> None:
+    plan = _plan()
+    runtime_provider = _RuntimeProvider(_observation())
+    orchestrator = DeploymentOrchestrator(
+        platform=_Platform(
+            runtime_provider,
+            transition_planner=_AlwaysNoOpPlanner(),
+        ),
+        executor=_Executor(),
+    )
+
+    preview = orchestrator.preview(plan)
+
+    assert preview.operations == (
+        NativeOperation(
+            kind=NativeOperationKind.NO_OP,
+            governed_asset="orders",
+        ),
+    )
 
 
 def test_generic_orchestrator_owns_verification_entrypoint() -> None:
