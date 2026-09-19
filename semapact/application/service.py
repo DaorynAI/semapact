@@ -7,7 +7,7 @@ from typing import Sequence
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
-from semapact.application.errors import ApplicationCapabilityUnavailableError
+from semapact.application.errors import ApplicationDependencyUnavailableError
 from semapact.application.models.evolution import ContractEvolution
 from semapact.application.models.governance import GovernanceProposal
 from semapact.application.models.release import ReleasePlanningResult
@@ -109,13 +109,13 @@ class SemaPactApplicationService:
     def get_decision(self, decision_id: str) -> GovernanceDecision:
         """Read one persisted canonical GovernanceDecision without recomputation."""
         if self._decisions is None:
-            raise ApplicationCapabilityUnavailableError("decision_history")
+            raise ApplicationDependencyUnavailableError("decision_history")
         return self._decisions.get_decision(_required_text(decision_id, "decision_id"))
 
     def get_history(self, contract_id: str) -> ContractEvolution:
         """Reconstruct persisted governance evolution through the M3 read service."""
         if self._evolution is None:
-            raise ApplicationCapabilityUnavailableError("evolution_history")
+            raise ApplicationDependencyUnavailableError("evolution_history")
         return self._evolution.reconstruct(_required_text(contract_id, "contract_id"))
 
 
