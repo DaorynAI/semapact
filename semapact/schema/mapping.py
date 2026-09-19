@@ -211,7 +211,7 @@ def parse_sql_target_asset(
                 identity=name,
                 physical_type=data_type.sql(dialect=dialect),
                 nullable=column.find(exp.NotNullColumnConstraint) is None,
-                native_definition=column.sql(dialect=dialect),
+                native_definition=column.sql(dialect=dialect, identify=True),
             )
         )
 
