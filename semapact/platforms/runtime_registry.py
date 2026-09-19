@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -119,14 +119,14 @@ def create_runtime_provider_registry(
 def create_deployment_adapter(
     platform: str,
     *,
-    warehouse_id: str | None = None,
     contract_server: Server | None = None,
+    execution_options: Mapping[str, object] | None = None,
 ) -> DeploymentAdapter:
     """Compose the selected deployment adapter through one platform factory."""
     factory = get_platform_factory(platform)
     return factory.create_deployment_adapter(
         contract_server=contract_server,
-        execution_options={"warehouse_id": warehouse_id},
+        execution_options=execution_options,
     )
 
 
