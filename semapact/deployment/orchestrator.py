@@ -18,7 +18,6 @@ from semapact.deployment.models import (
     validate_deployment_preview_identity,
 )
 from semapact.deployment.providers import DeploymentPlatform, NativeOperationExecutor
-from semapact.deployment.schema_transitions import plan_additive_schema_transition
 from semapact.deployment.verification import verify_deployment_convergence
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.observation.fingerprint import fingerprint_observed_state
@@ -121,7 +120,7 @@ class DeploymentOrchestrator(DeploymentAdapter):
                 SchemaSnapshot(assets=(desired_asset,)),
                 SchemaSnapshot(assets=observed_assets),
             )
-            transition = plan_additive_schema_transition(
+            transition = self._platform.transition_planner.plan(
                 governed_asset=action.governed_asset,
                 physical_name=action.physical_name,
                 desired_columns=desired_asset.properties,
