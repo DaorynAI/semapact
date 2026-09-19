@@ -1,7 +1,8 @@
-"""Runtime-location resolution and provider composition boundary."""
+"""Runtime-location resolution and platform composition registry."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -9,7 +10,8 @@ from open_data_contract_standard.model import OpenDataContractStandard, Server
 
 from semapact.deployment.adapters import DeploymentAdapter
 from semapact.exceptions import ValidationError
-from semapact.observation import RuntimeProvider, RuntimeProviderRegistry
+from semapact.observation import RuntimeProviderRegistry
+from semapact.platforms.factories import PlatformFactory
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,39 @@ class ResolvedRuntimeLocation:
     contract_server: Server | None = None
 
 
+PlatformFactoryLoader = Callable[[], PlatformFactory]
+
+
+def _load_databricks_factory() -> PlatformFactory:
+    from semapact.platforms.databricks.factory import DatabricksPlatformFactory
+
+    return DatabricksPlatformFactory()
+
+
+_PLATFORM_FACTORY_LOADERS: dict[str, PlatformFactoryLoader] = {
+    "databricks": _load_databricks_factory,
+}
+
+
+def get_platform_factory(platform: str) -> PlatformFactory:
+    """Resolve one lazily loaded platform composition factory."""
+    normalized = platform.strip().casefold()
+    loader = _PLATFORM_FACTORY_LOADERS.get(normalized)
+    if loader is None:
+        supported = ", ".join(sorted(_PLATFORM_FACTORY_LOADERS))
+        raise ValidationError(
+            f"Unsupported runtime provider '{platform}'. Supported providers: {supported}"
+        )
+
+    factory = loader()
+    if factory.key.strip().casefold() != normalized:
+        raise RuntimeError(
+            "Platform factory key does not match registry key: "
+            f"{factory.key!r} != {normalized!r}"
+        )
+    return factory
+
+
 def resolve_runtime_location(
     contract: OpenDataContractStandard,
     *,
@@ -34,10 +69,14 @@ def resolve_runtime_location(
     servers = tuple(contract.servers or ())
     if servers:
         selected = _select_contract_server(servers, server_name)
-        platform = _required(selected.type, "Selected contract server must define a runtime type")
+        platform = _required(
+            selected.type,
+            "Selected contract server must define a runtime type",
+        )
+        factory = get_platform_factory(platform)
         return ResolvedRuntimeLocation(
-            platform=platform,
-            runtime_target=_runtime_target_from_server(platform, selected),
+            platform=factory.key,
+            runtime_target=factory.runtime_target_from_server(selected),
             source="contract",
             server_name=_required(
                 selected.server,
@@ -58,8 +97,9 @@ def resolve_runtime_location(
             "Contract defines no servers; provide both --platform and --runtime"
         )
 
+    factory = get_platform_factory(platform)
     return ResolvedRuntimeLocation(
-        platform=platform,
+        platform=factory.key,
         runtime_target=runtime_target,
         source="cli",
     )
@@ -71,13 +111,9 @@ def create_runtime_provider_registry(
     contract_server: Server | None = None,
 ) -> RuntimeProviderRegistry:
     """Create only the selected provider, keeping optional dependencies lazy."""
-    normalized = platform.strip().casefold()
-    if normalized == "databricks":
-        return RuntimeProviderRegistry(
-            (_create_databricks_provider(contract_server=contract_server),)
-        )
-    raise ValidationError(
-        f"Unsupported runtime provider '{platform}'. Supported providers: databricks"
+    factory = get_platform_factory(platform)
+    return RuntimeProviderRegistry(
+        (factory.create_runtime_provider(contract_server=contract_server),)
     )
 
 
@@ -87,38 +123,11 @@ def create_deployment_adapter(
     warehouse_id: str | None = None,
     contract_server: Server | None = None,
 ) -> DeploymentAdapter:
-    """Compose the selected write adapter and provider clients lazily.
-
-    A SQL warehouse is execution configuration, not a prerequisite for read-only
-    validation or preview. Databricks execution fails closed if mutation is attempted
-    without a warehouse ID.
-    """
-    normalized = platform.strip().casefold()
-    if normalized != "databricks":
-        raise ValidationError(
-            f"Unsupported deployment adapter '{platform}'. Supported adapters: databricks"
-        )
-
-    from semapact.platforms.databricks import (
-        DatabricksDeploymentAdapter,
-        DatabricksRuntimeProvider,
-        create_databricks_workspace_client,
-    )
-
-    client = create_databricks_workspace_client(
-        workspace_url=_clean(contract_server.host) if contract_server else None
-    )
-    source_identifier = getattr(getattr(client, "config", None), "host", None)
-    if not isinstance(source_identifier, str) or not source_identifier.strip():
-        raise RuntimeError("Databricks SDK did not resolve a workspace host")
-    runtime_provider = DatabricksRuntimeProvider(
-        client=client,
-        source_identifier=source_identifier,
-    )
-    return DatabricksDeploymentAdapter(
-        client=client,
-        runtime_provider=runtime_provider,
-        warehouse_id=warehouse_id,
+    """Compose the selected deployment adapter through one platform factory."""
+    factory = get_platform_factory(platform)
+    return factory.create_deployment_adapter(
+        contract_server=contract_server,
+        execution_options={"warehouse_id": warehouse_id},
     )
 
 
@@ -150,38 +159,6 @@ def _select_contract_server(
     raise ValidationError(
         "Multiple contract servers are defined; select one with --server. "
         f"Available servers: {_available_server_names(servers)}"
-    )
-
-
-def _runtime_target_from_server(platform: str, server: Server) -> str:
-    """Project one ODCS server into the selected provider's runtime target."""
-    if platform.strip().casefold() == "databricks":
-        catalog = _required(server.catalog, "Databricks contract server must define catalog")
-        schema = _required(server.schema_, "Databricks contract server must define schema")
-        return f"{catalog}.{schema}"
-    raise ValidationError(
-        f"Unsupported runtime provider '{platform}'. Supported providers: databricks"
-    )
-
-
-def _create_databricks_provider(
-    *,
-    contract_server: Server | None = None,
-) -> RuntimeProvider:
-    from semapact.platforms.databricks import (
-        DatabricksRuntimeProvider,
-        create_databricks_workspace_client,
-    )
-
-    client = create_databricks_workspace_client(
-        workspace_url=_clean(contract_server.host) if contract_server else None
-    )
-    source_identifier = getattr(getattr(client, "config", None), "host", None)
-    if not isinstance(source_identifier, str) or not source_identifier.strip():
-        raise RuntimeError("Databricks SDK did not resolve a workspace host")
-    return DatabricksRuntimeProvider(
-        client=client,
-        source_identifier=source_identifier,
     )
 
 
