@@ -18,7 +18,7 @@ from semapact.observation.models import (
 )
 from semapact.platforms.databricks.platform import DatabricksDeploymentPlatform
 from semapact.platforms.databricks.transition_compiler import (
-    DATABRICKS_TRANSITION_COMPILER,
+    DatabricksTransitionCompiler,
 )
 
 
@@ -128,7 +128,7 @@ def _deployment_target():
 
 
 def _compile(transition: SchemaTransition):
-    return DATABRICKS_TRANSITION_COMPILER.compile(
+    return DatabricksTransitionCompiler().compile(
         runtime_target="main.silver",
         transition=transition,
     )
