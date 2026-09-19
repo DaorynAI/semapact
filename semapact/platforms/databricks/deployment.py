@@ -15,7 +15,13 @@ from semapact.deployment.providers import (
 )
 from semapact.exceptions import ValidationError
 from semapact.observation.providers import RuntimeProvider
-from semapact.platforms.databricks.platform import DatabricksDeploymentPlatform
+from semapact.platforms.databricks.transition_compiler import (
+    DatabricksTransitionCompiler,
+)
+from semapact.platforms.databricks.transition_planner import (
+    DatabricksSchemaTransitionPlanner,
+)
+from semapact.schema import SqlSchemaMapper
 
 
 _TERMINAL_STATES = {"SUCCEEDED", "FAILED", "CANCELED", "CLOSED"}
@@ -111,7 +117,9 @@ class DatabricksStatementExecutor(NativeOperationExecutor):
 
 
 class DatabricksDeploymentAdapter(DeploymentOrchestrator):
-    """Backward-compatible Databricks wiring over generic deployment orchestration."""
+    """Databricks wiring over the generic deployment orchestrator."""
+
+    key = "databricks"
 
     def __init__(
         self,
@@ -123,9 +131,14 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
         max_poll_attempts: int = 300,
     ) -> None:
         super().__init__(
-            platform=DatabricksDeploymentPlatform(
-                runtime_provider=runtime_provider,
+            runtime_provider=runtime_provider,
+            schema_mapper=SqlSchemaMapper(
+                key=self.key,
+                server_type="databricks",
+                dialect="databricks",
             ),
+            transition_planner=DatabricksSchemaTransitionPlanner(),
+            transition_compiler=DatabricksTransitionCompiler(),
             executor=DatabricksStatementExecutor(
                 client=client,
                 warehouse_id=warehouse_id,
