@@ -88,6 +88,10 @@ def run_deployment_execute(args: argparse.Namespace) -> DeploymentCommandResult:
         execution_config = DatabricksDeploymentExecutionConfig(
             warehouse_id=args.warehouse_id,
         )
+    elif args.warehouse_id is not None:
+        raise ValidationError(
+            "--warehouse-id is only supported for Databricks deployment"
+        )
 
     adapter = create_deployment_adapter(
         plan.target.platform,
