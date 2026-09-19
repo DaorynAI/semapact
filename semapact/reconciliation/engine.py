@@ -21,6 +21,7 @@ from semapact.reconciliation.models import (
 from semapact.schema import (
     PassThroughSchemaMapper,
     SchemaDifference,
+    SchemaMapper,
     SchemaSnapshot,
     build_physical_property_bindings,
     compare_schema_snapshots,
@@ -45,6 +46,7 @@ def reconcile_governed_contract(
     observation: ObservedPlatformState,
     *,
     asset_bindings: Sequence[RuntimeAssetBinding] | None = None,
+    schema_mapper: SchemaMapper | None = None,
 ) -> ReconciliationResult:
     """Compare governed ODCS desired state with platform-neutral observed state.
 
@@ -53,6 +55,7 @@ def reconcile_governed_contract(
     projects those facts into stable runtime reason codes.
     """
     governed_assets = build_schema_index(contract)
+    mapper = schema_mapper or _PASSTHROUGH_SCHEMA_MAPPER
     if asset_bindings is None:
         observed_assets = _build_observed_asset_index(observation)
     else:
@@ -63,10 +66,14 @@ def reconcile_governed_contract(
         )
 
     comparison = compare_schema_snapshots(
-        _governed_snapshot(governed_assets),
+        _governed_snapshot(
+            governed_assets,
+            mapper=mapper,
+        ),
         _observed_snapshot(
             governed_assets=governed_assets,
             observed_assets=observed_assets,
+            mapper=mapper,
         ),
     )
 
@@ -85,22 +92,43 @@ def reconcile_governed_contract(
 
 def _governed_snapshot(
     governed_assets: dict[str, SchemaObject],
+    *,
+    mapper: SchemaMapper,
 ) -> SchemaSnapshot:
-    return SchemaSnapshot(
-        assets=tuple(
-            _PASSTHROUGH_SCHEMA_MAPPER.map_desired_asset(
-                governed_schema,
-                asset_identity=asset_key,
-            )
-            for asset_key, governed_schema in governed_assets.items()
+    assets = []
+    for asset_key, governed_schema in governed_assets.items():
+        property_bindings = build_physical_property_bindings(
+            governed_schema.properties or []
         )
-    )
+        mapped = mapper.map_desired_asset(
+            governed_schema,
+            asset_identity=asset_key,
+        )
+        assets.append(
+            mapped.model_copy(
+                update={
+                    "properties": tuple(
+                        prop.model_copy(
+                            update={
+                                "identity": property_bindings.get(
+                                    prop.identity.casefold(),
+                                    prop.identity,
+                                )
+                            }
+                        )
+                        for prop in mapped.properties
+                    )
+                }
+            )
+        )
+    return SchemaSnapshot(assets=tuple(assets))
 
 
 def _observed_snapshot(
     *,
     governed_assets: dict[str, SchemaObject],
     observed_assets: dict[str, ObservedAsset],
+    mapper: SchemaMapper,
 ) -> SchemaSnapshot:
     assets = []
     for asset_key, observed_asset in observed_assets.items():
@@ -113,7 +141,7 @@ def _observed_snapshot(
             )
         )
         assets.append(
-            _PASSTHROUGH_SCHEMA_MAPPER.map_observed_asset(
+            mapper.map_observed_asset(
                 observed_asset,
                 asset_identity=asset_key,
                 property_bindings=property_bindings,
