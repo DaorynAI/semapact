@@ -14,7 +14,7 @@ from semapact.deployment.models import (
     NativeOperationKind,
 )
 from semapact.deployment.orchestrator import DeploymentOrchestrator
-from semapact.deployment.planner import build_deployment_plan
+from semapact.deployment.planner import build_deployment_actions, build_deployment_plan
 from semapact.deployment.providers import (
     DeploymentExecutionConfig,
     NativeOperationExecutor,
@@ -29,6 +29,7 @@ __all__ = [
     "DeploymentAction",
     "DeploymentActionKind",
     "DeploymentAdapter",
+    "DeploymentAssessment",
     "DeploymentAuthorization",
     "DeploymentExecutionConfig",
     "DeploymentOrchestrator",
@@ -42,6 +43,7 @@ __all__ = [
     "TransitionCompiler",
     "SchemaTransitionPlanner",
     "authorize_deployment",
+    "build_deployment_actions",
     "build_deployment_plan",
     "verify_deployment_convergence",
 ]
