@@ -16,6 +16,7 @@ from semapact.deployment.models import (
 from semapact.deployment.orchestrator import DeploymentOrchestrator
 from semapact.deployment.planner import build_deployment_plan
 from semapact.deployment.providers import (
+    DeploymentExecutionConfig,
     DeploymentPlatform,
     NativeOperationExecutor,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "DeploymentActionKind",
     "DeploymentAdapter",
     "DeploymentAuthorization",
+    "DeploymentExecutionConfig",
     "DeploymentOrchestrator",
     "DeploymentPlan",
     "DeploymentPlatform",
