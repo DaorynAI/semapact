@@ -9,7 +9,7 @@ datacontract-cli rather than reinterpreting ODCS themselves.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Protocol
+from typing import Callable, Protocol
 
 from open_data_contract_standard.model import SchemaObject, SchemaProperty
 
@@ -116,7 +116,7 @@ def map_observed_schema_asset(
     *,
     asset_identity: str,
     property_bindings: Mapping[str, str] | None = None,
-    normalize_physical_type=None,
+    normalize_physical_type: Callable[[str | None], str | None] | None = None,
 ) -> SchemaAssetState:
     """Project one observed runtime asset into normalized comparable state."""
     bindings = {
