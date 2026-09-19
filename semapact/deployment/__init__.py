@@ -19,6 +19,10 @@ from semapact.deployment.providers import (
     DeploymentPlatform,
     NativeOperationExecutor,
 )
+from semapact.deployment.schema_transitions import (
+    AdditiveSchemaTransitionPlanner,
+    SchemaTransitionPlanner,
+)
 from semapact.deployment.verification import verify_deployment_convergence
 
 __all__ = [
@@ -31,10 +35,12 @@ __all__ = [
     "DeploymentPlatform",
     "DeploymentPreview",
     "DeploymentTarget",
+    "AdditiveSchemaTransitionPlanner",
     "NativeOperation",
     "NativeOperationExecutor",
     "NativeOperationKind",
     "TransitionCompiler",
+    "SchemaTransitionPlanner",
     "authorize_deployment",
     "build_deployment_plan",
     "verify_deployment_convergence",
