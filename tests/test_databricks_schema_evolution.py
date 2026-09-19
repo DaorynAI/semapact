@@ -102,7 +102,7 @@ def test_planner_and_compiler_create_missing_managed_delta_table() -> None:
     )
 
     assert transition.kind is SchemaTransitionKind.CREATE_ASSET
-    assert transition.columns[0].name == "id"
+    assert transition.columns[0].identity == "id"
     assert transition.columns[0].physical_type == "BIGINT"
     assert transition.columns[0].nullable is False
 
@@ -124,7 +124,7 @@ def test_planner_and_compiler_add_only_missing_nullable_columns() -> None:
     )
 
     assert transition.kind is SchemaTransitionKind.ADD_PROPERTIES
-    assert [column.name for column in transition.columns] == ["note"]
+    assert [column.identity for column in transition.columns] == ["note"]
 
     operation = _compile(transition)
     assert operation.kind is NativeOperationKind.ALTER
@@ -157,6 +157,22 @@ def test_desired_type_normalization_reuses_datacontract_mapping() -> None:
         None,
     )
     assert transition.columns[0].physical_type == "INT"
+
+
+def test_desired_target_schema_comes_from_datacontract_physical_projection() -> None:
+    prop = SchemaProperty(
+        name="logical_id",
+        physicalName="physical_id",
+        logicalType="integer",
+        physicalType="integer",
+        required=True,
+    )
+
+    transition = _plan(_schema(prop), None)
+
+    assert transition.columns[0].identity == "physical_id"
+    assert transition.columns[0].physical_type == "INT"
+    assert transition.columns[0].nullable is False
 
 
 @pytest.mark.parametrize(
