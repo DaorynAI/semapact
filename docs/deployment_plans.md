@@ -30,12 +30,29 @@ DeploymentPlan
         ↓
 DeploymentAuthorization
         ↓
-platform adapter validate / preview / execute
+DeploymentService
+        ↓
+DeploymentAdapter interface
+        ↓
+DeploymentOrchestrator
+  validate
+  → observe
+  → map
+  → compare
+  → transition
+  → compile
+  → preview
+  → freshness / exact authorization
+  → execute
+        ↓
+provider NativeOperationExecutor
         ↓
 runtime
         ↓
 reconciliation verifies convergence
 ```
+
+The orchestration above is provider-neutral. Platform packages implement only the narrow `DeploymentPlatform`, `SchemaMapper`, `TransitionCompiler`, and `NativeOperationExecutor` seams.
 
 ## What a DeploymentPlan means
 
@@ -245,12 +262,14 @@ Action ordering is canonical even when schemas appear in a different order in so
 
 `DeploymentPreview` is likewise deterministic for the same plan and observed runtime evidence, but deterministic IDs provide artifact consistency rather than cryptographic authenticity. Execution still validates exact binding and fresh runtime evidence at the side-effect boundary.
 
-## Provider support belongs to the adapter
+## Provider support belongs behind generic deployment contracts
 
 DeploymentPlan intentionally does not contain generic `preconditions`, `adapterKey`, or guessed platform-specific operations.
 
-A deployment adapter is responsible for explicit provider support and execution semantics. It receives an already-built DeploymentPlan and an allowed DeploymentAuthorization; it does not construct or reinterpret governance artifacts.
+The public deployment contracts define the complete orchestration boundary. `DeploymentOrchestrator` owns lifecycle ordering and invariant checks; platform implementations provide only target/runtime validation, target schema mapping configuration, transition compilation, and native execution.
 
-A provider adapter must explicitly report unsupported ODCS-to-platform mappings. It must never silently ignore unsupported governed state.
+For Databricks, the native side effect is executed through the Databricks SDK Statement Execution API using an exact SQL warehouse. SemaPact does not shell out to the Databricks CLI for deployment.
+
+A platform implementation must explicitly report unsupported ODCS-to-platform mappings or runtime capabilities. It must never silently ignore unsupported governed state.
 
 A successful execution call is also not proof of convergence. Runtime convergence is verified separately through SemaPact reconciliation.
