@@ -51,7 +51,7 @@ provider NativeOperationExecutor / RuntimeProvider
 runtime
 ```
 
-The orchestration above is provider-neutral. Platform packages implement only the narrow `DeploymentPlatform`, `SchemaMapper`, `TransitionCompiler`, and `NativeOperationExecutor` seams.
+The orchestration above is provider-neutral. Platform packages configure or implement only the narrow `DeploymentPlatform`, `SchemaMapper`, `SchemaTransitionPlanner`, `TransitionCompiler`, `RuntimeProvider`, and `NativeOperationExecutor` seams. The initial Databricks path reuses the shared fail-closed `AdditiveSchemaTransitionPlanner`; a future platform can supply a different planner without changing orchestration.
 
 ## What a DeploymentPlan means
 
