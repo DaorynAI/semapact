@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
     SchemaObject,
@@ -35,6 +37,7 @@ class _AssessmentAdapter(DeploymentAdapter):
                 platform="fake",
                 source_identifier=target.source_reference,
                 assets=(),
+                captured_at=datetime(2026, 9, 20, tzinfo=timezone.utc),
             )
         )
         assert observation.fingerprint is not None
