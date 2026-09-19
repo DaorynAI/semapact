@@ -105,7 +105,7 @@ def run_deployment_execute(args: argparse.Namespace) -> DeploymentCommandResult:
 
 
 def run_deployment_verify(args: argparse.Namespace) -> DeploymentCommandResult:
-    """Verify exact DeploymentPlan convergence through the existing M1 path."""
+    """Verify exact DeploymentPlan convergence through the unified deployment adapter."""
     plan = _load_model(args.plan, DeploymentPlan)
     from semapact.platforms.runtime_registry import create_deployment_adapter
 
