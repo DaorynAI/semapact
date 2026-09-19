@@ -21,8 +21,8 @@ from semapact.platforms.databricks.schema import (
     validate_databricks_desired_schema,
     validate_databricks_observed_asset,
 )
-from semapact.platforms.databricks.sql_compiler import (
-    compile_databricks_schema_transition,
+from semapact.platforms.databricks.transition_compiler import (
+    DATABRICKS_TRANSITION_COMPILER,
 )
 
 
@@ -101,9 +101,8 @@ def _plan(
 
 
 def _compile(transition: SchemaTransition):
-    return compile_databricks_schema_transition(
-        catalog="main",
-        schema_name="silver",
+    return DATABRICKS_TRANSITION_COMPILER.compile(
+        runtime_target="main.silver",
         transition=transition,
     )
 
