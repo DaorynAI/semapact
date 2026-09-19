@@ -23,6 +23,7 @@ from semapact.deployment.verification import verify_deployment_convergence
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.observation.fingerprint import fingerprint_observed_state
 from semapact.observation.models import ObservedPlatformState
+from semapact.reconciliation import ReconciliationResult
 from semapact.runtime import RuntimeAssetSpec
 from semapact.schema import (
     SchemaAssetState,
@@ -35,9 +36,9 @@ class DeploymentOrchestrator(DeploymentAdapter):
     """Provider-neutral deployment lifecycle.
 
     Flow:
-        validate plan
-        → validate observation
-        → map desired/observed state
+        validate / map desired state
+        → observe runtime
+        → validate / map observed state
         → compare
         → derive transition
         → compile provider-native operation
@@ -154,9 +155,8 @@ class DeploymentOrchestrator(DeploymentAdapter):
             operations=ordered,
         )
 
-    def verify(self, plan: DeploymentPlan):
-        """Verify convergence through the same configured runtime provider."""
-        self.validate(plan)
+    def verify(self, plan: DeploymentPlan) -> ReconciliationResult:
+        """Verify convergence without applying mutation capability policy."""
         return verify_deployment_convergence(
             plan,
             self._platform.runtime_provider,
@@ -170,10 +170,9 @@ class DeploymentOrchestrator(DeploymentAdapter):
         authorization: DeploymentAuthorization,
     ) -> None:
         """Execute only the exact authorized preview against unchanged runtime state."""
-        validate_deployment_plan_identity(plan)
         validate_deployment_preview_identity(preview)
         validate_deployment_authorization_identity(authorization)
-        self.validate(plan)
+        desired_by_action = self._validate_and_map_plan(plan)
 
         if not authorization.allowed:
             raise ContractOpsAuthorizationError(
@@ -215,7 +214,11 @@ class DeploymentOrchestrator(DeploymentAdapter):
                 "Runtime state changed since DeploymentPreview was produced"
             )
 
-        expected = self._preview_from_observation(plan, current)
+        expected = self._preview_from_observation(
+            plan,
+            current,
+            desired_by_action=desired_by_action,
+        )
         if expected != preview:
             raise ValidationError(
                 "DeploymentPreview no longer equals the deterministic preview for "
