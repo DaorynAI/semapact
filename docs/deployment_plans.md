@@ -35,21 +35,20 @@ DeploymentService
 DeploymentAdapter interface
         ↓
 DeploymentOrchestrator
-  validate
+  validate / map desired
   → observe
-  → map
+  → validate / map observed
   → compare
   → transition
   → compile
   → preview
   → freshness / exact authorization
   → execute
+  → verify
         ↓
-provider NativeOperationExecutor
+provider NativeOperationExecutor / RuntimeProvider
         ↓
 runtime
-        ↓
-reconciliation verifies convergence
 ```
 
 The orchestration above is provider-neutral. Platform packages implement only the narrow `DeploymentPlatform`, `SchemaMapper`, `TransitionCompiler`, and `NativeOperationExecutor` seams.
@@ -97,7 +96,7 @@ The same shared schema comparison facts are consumed by runtime reconciliation. 
 
 Schema projection is also shared. `semapact.schema` defines the mapping contract that converts provider target-schema output and observed runtime state into normalized `SchemaSnapshot` values. SemaPact should not reimplement an ODCS-to-platform compiler when datacontract-cli already provides one.
 
-For Databricks, the desired side delegates the complete ODCS → Databricks target-schema compilation to datacontract-cli's SQL exporter, including physical property names, target types, nested types, and nullability. SemaPact parses that compiler output into its normalized comparison model and validates it fail-closed. The observed side maps fresh runtime evidence into the same model.
+For Databricks, the desired side delegates the complete ODCS → Databricks target-schema compilation to datacontract-cli's SQL exporter, including physical property names, target types, nested types, and nullability. SemaPact parses that compiler output into its normalized comparison model, rejects any output that is not exactly one CREATE TABLE statement, and retains only the governed physical column shape currently covered by comparison semantics (identity, type, nullability). The observed side maps fresh runtime evidence into the same model.
 
 The exported CREATE DDL is **not** execution authority: datacontract-cli currently emits full creation-oriented DDL, while SemaPact must derive CREATE / ALTER / NO_OP from the released target schema versus fresh runtime state and compile only the exact authorized transition.
 
@@ -200,7 +199,7 @@ semapact deployment verify \
   --output json
 ```
 
-Verification performs fresh runtime observation and reuses the normal reconciliation semantics:
+Verification enters through the same DeploymentAdapter / DeploymentOrchestrator boundary, performs fresh runtime observation, and reuses the normal reconciliation semantics with the same platform schema mapper used by preview:
 
 | Runtime status | Exit code |
 | --- | ---: |
@@ -208,7 +207,7 @@ Verification performs fresh runtime observation and reuses the normal reconcilia
 | `DRIFT` | `6` |
 | `INDETERMINATE` | `7` |
 
-This keeps execution status separate from convergence evidence.
+This keeps execution status separate from convergence evidence. VERIFY is assurance/read-side behavior: provider mutation restrictions such as Databricks MANAGED-only writes do not prevent SemaPact from verifying an observable non-managed asset.
 
 ## Databricks deployment capability
 
@@ -263,6 +262,8 @@ Action ordering is canonical even when schemas appear in a different order in so
 `DeploymentPreview` is likewise deterministic for the same plan and observed runtime evidence, but deterministic IDs provide artifact consistency rather than cryptographic authenticity. Execution still validates exact binding and fresh runtime evidence at the side-effect boundary.
 
 ## Provider support belongs behind generic deployment contracts
+
+Platform composition is centralized behind `PlatformFactory`. A platform owns its ODCS Server → runtime-target projection and composes its RuntimeProvider and DeploymentAdapter; the shared registry only dispatches a platform key to a lazy factory loader. Adding another platform does not require another deployment lifecycle or another runtime/deployment composition branch.
 
 DeploymentPlan intentionally does not contain generic `preconditions`, `adapterKey`, or guessed platform-specific operations.
 
