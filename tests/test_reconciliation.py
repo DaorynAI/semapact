@@ -290,6 +290,42 @@ def test_duplicate_canonical_observed_property_identity_fails_closed() -> None:
         reconcile_governed_contract(contract, observation)
 
 
+def test_default_reconciliation_does_not_rebind_logical_names_as_physical_names() -> None:
+    contract = _contract(
+        SchemaObject(
+            name="orders",
+            properties=[
+                SchemaProperty(
+                    name="logical_a",
+                    physicalName="logical_b",
+                    type="integer",
+                    physicalType="BIGINT",
+                    required=True,
+                ),
+                SchemaProperty(
+                    name="logical_b",
+                    physicalName="physical_b",
+                    type="string",
+                    physicalType="STRING",
+                    required=False,
+                ),
+            ],
+        )
+    )
+    observation = _observation(
+        _asset(
+            "orders",
+            ("logical_b", "BIGINT", False),
+            ("physical_b", "STRING", True),
+        )
+    )
+
+    result = reconcile_governed_contract(contract, observation)
+
+    assert result.differences == ()
+    assert result.unverified_paths == ()
+
+
 def test_difference_order_and_serialization_are_deterministic() -> None:
     orders = SchemaObject(
         name="orders",
