@@ -162,7 +162,7 @@ def _target_schema_from_databricks_ddl(
         ]
     except Exception as exc:
         raise ValidationError(
-            "datacontract-cli emitted Databricks DDL that could not be parsed"
+            "datacontract-cli emitted unsupported Databricks physicalType/DDL"
         ) from exc
 
     creates = [
