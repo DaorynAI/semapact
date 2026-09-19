@@ -2,32 +2,36 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from abc import ABC, abstractmethod
 
 from semapact.deployment.models import (
     DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
 )
-from semapact.observation.models import ObservedPlatformState
 
 
-class DeploymentAdapter(Protocol):
-    """Translate and execute one exact DeploymentPlan for a runtime provider."""
+class DeploymentAdapter(ABC):
+    """Own the complete provider-neutral deployment lifecycle entrypoints."""
 
     key: str
 
-    def validate(self, plan: DeploymentPlan) -> None: ...
+    @abstractmethod
+    def validate(self, plan: DeploymentPlan) -> None:
+        """Validate one exact DeploymentPlan."""
+        raise NotImplementedError
 
-    def preview(
-        self,
-        plan: DeploymentPlan,
-        observed_state: ObservedPlatformState,
-    ) -> DeploymentPreview: ...
+    @abstractmethod
+    def preview(self, plan: DeploymentPlan) -> DeploymentPreview:
+        """Observe current runtime and derive the exact deployment preview."""
+        raise NotImplementedError
 
+    @abstractmethod
     def execute(
         self,
         plan: DeploymentPlan,
         preview: DeploymentPreview,
         authorization: DeploymentAuthorization,
-    ) -> None: ...
+    ) -> None:
+        """Execute only the exact authorized preview."""
+        raise NotImplementedError
