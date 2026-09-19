@@ -32,8 +32,8 @@ from semapact.platforms.databricks.schema import (
     validate_databricks_desired_schema,
     validate_databricks_observed_asset,
 )
-from semapact.platforms.databricks.sql_compiler import (
-    compile_databricks_schema_transition,
+from semapact.platforms.databricks.transition_compiler import (
+    DATABRICKS_TRANSITION_COMPILER,
 )
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
 from semapact.runtime import RuntimeAssetSpec
@@ -128,9 +128,8 @@ class DatabricksDeploymentAdapter:
                 observed=observed,
             )
             operations.append(
-                compile_databricks_schema_transition(
-                    catalog=catalog,
-                    schema_name=schema_name,
+                DATABRICKS_TRANSITION_COMPILER.compile(
+                    runtime_target=plan.target.runtime_target,
                     transition=transition,
                 )
             )
