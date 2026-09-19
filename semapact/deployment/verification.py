@@ -12,11 +12,14 @@ from semapact.exceptions import ValidationError
 from semapact.observation.providers import RuntimeProvider
 from semapact.reconciliation import ReconciliationResult, reconcile_governed_contract
 from semapact.runtime import RuntimeAssetSpec
+from semapact.schema import SchemaMapper
 
 
 def verify_deployment_convergence(
     plan: DeploymentPlan,
     runtime_provider: RuntimeProvider,
+    *,
+    schema_mapper: SchemaMapper | None = None,
 ) -> ReconciliationResult:
     """Observe and reconcile the exact desired state embedded in a DeploymentPlan.
 
@@ -60,6 +63,7 @@ def verify_deployment_convergence(
         desired_contract,
         observation,
         asset_bindings=bindings,
+        schema_mapper=schema_mapper,
     )
 
 

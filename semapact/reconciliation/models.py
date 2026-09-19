@@ -12,6 +12,8 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
 
+from semapact.schema import SchemaDifferenceType, SchemaSubject
+
 
 class ReconciliationModel(BaseModel):
     """Shared immutable base for reconciliation models."""
@@ -19,21 +21,9 @@ class ReconciliationModel(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class ReconciliationDifferenceType(str, Enum):
-    """Generic raw comparison operation, not a public reason-code taxonomy."""
-
-    MISSING = "missing"
-    UNEXPECTED = "unexpected"
-    MISMATCH = "mismatch"
-
-
-class ReconciliationSubject(str, Enum):
-    """Comparable subject represented by a raw reconciliation difference."""
-
-    ASSET = "asset"
-    PROPERTY = "property"
-    PHYSICAL_TYPE = "physical_type"
-    NULLABILITY = "nullability"
+# Backward-compatible public names projected from the shared schema comparator.
+ReconciliationDifferenceType = SchemaDifferenceType
+ReconciliationSubject = SchemaSubject
 
 
 class RuntimeReasonCode(str, Enum):
@@ -50,8 +40,8 @@ class RuntimeReasonCode(str, Enum):
 class ReconciliationDifference(ReconciliationModel):
     """One deterministic difference between governed and observed state."""
 
-    difference_type: ReconciliationDifferenceType
-    subject: ReconciliationSubject
+    difference_type: SchemaDifferenceType
+    subject: SchemaSubject
     reason_code: RuntimeReasonCode
     path: str
     asset_identity: str

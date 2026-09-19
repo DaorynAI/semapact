@@ -25,7 +25,6 @@ from semapact.interfaces.outcomes import (
     ProcessOutcome,
     outcome_from_reconciliation_status,
 )
-from semapact.observation import RuntimeProvider
 from semapact.reconciliation import classify_reconciliation_status
 
 
@@ -59,14 +58,11 @@ def run_deployment_plan(args: argparse.Namespace) -> DeploymentCommandResult:
 def run_deployment_preview(args: argparse.Namespace) -> DeploymentCommandResult:
     """Observe exact runtime scope and render the adapter's canonical preview."""
     plan = _load_model(args.plan, DeploymentPlan)
-    provider = _runtime_provider(plan)
-
     from semapact.platforms.runtime_registry import create_deployment_adapter
 
     adapter = create_deployment_adapter(plan.target.platform)
     preview = DeploymentService().preview(
         plan,
-        runtime_provider=provider,
         adapter=adapter,
     )
     return DeploymentCommandResult(
@@ -83,9 +79,23 @@ def run_deployment_execute(args: argparse.Namespace) -> DeploymentCommandResult:
 
     from semapact.platforms.runtime_registry import create_deployment_adapter
 
+    execution_config = None
+    if plan.target.platform == "databricks":
+        from semapact.platforms.databricks.deployment import (
+            DatabricksDeploymentExecutionConfig,
+        )
+
+        execution_config = DatabricksDeploymentExecutionConfig(
+            warehouse_id=args.warehouse_id,
+        )
+    elif args.warehouse_id is not None:
+        raise ValidationError(
+            "--warehouse-id is only supported for Databricks deployment"
+        )
+
     adapter = create_deployment_adapter(
         plan.target.platform,
-        warehouse_id=args.warehouse_id,
+        execution_config=execution_config,
     )
     DeploymentService().execute(
         plan,
@@ -109,11 +119,14 @@ def run_deployment_execute(args: argparse.Namespace) -> DeploymentCommandResult:
 
 
 def run_deployment_verify(args: argparse.Namespace) -> DeploymentCommandResult:
-    """Verify exact DeploymentPlan convergence through the existing M1 path."""
+    """Verify exact DeploymentPlan convergence through the unified deployment adapter."""
     plan = _load_model(args.plan, DeploymentPlan)
+    from semapact.platforms.runtime_registry import create_deployment_adapter
+
+    adapter = create_deployment_adapter(plan.target.platform)
     result = DeploymentService().verify(
         plan,
-        runtime_provider=_runtime_provider(plan),
+        adapter=adapter,
     )
     status = classify_reconciliation_status(result)
     rendered = (
@@ -125,13 +138,6 @@ def run_deployment_verify(args: argparse.Namespace) -> DeploymentCommandResult:
         output=rendered,
         outcome=outcome_from_reconciliation_status(status),
     )
-
-
-def _runtime_provider(plan: DeploymentPlan) -> RuntimeProvider:
-    from semapact.platforms.runtime_registry import create_runtime_provider_registry
-
-    registry = create_runtime_provider_registry(plan.target.platform)
-    return registry.get(plan.target.platform)
 
 
 def _load_model(path: str, model_type: type[_ModelT]) -> _ModelT:

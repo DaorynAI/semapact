@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from open_data_contract_standard.model import OpenDataContractStandard, Server
 
 from semapact.exceptions import ValidationError
+from semapact.platforms import runtime_registry
 from semapact.platforms.runtime_registry import resolve_runtime_location
 
 
@@ -99,3 +102,39 @@ def test_contract_without_servers_requires_both_fallback_values(
 def test_server_selector_is_invalid_when_contract_has_no_servers() -> None:
     with pytest.raises(ValidationError, match="contract defines no servers"):
         resolve_runtime_location(_contract(), server_name="production")
+
+
+
+class _FakeRuntimeProvider:
+    key = "databricks"
+
+    def resolve_bindings(self, *, runtime_target, assets):
+        return ()
+
+    def observe(self, *, bindings):
+        raise AssertionError("observation is not needed for composition test")
+
+
+def test_runtime_registry_is_single_read_write_composition_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _FakeRuntimeProvider()
+    client = SimpleNamespace()
+    calls: list[object | None] = []
+
+    def _compose(*, contract_server=None):
+        calls.append(contract_server)
+        return client, provider
+
+    monkeypatch.setattr(
+        runtime_registry,
+        "_create_databricks_client_and_provider",
+        _compose,
+    )
+
+    registry = runtime_registry.create_runtime_provider_registry("databricks")
+    adapter = runtime_registry.create_deployment_adapter("databricks")
+
+    assert registry.get("databricks") is provider
+    assert adapter.key == "databricks"
+    assert calls == [None, None]

@@ -4,17 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from open_data_contract_standard.model import OpenDataContractStandard, SchemaProperty
+from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject
 
 from semapact.exceptions import ValidationError
-from semapact.lifecycle.identity import (
-    PropertyIdentity,
-    build_property_index,
-    build_schema_index,
-    normalize_identity_name,
-)
+from semapact.lifecycle.identity import build_schema_index, normalize_identity_name
 from semapact.observation.fingerprint import fingerprint_observed_state
-from semapact.observation.models import ObservedAsset, ObservedPlatformState, ObservedProperty
+from semapact.observation.models import ObservedAsset, ObservedPlatformState
 from semapact.observation.providers import RuntimeAssetBinding
 from semapact.reconciliation.models import (
     ReconciliationDifference,
@@ -23,13 +18,16 @@ from semapact.reconciliation.models import (
     ReconciliationSubject,
     RuntimeReasonCode,
 )
+from semapact.schema import (
+    PassThroughSchemaMapper,
+    SchemaDifference,
+    SchemaMapper,
+    SchemaSnapshot,
+    build_physical_property_bindings,
+    compare_schema_snapshots,
+)
 
-_SUBJECT_ORDER = {
-    ReconciliationSubject.ASSET: 0,
-    ReconciliationSubject.PROPERTY: 1,
-    ReconciliationSubject.PHYSICAL_TYPE: 2,
-    ReconciliationSubject.NULLABILITY: 3,
-}
+_PASSTHROUGH_SCHEMA_MAPPER = PassThroughSchemaMapper()
 
 _REASON_CODE_BY_RAW_DIFFERENCE: dict[
     tuple[ReconciliationDifferenceType, ReconciliationSubject], RuntimeReasonCode
@@ -48,15 +46,17 @@ def reconcile_governed_contract(
     observation: ObservedPlatformState,
     *,
     asset_bindings: Sequence[RuntimeAssetBinding] | None = None,
+    schema_mapper: SchemaMapper | None = None,
 ) -> ReconciliationResult:
     """Compare governed ODCS desired state with platform-neutral observed state.
 
-    ``asset_bindings`` explicitly maps governed logical schema identity to
-    provider-local observed asset identity. Operational runtime-product flows
-    should provide bindings so physical names never redefine governed identity.
-    The legacy name-matching path remains available for existing library callers.
+    Shared schema mapping projects both source models into normalized snapshots.
+    The shared comparator finds raw schema facts exactly once. Reconciliation
+    projects those facts into stable runtime reason codes.
     """
     governed_assets = build_schema_index(contract)
+    mapper = schema_mapper or _PASSTHROUGH_SCHEMA_MAPPER
+    desired_uses_physical_identity = schema_mapper is not None
     if asset_bindings is None:
         observed_assets = _build_observed_asset_index(observation)
     else:
@@ -66,169 +66,121 @@ def reconcile_governed_contract(
             bindings=asset_bindings,
         )
 
-    differences: list[ReconciliationDifference] = []
-    unverified_paths: list[str] = []
-    governed_keys = set(governed_assets)
-    observed_keys = set(observed_assets)
+    comparison = compare_schema_snapshots(
+        _governed_snapshot(
+            governed_assets,
+            mapper=mapper,
+            rebind_physical_identity=desired_uses_physical_identity,
+        ),
+        _observed_snapshot(
+            governed_assets=governed_assets,
+            observed_assets=observed_assets,
+            mapper=mapper,
+        ),
+    )
 
-    for asset_key in sorted(governed_keys - observed_keys):
-        differences.append(
-            _difference(
-                difference_type=ReconciliationDifferenceType.MISSING,
-                subject=ReconciliationSubject.ASSET,
-                asset_identity=asset_key,
-            )
-        )
-
-    for asset_key in sorted(observed_keys - governed_keys):
-        differences.append(
-            _difference(
-                difference_type=ReconciliationDifferenceType.UNEXPECTED,
-                subject=ReconciliationSubject.ASSET,
-                asset_identity=asset_key,
-            )
-        )
-
-    for asset_key in sorted(governed_keys & observed_keys):
-        governed_schema = governed_assets[asset_key]
-        observed_asset = observed_assets[asset_key]
-        property_differences, property_unverified_paths = _reconcile_properties(
-            asset_key=asset_key,
-            governed_properties=list(governed_schema.properties or []),
-            observed_asset=observed_asset,
-        )
-        differences.extend(property_differences)
-        unverified_paths.extend(property_unverified_paths)
-
-    ordered = tuple(sorted(differences, key=_difference_sort_key))
     return ReconciliationResult(
         contract_id=_required_contract_text(getattr(contract, "id", None), field="id"),
         contract_version=_required_contract_text(getattr(contract, "version", None), field="version"),
         observation_source_identifier=observation.source_identifier,
         observation_fingerprint=observation.fingerprint or fingerprint_observed_state(observation),
-        differences=ordered,
-        unverified_paths=tuple(sorted(unverified_paths)),
+        differences=tuple(
+            _reconciliation_difference(item)
+            for item in comparison.differences
+        ),
+        unverified_paths=comparison.unverified_paths,
     )
 
 
-def _reconcile_properties(
+def _governed_snapshot(
+    governed_assets: dict[str, SchemaObject],
     *,
-    asset_key: str,
-    governed_properties: list[SchemaProperty],
-    observed_asset: ObservedAsset,
-) -> tuple[list[ReconciliationDifference], list[str]]:
-    governed = build_property_index(asset_key, governed_properties)
-    observed = _build_observed_property_index(
-        asset_key,
-        observed_asset,
-        governed_properties=governed_properties,
-    )
-    differences: list[ReconciliationDifference] = []
-    unverified_paths: list[str] = []
-    governed_keys = set(governed)
-    observed_keys = set(observed)
-
-    for prop_key in sorted(governed_keys - observed_keys):
-        differences.append(
-            _difference(
-                difference_type=ReconciliationDifferenceType.MISSING,
-                subject=ReconciliationSubject.PROPERTY,
-                asset_identity=asset_key,
-                property_identity=prop_key[1],
-            )
+    mapper: SchemaMapper,
+    rebind_physical_identity: bool,
+) -> SchemaSnapshot:
+    assets = []
+    for asset_key, governed_schema in governed_assets.items():
+        mapped = mapper.map_desired_asset(
+            governed_schema,
+            asset_identity=asset_key,
         )
-
-    for prop_key in sorted(observed_keys - governed_keys):
-        differences.append(
-            _difference(
-                difference_type=ReconciliationDifferenceType.UNEXPECTED,
-                subject=ReconciliationSubject.PROPERTY,
-                asset_identity=asset_key,
-                property_identity=prop_key[1],
+        if rebind_physical_identity:
+            property_bindings = build_physical_property_bindings(
+                governed_schema.properties or []
             )
-        )
-
-    for prop_key in sorted(governed_keys & observed_keys):
-        property_differences, property_unverified_paths = _reconcile_matching_property(
-            asset_key=asset_key,
-            property_key=prop_key,
-            governed=governed[prop_key],
-            observed=observed[prop_key],
-        )
-        differences.extend(property_differences)
-        unverified_paths.extend(property_unverified_paths)
-
-    return differences, unverified_paths
-
-
-def _reconcile_matching_property(
-    *,
-    asset_key: str,
-    property_key: PropertyIdentity,
-    governed: SchemaProperty,
-    observed: ObservedProperty,
-) -> tuple[list[ReconciliationDifference], list[str]]:
-    differences: list[ReconciliationDifference] = []
-    unverified_paths: list[str] = []
-    property_identity = property_key[1]
-
-    expected_physical = _optional_text(getattr(governed, "physicalType", None))
-    observed_physical = _optional_text(observed.physical_type)
-    if expected_physical is not None:
-        if observed_physical is None:
-            unverified_paths.append(
-                _difference_path(
-                    subject=ReconciliationSubject.PHYSICAL_TYPE,
-                    asset_identity=asset_key,
-                    property_identity=property_identity,
-                )
-            )
-        elif _normalize_comparable_text(expected_physical) != _normalize_comparable_text(observed_physical):
-            differences.append(
-                _difference(
-                    difference_type=ReconciliationDifferenceType.MISMATCH,
-                    subject=ReconciliationSubject.PHYSICAL_TYPE,
-                    asset_identity=asset_key,
-                    property_identity=property_identity,
-                    expected=expected_physical,
-                    observed=observed_physical,
-                )
-            )
-
-    required = getattr(governed, "required", None)
-    nullable = observed.nullable
-    if isinstance(required, bool):
-        if not isinstance(nullable, bool):
-            unverified_paths.append(
-                _difference_path(
-                    subject=ReconciliationSubject.NULLABILITY,
-                    asset_identity=asset_key,
-                    property_identity=property_identity,
-                )
-            )
-        else:
-            expected_nullable = not required
-            if expected_nullable != nullable:
-                differences.append(
-                    _difference(
-                        difference_type=ReconciliationDifferenceType.MISMATCH,
-                        subject=ReconciliationSubject.NULLABILITY,
-                        asset_identity=asset_key,
-                        property_identity=property_identity,
-                        expected=expected_nullable,
-                        observed=nullable,
+            mapped = mapped.model_copy(
+                update={
+                    "properties": tuple(
+                        prop.model_copy(
+                            update={
+                                "identity": property_bindings.get(
+                                    prop.identity.casefold(),
+                                    prop.identity,
+                                )
+                            }
+                        )
+                        for prop in mapped.properties
                     )
-                )
+                }
+            )
+        assets.append(mapped)
+    return SchemaSnapshot(assets=tuple(assets))
 
-    return differences, unverified_paths
+
+def _observed_snapshot(
+    *,
+    governed_assets: dict[str, SchemaObject],
+    observed_assets: dict[str, ObservedAsset],
+    mapper: SchemaMapper,
+) -> SchemaSnapshot:
+    assets = []
+    for asset_key, observed_asset in observed_assets.items():
+        governed_schema = governed_assets.get(asset_key)
+        property_bindings = (
+            None
+            if governed_schema is None
+            else build_physical_property_bindings(
+                governed_schema.properties or []
+            )
+        )
+        assets.append(
+            mapper.map_observed_asset(
+                observed_asset,
+                asset_identity=asset_key,
+                property_bindings=property_bindings,
+            )
+        )
+    return SchemaSnapshot(assets=tuple(assets))
 
 
-def _build_observed_asset_index(observation: ObservedPlatformState) -> dict[str, ObservedAsset]:
+def _reconciliation_difference(
+    difference: SchemaDifference,
+) -> ReconciliationDifference:
+    return ReconciliationDifference(
+        difference_type=difference.difference_type,
+        subject=difference.subject,
+        reason_code=_runtime_reason_code(
+            difference_type=difference.difference_type,
+            subject=difference.subject,
+        ),
+        path=difference.path,
+        asset_identity=difference.asset_identity,
+        property_identity=difference.property_identity,
+        expected=difference.expected,
+        observed=difference.observed,
+    )
+
+
+def _build_observed_asset_index(
+    observation: ObservedPlatformState,
+) -> dict[str, ObservedAsset]:
     index: dict[str, ObservedAsset] = {}
     for asset in observation.assets:
         key = normalize_identity_name(asset.identity.asset, "Observed asset")
         if key in index:
-            raise ValidationError(f"Duplicate canonical observed asset identity found: '{key}'")
+            raise ValidationError(
+                f"Duplicate canonical observed asset identity found: '{key}'"
+            )
         index[key] = asset
     return index
 
@@ -243,14 +195,23 @@ def _build_bound_observed_asset_index(
     bound_runtime_keys: set[tuple[str, ...]] = set()
 
     for binding in bindings:
-        governed_key = normalize_identity_name(binding.governed_asset, "Runtime binding governed asset")
+        governed_key = normalize_identity_name(
+            binding.governed_asset,
+            "Runtime binding governed asset",
+        )
         if governed_key in binding_by_governed:
-            raise ValidationError(f"Duplicate runtime binding for governed asset: '{governed_key}'")
+            raise ValidationError(
+                f"Duplicate runtime binding for governed asset: '{governed_key}'"
+            )
         if binding.observed_asset.platform.casefold() != observation.platform.casefold():
-            raise ValidationError("Runtime binding platform must match observed platform state")
+            raise ValidationError(
+                "Runtime binding platform must match observed platform state"
+            )
         runtime_key = binding.observed_asset.canonical_key
         if runtime_key in bound_runtime_keys:
-            raise ValidationError("Multiple governed assets cannot bind to one runtime asset")
+            raise ValidationError(
+                "Multiple governed assets cannot bind to one runtime asset"
+            )
         bound_runtime_keys.add(runtime_key)
         binding_by_governed[governed_key] = binding
 
@@ -287,79 +248,6 @@ def _build_bound_observed_asset_index(
     return index
 
 
-def _build_observed_property_index(
-    asset_key: str,
-    asset: ObservedAsset,
-    *,
-    governed_properties: Sequence[SchemaProperty],
-) -> dict[PropertyIdentity, ObservedProperty]:
-    physical_to_governed = _property_binding_index(governed_properties)
-    index: dict[PropertyIdentity, ObservedProperty] = {}
-    for prop in asset.properties:
-        if prop.identity.asset != asset.identity:
-            raise ValidationError("Observed property asset identity must match its containing asset")
-        observed_name = normalize_identity_name(prop.identity.property, "Observed property")
-        governed_name = physical_to_governed.get(observed_name, observed_name)
-        key: PropertyIdentity = (asset_key, governed_name)
-        if key in index:
-            raise ValidationError(
-                f"Duplicate canonical observed property identity found: '{governed_name}'"
-                f" in asset '{asset_key}'"
-            )
-        index[key] = prop
-    return index
-
-
-def _property_binding_index(
-    governed_properties: Sequence[SchemaProperty],
-) -> dict[str, str]:
-    physical_to_governed: dict[str, str] = {}
-    for prop in governed_properties:
-        logical_raw = getattr(prop, "name", None)
-        if logical_raw is None:
-            raise ValidationError("Governed property name is required for runtime binding")
-        governed_name = normalize_identity_name(str(logical_raw), "Property")
-        physical_raw = getattr(prop, "physicalName", None)
-        physical_text = str(physical_raw).strip() if physical_raw is not None else ""
-        physical_name = normalize_identity_name(
-            physical_text or str(logical_raw),
-            "Property physical binding",
-        )
-        existing = physical_to_governed.get(physical_name)
-        if existing is not None and existing != governed_name:
-            raise ValidationError(
-                "Multiple governed properties cannot bind to one physical runtime property: "
-                f"'{physical_name}'"
-            )
-        physical_to_governed[physical_name] = governed_name
-    return physical_to_governed
-
-
-def _difference(
-    *,
-    difference_type: ReconciliationDifferenceType,
-    subject: ReconciliationSubject,
-    asset_identity: str,
-    property_identity: str | None = None,
-    expected: str | bool | None = None,
-    observed: str | bool | None = None,
-) -> ReconciliationDifference:
-    return ReconciliationDifference(
-        difference_type=difference_type,
-        subject=subject,
-        reason_code=_runtime_reason_code(difference_type=difference_type, subject=subject),
-        path=_difference_path(
-            subject=subject,
-            asset_identity=asset_identity,
-            property_identity=property_identity,
-        ),
-        asset_identity=asset_identity,
-        property_identity=property_identity,
-        expected=expected,
-        observed=observed,
-    )
-
-
 def _runtime_reason_code(
     *,
     difference_type: ReconciliationDifferenceType,
@@ -374,49 +262,14 @@ def _runtime_reason_code(
     return reason_code
 
 
-def _difference_path(
-    *,
-    subject: ReconciliationSubject,
-    asset_identity: str,
-    property_identity: str | None,
-) -> str:
-    asset_path = f"schema[{asset_identity}]"
-    if subject is ReconciliationSubject.ASSET:
-        return asset_path
-    if property_identity is None:
-        raise ValueError(f"property_identity is required for {subject.value}")
-    property_path = f"{asset_path}.properties[{property_identity}]"
-    if subject is ReconciliationSubject.PROPERTY:
-        return property_path
-    if subject is ReconciliationSubject.PHYSICAL_TYPE:
-        return f"{property_path}.physicalType"
-    return f"{property_path}.nullability"
-
-
-def _difference_sort_key(difference: ReconciliationDifference) -> tuple[str, str, int, str]:
-    return (
-        difference.asset_identity,
-        difference.property_identity or "",
-        _SUBJECT_ORDER[difference.subject],
-        difference.difference_type.value,
-    )
-
-
 def _required_contract_text(value: object, *, field: str) -> str:
-    text = _optional_text(value)
-    if text is None:
+    if value is None:
+        raise ValidationError(
+            f"Governed desired-state contract {field} is required for reconciliation"
+        )
+    text = str(value).strip()
+    if not text:
         raise ValidationError(
             f"Governed desired-state contract {field} is required for reconciliation"
         )
     return text
-
-
-def _optional_text(value: object | None) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _normalize_comparable_text(value: str) -> str:
-    return value.strip().casefold()

@@ -2,6 +2,24 @@
 
 SemaPact treats a released ODCS contract as governed desired state, not as an executable SQL, Terraform, or platform program.
 
+The released contract is the authoritative artifact. SemaPact does **not** require a separate DDL build artifact before deployment. SQL and other provider-native commands are derived only after an exact released desired state is compared with an exact runtime target.
+
+```text
+AppliedContractRelease
+        = governed desired state
+                +
+ObservedPlatformState
+        = point-in-time runtime state
+                ↓
+semantic runtime transition assessment
+                ↓
+provider-native operation compilation
+                ↓
+DeploymentPreview
+```
+
+This matters because one release may require different native operations in different environments. A missing table may require CREATE in one target, an additive ALTER in another, and NO_OP in a target that already satisfies the governed state. A pre-built DDL script cannot represent those three runtime states without becoming another mutable source of truth.
+
 The deployment planning boundary is therefore:
 
 ```text
@@ -12,12 +30,28 @@ DeploymentPlan
         ↓
 DeploymentAuthorization
         ↓
-platform adapter validate / preview / execute
+DeploymentService
+        ↓
+DeploymentAdapter interface
+        ↓
+DeploymentOrchestrator
+  validate / map desired
+  → observe
+  → validate / map observed
+  → compare
+  → transition
+  → compile
+  → preview
+  → freshness / exact authorization
+  → execute
+  → verify
+        ↓
+provider NativeOperationExecutor / RuntimeProvider
         ↓
 runtime
-        ↓
-reconciliation verifies convergence
 ```
+
+The orchestration above is provider-neutral. Platform packages configure or implement only the narrow `SchemaMapper`, `SchemaTransitionPlanner`, `TransitionCompiler`, `RuntimeProvider`, and `NativeOperationExecutor` seams. The initial Databricks path reuses the shared fail-closed `AdditiveSchemaTransitionPlanner`; a future platform can supply a different planner without changing orchestration.
 
 ## What a DeploymentPlan means
 
@@ -40,6 +74,33 @@ Planning sees released desired state only. Without observed runtime state SemaPa
 Likewise, an object that exists in runtime but is absent from one contract must not be interpreted as safe to drop. The contract may not own that object.
 
 Concrete provider-native operations therefore begin at the platform adapter boundary, where validation and preview combine the DeploymentPlan with provider semantics and fresh runtime evidence.
+
+Provider preview should keep **comparison facts**, **transition semantics**, and SQL rendering separate. Conceptually:
+
+```text
+normalized desired schema + normalized observed schema
+        ↓
+shared schema comparator
+        ↓
+SchemaDifference[]
+        ↓
+deployment transition projection
+  CREATE_ASSET / ADD_PROPERTIES / NO_OP
+        ↓
+provider compiler
+        ↓
+CREATE / ALTER / NO_OP native operation
+```
+
+The same shared schema comparison facts are consumed by runtime reconciliation. Reconciliation projects them into drift reason codes; deployment projects them into convergence intent. Provider adapters must not implement a second desired-vs-observed comparator.
+
+Schema projection is also shared. `semapact.schema` defines the mapping contract that converts provider target-schema output and observed runtime state into normalized `SchemaSnapshot` values. SemaPact should not reimplement an ODCS-to-platform compiler when datacontract-cli already provides one.
+
+For Databricks, the desired side delegates the complete ODCS → Databricks target-schema compilation to datacontract-cli's SQL exporter, including physical property names, target types, nested types, and nullability. SemaPact parses that compiler output into its normalized comparison model, rejects any output that is not exactly one CREATE TABLE statement, and retains only the governed physical column shape currently covered by comparison semantics (identity, type, nullability). The observed side maps fresh runtime evidence into the same model.
+
+The exported CREATE DDL is **not** execution authority: datacontract-cli currently emits full creation-oriented DDL, while SemaPact must derive CREATE / ALTER / NO_OP from the released target schema versus fresh runtime state and compile only the exact authorized transition.
+
+The semantic transition layer is an internal planning boundary, not a new release artifact or authorization authority. This lets compatible execution families share transition semantics while keeping provider-specific naming, capability checks, SQL rendering, authentication, and execution in their adapters.
 
 ## Identity and physical binding
 
@@ -128,6 +189,8 @@ Execution requires the exact plan, exact preview, and exact `DeploymentAuthoriza
 
 Provider execution success is not convergence proof.
 
+Complete DDL export remains a useful inspection or integration utility, especially for creating new assets, but export is not a lifecycle phase. Exported SQL is derived output; deployment planning remains responsible for comparing the exact released contract with fresh runtime evidence before any mutation is authorized.
+
 ### Verify
 
 ```bash
@@ -136,7 +199,7 @@ semapact deployment verify \
   --output json
 ```
 
-Verification performs fresh runtime observation and reuses the normal reconciliation semantics:
+Verification enters through the same DeploymentAdapter / DeploymentOrchestrator boundary, performs fresh runtime observation, and reuses the normal reconciliation semantics with the same platform schema mapper used by preview:
 
 | Runtime status | Exit code |
 | --- | ---: |
@@ -144,7 +207,7 @@ Verification performs fresh runtime observation and reuses the normal reconcilia
 | `DRIFT` | `6` |
 | `INDETERMINATE` | `7` |
 
-This keeps execution status separate from convergence evidence.
+This keeps execution status separate from convergence evidence. VERIFY is assurance/read-side behavior: provider mutation restrictions such as Databricks MANAGED-only writes do not prevent SemaPact from verifying an observable non-managed asset.
 
 ## Databricks deployment capability
 
@@ -198,12 +261,18 @@ Action ordering is canonical even when schemas appear in a different order in so
 
 `DeploymentPreview` is likewise deterministic for the same plan and observed runtime evidence, but deterministic IDs provide artifact consistency rather than cryptographic authenticity. Execution still validates exact binding and fresh runtime evidence at the side-effect boundary.
 
-## Provider support belongs to the adapter
+## Provider support belongs behind generic deployment contracts
+
+`semapact.platforms.runtime_registry` is the composition root. It lazily constructs the selected platform's runtime provider and deployment adapter and owns the small amount of dispatch needed for supported built-in platforms. SemaPact does not introduce a separate platform-factory hierarchy merely to construct these objects.
+
+Platform extensibility belongs in behavior seams—`RuntimeProvider`, `SchemaMapper`, `SchemaTransitionPlanner`, `TransitionCompiler`, and `NativeOperationExecutor`—rather than in an additional platform wrapper or composition abstraction.
 
 DeploymentPlan intentionally does not contain generic `preconditions`, `adapterKey`, or guessed platform-specific operations.
 
-A deployment adapter is responsible for explicit provider support and execution semantics. It receives an already-built DeploymentPlan and an allowed DeploymentAuthorization; it does not construct or reinterpret governance artifacts.
+The public deployment contracts define the complete orchestration boundary. `DeploymentOrchestrator` owns lifecycle ordering and generic binding invariants; platform implementations provide only runtime binding/observation, target-schema mapping configuration, transition capability policy, transition compilation, and native execution.
 
-A provider adapter must explicitly report unsupported ODCS-to-platform mappings. It must never silently ignore unsupported governed state.
+For Databricks, the native side effect is executed through the Databricks SDK Statement Execution API using an exact SQL warehouse. SemaPact does not shell out to the Databricks CLI for deployment.
+
+A platform implementation must explicitly report unsupported ODCS-to-platform mappings or runtime capabilities. It must never silently ignore unsupported governed state.
 
 A successful execution call is also not proof of convergence. Runtime convergence is verified separately through SemaPact reconciliation.

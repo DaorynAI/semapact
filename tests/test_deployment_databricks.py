@@ -29,7 +29,10 @@ from semapact.observation.models import (
     ObservedPropertyIdentity,
 )
 from semapact.observation.providers import RuntimeAssetBinding
-from semapact.platforms.databricks.deployment import DatabricksDeploymentAdapter
+from semapact.platforms.databricks.deployment import (
+    DatabricksDeploymentAdapter,
+    DatabricksStatementExecutor,
+)
 
 CAPTURED_AT = datetime(2026, 9, 10, 5, 0, tzinfo=timezone.utc)
 SOURCE_REFERENCE = "workspace-a"
@@ -200,7 +203,7 @@ def test_preview_create_alter_and_no_op() -> None:
     create_plan = _plan(_property("id", "BIGINT", required=True))
     missing = _state(present=False)
     adapter, _, _ = _adapter(missing)
-    create_preview = adapter.preview(create_plan, missing)
+    create_preview = adapter.preview(create_plan)
     assert create_preview.operations[0].kind is NativeOperationKind.CREATE
 
     alter_plan = _plan(
@@ -209,11 +212,11 @@ def test_preview_create_alter_and_no_op() -> None:
     )
     current = _state(("id", "bigint", False))
     adapter, _, _ = _adapter(current)
-    alter_preview = adapter.preview(alter_plan, current)
+    alter_preview = adapter.preview(alter_plan)
     assert alter_preview.operations[0].kind is NativeOperationKind.ALTER
     assert "ADD COLUMNS (`note` STRING)" in alter_preview.operations[0].statement
 
-    no_op = adapter.preview(create_plan, current)
+    no_op = adapter.preview(create_plan)
     assert no_op.operations == (
         NativeOperation(kind=NativeOperationKind.NO_OP, governed_asset="orders"),
     )
@@ -223,7 +226,7 @@ def test_preview_never_drops_extra_runtime_columns() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     current = _state(("id", "bigint", False), ("extra", "string", True))
     adapter, _, _ = _adapter(current)
-    assert adapter.preview(plan, current).operations[0].kind is NativeOperationKind.NO_OP
+    assert adapter.preview(plan).operations[0].kind is NativeOperationKind.NO_OP
 
 
 @pytest.mark.parametrize(
@@ -252,19 +255,22 @@ def test_preview_never_drops_extra_runtime_columns() -> None:
 def test_unsafe_existing_mutations_fail_closed(plan, state, message) -> None:
     adapter, _, _ = _adapter(state)
     with pytest.raises(ValidationError, match=message):
-        adapter.preview(plan, state)
+        adapter.preview(plan)
 
 
-def test_non_managed_asset_and_unsafe_type_fail_closed() -> None:
-    plan = _plan(_property("id", "BIGINT", required=True))
+def test_non_managed_mutation_and_unsafe_type_fail_closed() -> None:
+    plan = _plan(
+        _property("id", "BIGINT", required=True),
+        _property("note", "STRING"),
+    )
     external = _state(("id", "bigint", False), asset_type="EXTERNAL")
     adapter, _, _ = _adapter(external)
     with pytest.raises(ValidationError, match="MANAGED"):
-        adapter.preview(plan, external)
+        adapter.preview(plan)
 
     malicious_type = "STRING);DROP"
     malicious = _plan(_property("id", malicious_type))
-    with pytest.raises(ValidationError, match="physicalType"):
+    with pytest.raises(ValidationError, match="physicalType|exactly one CREATE TABLE"):
         adapter.validate(malicious)
 
 
@@ -274,14 +280,14 @@ def test_preview_rejects_cross_source_runtime_evidence() -> None:
     adapter, _, _ = _adapter(other_workspace)
 
     with pytest.raises(ValidationError, match="source reference"):
-        adapter.preview(plan, other_workspace)
+        adapter.preview(plan)
 
 
 def test_execute_fails_closed_for_denied_stale_and_cross_source() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     before = _state(("id", "bigint", False))
     adapter, provider, _ = _adapter(before)
-    preview = adapter.preview(plan, before)
+    preview = adapter.preview(plan)
 
     with pytest.raises(ContractOpsAuthorizationError, match="not allowed"):
         adapter.execute(plan, preview, _authorization(plan, False))
@@ -302,7 +308,7 @@ def test_execute_rejects_tampered_plan_and_forged_native_command() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     current = _state(("id", "bigint", False))
     adapter, _, client = _adapter(current)
-    preview = adapter.preview(plan, current)
+    preview = adapter.preview(plan)
 
     tampered = plan.model_copy(update={"selected_version": "9.9.9"})
     with pytest.raises(ValueError, match="DeploymentPlan deterministic identity"):
@@ -338,7 +344,7 @@ def test_execute_runs_exact_preview_statement() -> None:
     )
     current = _state(("id", "bigint", False))
     adapter, _, client = _adapter(current)
-    preview = adapter.preview(plan, current)
+    preview = adapter.preview(plan)
 
     adapter.execute(plan, preview, _authorization(plan))
 
@@ -351,7 +357,7 @@ def test_no_op_execute_does_not_require_warehouse() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     current = _state(("id", "bigint", False))
     adapter, _, client = _adapter(current, warehouse_id=None)
-    preview = adapter.preview(plan, current)
+    preview = adapter.preview(plan)
 
     assert preview.operations[0].kind is NativeOperationKind.NO_OP
     adapter.execute(plan, preview, _authorization(plan))
@@ -365,11 +371,36 @@ def test_mutation_execute_without_warehouse_fails_closed() -> None:
     )
     current = _state(("id", "bigint", False))
     adapter, _, client = _adapter(current, warehouse_id=None)
-    preview = adapter.preview(plan, current)
+    preview = adapter.preview(plan)
 
     with pytest.raises(ValidationError, match="warehouse_id"):
         adapter.execute(plan, preview, _authorization(plan))
     assert client.statement_execution.calls == []
+
+
+def test_verify_can_assure_non_managed_runtime_without_claiming_mutation_support() -> None:
+    plan = _plan(_property("id", "BIGINT", required=True))
+    external = _state(
+        ("id", "BIGINT", False),
+        asset_type="EXTERNAL",
+    )
+    adapter, _, _ = _adapter(external)
+
+    result = adapter.verify(plan)
+
+    assert result.differences == ()
+    assert result.unverified_paths == ()
+
+
+def test_verify_uses_same_databricks_target_mapping_as_preview() -> None:
+    plan = _plan(_property("id", "integer", required=True))
+    current = _state(("id", "INT", False))
+    adapter, _, _ = _adapter(current)
+
+    result = adapter.verify(plan)
+
+    assert result.differences == ()
+    assert result.unverified_paths == ()
 
 
 def test_runtime_source_participates_in_plan_identity() -> None:
@@ -377,3 +408,68 @@ def test_runtime_source_participates_in_plan_identity() -> None:
     plan_b = _plan(_property("id", "BIGINT", required=True), source_reference="workspace-b")
 
     assert plan_a.deployment_plan_id != plan_b.deployment_plan_id
+
+
+
+class _PollingStatements:
+    def __init__(self, terminal_state: str = "SUCCEEDED") -> None:
+        self.terminal_state = terminal_state
+        self.get_calls = 0
+
+    def execute_statement(self, *, statement, warehouse_id, wait_timeout):
+        return SimpleNamespace(
+            statement_id="s-2",
+            status=SimpleNamespace(state="PENDING", error=None),
+        )
+
+    def get_statement(self, statement_id):
+        self.get_calls += 1
+        state = "RUNNING" if self.get_calls == 1 else self.terminal_state
+        return SimpleNamespace(
+            statement_id=statement_id,
+            status=SimpleNamespace(
+                state=state,
+                error="boom" if state == "FAILED" else None,
+            ),
+        )
+
+
+def test_statement_executor_polls_until_success() -> None:
+    client = _Client()
+    client.statement_execution = _PollingStatements()
+    executor = DatabricksStatementExecutor(
+        client=client,
+        warehouse_id="warehouse-1",
+        poll_interval_seconds=0,
+        max_poll_attempts=3,
+    )
+
+    executor.execute(
+        NativeOperation(
+            kind=NativeOperationKind.ALTER,
+            governed_asset="orders",
+            statement="ALTER TABLE x ADD COLUMNS (y STRING)",
+        )
+    )
+
+    assert client.statement_execution.get_calls == 2
+
+
+def test_statement_executor_surfaces_failed_terminal_state() -> None:
+    client = _Client()
+    client.statement_execution = _PollingStatements(terminal_state="FAILED")
+    executor = DatabricksStatementExecutor(
+        client=client,
+        warehouse_id="warehouse-1",
+        poll_interval_seconds=0,
+        max_poll_attempts=3,
+    )
+
+    with pytest.raises(RuntimeError, match="FAILED"):
+        executor.execute(
+            NativeOperation(
+                kind=NativeOperationKind.ALTER,
+                governed_asset="orders",
+                statement="ALTER TABLE x ADD COLUMNS (y STRING)",
+            )
+        )

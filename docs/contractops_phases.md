@@ -29,6 +29,37 @@ DEPLOY
 
 Each phase consumes artifacts from the previous phases. Later phases do not recalculate earlier decisions.
 
+## The contract is the desired-state artifact
+
+SemaPact does not introduce a canonical BUILD phase that turns a contract into a separately authoritative DDL artifact.
+
+The governed contract remains the model of desired state throughout the lifecycle:
+
+```text
+candidate ODCS
+    ↓ ANALYZE / PLAN / AUTHORIZE / APPLY
+AppliedContractRelease
+= immutable governed desired state
+    ↓ DEPLOY planning against one runtime target
+provider-native operations
+```
+
+A SQL or provider-specific export is a **derived compilation output**, not a second source of truth and not deployment authority. It may be regenerated from the exact governed contract state whenever required.
+
+This creates two distinct comparisons:
+
+```text
+Contract comparison
+base contract ↔ candidate contract
+→ governance changes, breaking classification, version requirements
+
+Runtime deployment comparison
+AppliedContractRelease ↔ observed runtime state
+→ CREATE / ALTER / NO_OP or an explicit unsupported transition
+```
+
+The first comparison explains how governed intent changed. The second explains how one concrete runtime must change to converge to that already-governed intent. The same release may therefore produce different deployment previews for different targets without changing the released contract.
+
 ## ANALYZE
 
 ANALYZE evaluates the candidate against the governed base contract and produces the authoritative `GovernanceDecision`.

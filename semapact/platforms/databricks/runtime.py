@@ -13,6 +13,7 @@ from semapact.platforms.databricks.observation import (
     observe_databricks_table,
 )
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
+from semapact.schema import validate_simple_sql_identifier
 
 
 class DatabricksRuntimeProvider:
@@ -34,6 +35,11 @@ class DatabricksRuntimeProvider:
     ) -> tuple[RuntimeAssetBinding, ...]:
         """Resolve ``catalog.schema`` plus asset physical names into UC identities."""
         namespace = parse_databricks_runtime_target(runtime_target)
+        catalog, schema_name = namespace
+        validate_simple_sql_identifier(catalog, "catalog")
+        validate_simple_sql_identifier(schema_name, "schema")
+        for asset in assets:
+            validate_simple_sql_identifier(asset.physical_name, "asset")
         bindings = tuple(
             RuntimeAssetBinding(
                 governed_asset=asset.governed_asset,

@@ -561,8 +561,8 @@ def test_execute_success_is_separate_from_runtime_convergence() -> None:
     provider = _RuntimeProvider(missing_state)
     adapter, client = _adapter(provider)
 
-    first_preview = adapter.preview(chain.deployment_plan, missing_state)
-    second_preview = adapter.preview(chain.deployment_plan, missing_state)
+    first_preview = adapter.preview(chain.deployment_plan)
+    second_preview = adapter.preview(chain.deployment_plan)
     assert first_preview == second_preview
     assert client.statement_execution.calls == []
 
@@ -601,7 +601,7 @@ def test_stale_preview_fails_before_native_mutation() -> None:
     missing_state = _observed_state(present=False)
     provider = _RuntimeProvider(missing_state)
     adapter, client = _adapter(provider)
-    preview = adapter.preview(chain.deployment_plan, missing_state)
+    preview = adapter.preview(chain.deployment_plan)
 
     provider.state = _observed_state(present=True)
     with pytest.raises(ValidationError, match="no longer equals|Runtime state changed"):

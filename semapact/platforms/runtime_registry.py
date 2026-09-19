@@ -8,6 +8,7 @@ from typing import Literal
 from open_data_contract_standard.model import OpenDataContractStandard, Server
 
 from semapact.deployment.adapters import DeploymentAdapter
+from semapact.deployment.providers import DeploymentExecutionConfig
 from semapact.exceptions import ValidationError
 from semapact.observation import RuntimeProvider, RuntimeProviderRegistry
 
@@ -34,7 +35,10 @@ def resolve_runtime_location(
     servers = tuple(contract.servers or ())
     if servers:
         selected = _select_contract_server(servers, server_name)
-        platform = _required(selected.type, "Selected contract server must define a runtime type")
+        platform = _required(
+            selected.type,
+            "Selected contract server must define a runtime type",
+        ).casefold()
         return ResolvedRuntimeLocation(
             platform=platform,
             runtime_target=_runtime_target_from_server(platform, selected),
@@ -51,7 +55,7 @@ def resolve_runtime_location(
             "--server cannot be used because the contract defines no servers"
         )
 
-    platform = _clean(fallback_platform)
+    platform = _clean(fallback_platform, casefold=True)
     runtime_target = _clean(fallback_runtime_target)
     if not platform or not runtime_target:
         raise ValidationError(
@@ -84,23 +88,73 @@ def create_runtime_provider_registry(
 def create_deployment_adapter(
     platform: str,
     *,
-    warehouse_id: str | None = None,
     contract_server: Server | None = None,
+    execution_config: DeploymentExecutionConfig | None = None,
 ) -> DeploymentAdapter:
-    """Compose the selected write adapter and provider clients lazily.
-
-    A SQL warehouse is execution configuration, not a prerequisite for read-only
-    validation or preview. Databricks execution fails closed if mutation is attempted
-    without a warehouse ID.
-    """
+    """Compose the selected write adapter and provider clients lazily."""
     normalized = platform.strip().casefold()
     if normalized != "databricks":
         raise ValidationError(
             f"Unsupported deployment adapter '{platform}'. Supported adapters: databricks"
         )
 
-    from semapact.platforms.databricks import (
+    from semapact.platforms.databricks.deployment import (
         DatabricksDeploymentAdapter,
+        DatabricksDeploymentExecutionConfig,
+    )
+
+    config = (
+        DatabricksDeploymentExecutionConfig()
+        if execution_config is None
+        else execution_config
+    )
+    if not isinstance(config, DatabricksDeploymentExecutionConfig):
+        raise ValidationError(
+            "Databricks deployment requires DatabricksDeploymentExecutionConfig"
+        )
+
+    client, runtime_provider = _create_databricks_client_and_provider(
+        contract_server=contract_server
+    )
+    return DatabricksDeploymentAdapter(
+        client=client,
+        runtime_provider=runtime_provider,
+        warehouse_id=config.warehouse_id,
+    )
+
+
+def _runtime_target_from_server(platform: str, server: Server) -> str:
+    """Project one ODCS server into the selected provider's runtime target."""
+    if platform == "databricks":
+        catalog = _required(
+            server.catalog,
+            "Databricks contract server must define catalog",
+        )
+        schema_name = _required(
+            server.schema_,
+            "Databricks contract server must define schema",
+        )
+        return f"{catalog}.{schema_name}"
+    raise ValidationError(
+        f"Unsupported runtime provider '{platform}'. Supported providers: databricks"
+    )
+
+
+def _create_databricks_provider(
+    *,
+    contract_server: Server | None = None,
+) -> RuntimeProvider:
+    _, provider = _create_databricks_client_and_provider(
+        contract_server=contract_server
+    )
+    return provider
+
+
+def _create_databricks_client_and_provider(
+    *,
+    contract_server: Server | None = None,
+):
+    from semapact.platforms.databricks import (
         DatabricksRuntimeProvider,
         create_databricks_workspace_client,
     )
@@ -111,15 +165,12 @@ def create_deployment_adapter(
     source_identifier = getattr(getattr(client, "config", None), "host", None)
     if not isinstance(source_identifier, str) or not source_identifier.strip():
         raise RuntimeError("Databricks SDK did not resolve a workspace host")
-    runtime_provider = DatabricksRuntimeProvider(
+
+    provider = DatabricksRuntimeProvider(
         client=client,
         source_identifier=source_identifier,
     )
-    return DatabricksDeploymentAdapter(
-        client=client,
-        runtime_provider=runtime_provider,
-        warehouse_id=warehouse_id,
-    )
+    return client, provider
 
 
 def _select_contract_server(
@@ -150,38 +201,6 @@ def _select_contract_server(
     raise ValidationError(
         "Multiple contract servers are defined; select one with --server. "
         f"Available servers: {_available_server_names(servers)}"
-    )
-
-
-def _runtime_target_from_server(platform: str, server: Server) -> str:
-    """Project one ODCS server into the selected provider's runtime target."""
-    if platform.strip().casefold() == "databricks":
-        catalog = _required(server.catalog, "Databricks contract server must define catalog")
-        schema = _required(server.schema_, "Databricks contract server must define schema")
-        return f"{catalog}.{schema}"
-    raise ValidationError(
-        f"Unsupported runtime provider '{platform}'. Supported providers: databricks"
-    )
-
-
-def _create_databricks_provider(
-    *,
-    contract_server: Server | None = None,
-) -> RuntimeProvider:
-    from semapact.platforms.databricks import (
-        DatabricksRuntimeProvider,
-        create_databricks_workspace_client,
-    )
-
-    client = create_databricks_workspace_client(
-        workspace_url=_clean(contract_server.host) if contract_server else None
-    )
-    source_identifier = getattr(getattr(client, "config", None), "host", None)
-    if not isinstance(source_identifier, str) or not source_identifier.strip():
-        raise RuntimeError("Databricks SDK did not resolve a workspace host")
-    return DatabricksRuntimeProvider(
-        client=client,
-        source_identifier=source_identifier,
     )
 
 
