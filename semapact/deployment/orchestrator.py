@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
-from open_data_contract_standard.model import SchemaObject
+from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject
 
 from semapact.deployment.adapters import DeploymentAdapter
 from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
+    DeploymentAction,
     DeploymentActionKind,
+    DeploymentAssessment,
     DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
+    DeploymentTarget,
     NativeOperation,
     NativeOperationKind,
+    compute_deployment_assessment_id,
     compute_deployment_preview_id,
     validate_deployment_authorization_identity,
     validate_deployment_plan_identity,
     validate_deployment_preview_identity,
 )
+from semapact.deployment.planner import build_deployment_actions
 from semapact.deployment.providers import NativeOperationExecutor
 from semapact.deployment.schema_transitions import SchemaTransitionPlanner
 from semapact.deployment.verification import verify_deployment_convergence
@@ -68,6 +73,71 @@ class DeploymentOrchestrator(DeploymentAdapter):
     @property
     def key(self) -> str:
         return self._runtime_provider.key
+
+    def assess(
+        self,
+        contract: OpenDataContractStandard,
+        *,
+        candidate_revision_ref: str,
+        target: DeploymentTarget,
+    ) -> DeploymentAssessment:
+        """Assess candidate desired state against fresh runtime without authority."""
+        if not isinstance(contract, OpenDataContractStandard):
+            raise TypeError(
+                "contract must be OpenDataContractStandard, "
+                f"got {type(contract).__name__}"
+            )
+        if not isinstance(target, DeploymentTarget):
+            raise TypeError(
+                f"target must be DeploymentTarget, got {type(target).__name__}"
+            )
+
+        contract_id = str(contract.id or "").strip()
+        candidate_version = str(contract.version or "").strip()
+        revision_ref = str(candidate_revision_ref).strip()
+        if not contract_id:
+            raise ValidationError("Candidate contract id is required for deployment assessment")
+        if not candidate_version:
+            raise ValidationError(
+                "Candidate contract version is required for deployment assessment"
+            )
+        if not revision_ref:
+            raise ValidationError(
+                "candidate_revision_ref is required for deployment assessment"
+            )
+
+        actions = build_deployment_actions(contract)
+        desired_by_action = self._validate_and_map_actions(target, actions)
+        observed_state, bindings = self._observe_scope(target, actions)
+        operations = self._operations_for_scope(
+            target,
+            actions,
+            observed_state,
+            bindings=bindings,
+            desired_by_action=desired_by_action,
+        )
+        if observed_state.fingerprint is None:
+            raise ValidationError("Runtime observation fingerprint is required")
+
+        assessment_id = compute_deployment_assessment_id(
+            contract_id=contract_id,
+            candidate_revision_ref=revision_ref,
+            candidate_version=candidate_version,
+            target=target,
+            source_identifier=observed_state.source_identifier,
+            observation_fingerprint=observed_state.fingerprint,
+            operations=operations,
+        )
+        return DeploymentAssessment(
+            deployment_assessment_id=assessment_id,
+            contract_id=contract_id,
+            candidate_revision_ref=revision_ref,
+            candidate_version=candidate_version,
+            target=target,
+            source_identifier=observed_state.source_identifier,
+            observation_fingerprint=observed_state.fingerprint,
+            operations=operations,
+        )
 
     def validate(self, plan: DeploymentPlan) -> None:
         """Validate one exact plan without runtime observation side effects."""
@@ -170,15 +240,54 @@ class DeploymentOrchestrator(DeploymentAdapter):
     ) -> DeploymentPreview:
         if desired_by_action is None:
             desired_by_action = self._validate_and_map_plan(plan)
-        self._validate_observation(plan, observed_state, bindings=bindings)
+        operations = self._operations_for_scope(
+            plan.target,
+            plan.actions,
+            observed_state,
+            bindings=bindings,
+            desired_by_action=desired_by_action,
+        )
 
+        if observed_state.fingerprint is None:
+            raise ValidationError("Runtime observation fingerprint is required")
+        return DeploymentPreview(
+            deployment_preview_id=compute_deployment_preview_id(
+                deployment_plan_id=plan.deployment_plan_id,
+                platform=self.key,
+                runtime_target=plan.target.runtime_target,
+                source_identifier=observed_state.source_identifier,
+                observation_fingerprint=observed_state.fingerprint,
+                operations=operations,
+            ),
+            deployment_plan_id=plan.deployment_plan_id,
+            platform=self.key,
+            runtime_target=plan.target.runtime_target,
+            source_identifier=observed_state.source_identifier,
+            observation_fingerprint=observed_state.fingerprint,
+            operations=operations,
+        )
+
+    def _operations_for_scope(
+        self,
+        target: DeploymentTarget,
+        actions: tuple[DeploymentAction, ...],
+        observed_state: ObservedPlatformState,
+        *,
+        bindings: tuple[RuntimeAssetBinding, ...],
+        desired_by_action: dict[str, SchemaAssetState],
+    ) -> tuple[NativeOperation, ...]:
+        self._validate_observation_for_scope(
+            target,
+            observed_state,
+            bindings=bindings,
+        )
         observed_by_asset = {
             asset.identity.asset.casefold(): asset
             for asset in observed_state.assets
         }
 
         operations: list[NativeOperation] = []
-        for action in plan.actions:
+        for action in actions:
             desired_asset = desired_by_action[action.governed_asset]
             observed = observed_by_asset.get(action.physical_name.casefold())
             observed_assets = (
@@ -191,7 +300,6 @@ class DeploymentOrchestrator(DeploymentAdapter):
                     ),
                 )
             )
-
             comparison = compare_schema_snapshots(
                 SchemaSnapshot(assets=(desired_asset,)),
                 SchemaSnapshot(assets=observed_assets),
@@ -205,46 +313,32 @@ class DeploymentOrchestrator(DeploymentAdapter):
             )
             operations.append(
                 self._transition_compiler.compile(
-                    runtime_target=plan.target.runtime_target,
+                    runtime_target=target.runtime_target,
                     transition=transition,
                 )
             )
-
-        if observed_state.fingerprint is None:
-            raise ValidationError("Runtime observation fingerprint is required")
-        ordered = tuple(operations)
-        return DeploymentPreview(
-            deployment_preview_id=compute_deployment_preview_id(
-                deployment_plan_id=plan.deployment_plan_id,
-                platform=self.key,
-                runtime_target=plan.target.runtime_target,
-                source_identifier=observed_state.source_identifier,
-                observation_fingerprint=observed_state.fingerprint,
-                operations=ordered,
-            ),
-            deployment_plan_id=plan.deployment_plan_id,
-            platform=self.key,
-            runtime_target=plan.target.runtime_target,
-            source_identifier=observed_state.source_identifier,
-            observation_fingerprint=observed_state.fingerprint,
-            operations=ordered,
-        )
+        return tuple(operations)
 
     def _validate_and_map_plan(
         self,
         plan: DeploymentPlan,
     ) -> dict[str, SchemaAssetState]:
         validate_deployment_plan_identity(plan)
-        if plan.target.platform.casefold() != self.key.casefold():
+        return self._validate_and_map_actions(plan.target, plan.actions)
+
+    def _validate_and_map_actions(
+        self,
+        target: DeploymentTarget,
+        actions: tuple[DeploymentAction, ...],
+    ) -> dict[str, SchemaAssetState]:
+        if target.platform.casefold() != self.key.casefold():
             raise ValidationError(
-                f"Runtime provider '{self.key}' cannot deploy "
-                f"'{plan.target.platform}'"
+                f"Runtime provider '{self.key}' cannot deploy '{target.platform}'"
             )
 
         physical_assets: set[str] = set()
         desired_by_action: dict[str, SchemaAssetState] = {}
-
-        for action in plan.actions:
+        for action in actions:
             if action.kind is not DeploymentActionKind.ENSURE_ASSET_STATE:
                 raise ValidationError(
                     f"Unsupported deployment action kind: {action.kind.value}"
@@ -269,30 +363,35 @@ class DeploymentOrchestrator(DeploymentAdapter):
                 )
             desired_by_action[action.governed_asset] = mapped
 
-        # Binding resolution is pure provider-local identity resolution. Calling it
-        # here validates runtime-target syntax and exact plan bindings without I/O.
-        self._resolve_plan_bindings(plan)
+        self._resolve_bindings(target, actions)
         return desired_by_action
 
     def _resolve_plan_bindings(
         self,
         plan: DeploymentPlan,
     ) -> tuple[RuntimeAssetBinding, ...]:
+        return self._resolve_bindings(plan.target, plan.actions)
+
+    def _resolve_bindings(
+        self,
+        target: DeploymentTarget,
+        actions: tuple[DeploymentAction, ...],
+    ) -> tuple[RuntimeAssetBinding, ...]:
         assets = tuple(
             RuntimeAssetSpec(
                 governed_asset=action.governed_asset,
                 physical_name=action.physical_name,
             )
-            for action in plan.actions
+            for action in actions
         )
         bindings = self._runtime_provider.resolve_bindings(
-            runtime_target=plan.target.runtime_target,
+            runtime_target=target.runtime_target,
             assets=assets,
         )
 
         expected = {
             action.governed_asset: action.physical_name.casefold()
-            for action in plan.actions
+            for action in actions
         }
         if len(bindings) != len(expected):
             raise ValidationError(
@@ -338,6 +437,19 @@ class DeploymentOrchestrator(DeploymentAdapter):
         *,
         bindings: tuple[RuntimeAssetBinding, ...],
     ) -> None:
+        self._validate_observation_for_scope(
+            plan.target,
+            observed_state,
+            bindings=bindings,
+        )
+
+    def _validate_observation_for_scope(
+        self,
+        target: DeploymentTarget,
+        observed_state: ObservedPlatformState,
+        *,
+        bindings: tuple[RuntimeAssetBinding, ...],
+    ) -> None:
         if observed_state.platform.casefold() != self.key.casefold():
             raise ValidationError(
                 "Runtime observation platform does not match runtime provider"
@@ -346,9 +458,9 @@ class DeploymentOrchestrator(DeploymentAdapter):
             raise ValidationError(
                 "Runtime observation source_identifier is required"
             )
-        if observed_state.source_identifier != plan.target.source_reference:
+        if observed_state.source_identifier != target.source_reference:
             raise ValidationError(
-                "Runtime observation source does not match DeploymentPlan "
+                "Runtime observation source does not match deployment target "
                 "source reference"
             )
         if observed_state.fingerprint is None:
@@ -379,7 +491,14 @@ class DeploymentOrchestrator(DeploymentAdapter):
         self,
         plan: DeploymentPlan,
     ) -> tuple[ObservedPlatformState, tuple[RuntimeAssetBinding, ...]]:
-        bindings = self._resolve_plan_bindings(plan)
+        return self._observe_scope(plan.target, plan.actions)
+
+    def _observe_scope(
+        self,
+        target: DeploymentTarget,
+        actions: tuple[DeploymentAction, ...],
+    ) -> tuple[ObservedPlatformState, tuple[RuntimeAssetBinding, ...]]:
+        bindings = self._resolve_bindings(target, actions)
         return (
             self._runtime_provider.observe(bindings=bindings),
             bindings,
