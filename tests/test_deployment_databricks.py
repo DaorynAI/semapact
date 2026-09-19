@@ -372,6 +372,17 @@ def test_mutation_execute_without_warehouse_fails_closed() -> None:
     assert client.statement_execution.calls == []
 
 
+def test_verify_uses_same_databricks_target_mapping_as_preview() -> None:
+    plan = _plan(_property("id", "integer", required=True))
+    current = _state(("id", "INT", False))
+    adapter, _, _ = _adapter(current)
+
+    result = adapter.verify(plan)
+
+    assert result.differences == ()
+    assert result.unverified_paths == ()
+
+
 def test_runtime_source_participates_in_plan_identity() -> None:
     plan_a = _plan(_property("id", "BIGINT", required=True), source_reference="workspace-a")
     plan_b = _plan(_property("id", "BIGINT", required=True), source_reference="workspace-b")
