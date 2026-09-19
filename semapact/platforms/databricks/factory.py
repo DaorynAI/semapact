@@ -6,8 +6,9 @@ from collections.abc import Mapping
 
 from open_data_contract_standard.model import Server
 
-from semapact.deployment import DeploymentAdapter
-from semapact.observation import RuntimeProvider
+from semapact.deployment.adapters import DeploymentAdapter
+from semapact.observation.providers import RuntimeProvider
+from semapact.exceptions import ValidationError
 from semapact.platforms.databricks.client import create_databricks_workspace_client
 from semapact.platforms.databricks.deployment import DatabricksDeploymentAdapter
 from semapact.platforms.databricks.runtime import DatabricksRuntimeProvider
@@ -84,10 +85,8 @@ def _clean(value: object) -> str | None:
     return cleaned or None
 
 
-
 def _required(value: object, message: str) -> str:
     cleaned = _clean(value)
     if not cleaned:
-        from semapact.exceptions import ValidationError
         raise ValidationError(message)
     return cleaned
