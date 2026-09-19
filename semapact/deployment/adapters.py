@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from open_data_contract_standard.model import OpenDataContractStandard
+
 from semapact.deployment.models import (
+    DeploymentAssessment,
     DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
+    DeploymentTarget,
 )
 from semapact.reconciliation import ReconciliationResult
 
@@ -16,6 +20,18 @@ class DeploymentAdapter(ABC):
     """Own the complete provider-neutral deployment lifecycle entrypoints."""
 
     key: str
+
+    def assess(
+        self,
+        contract: OpenDataContractStandard,
+        *,
+        candidate_revision_ref: str,
+        target: DeploymentTarget,
+    ) -> DeploymentAssessment:
+        """Observe runtime and assess one candidate without creating execution authority."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support candidate deployment assessment"
+        )
 
     @abstractmethod
     def validate(self, plan: DeploymentPlan) -> None:
