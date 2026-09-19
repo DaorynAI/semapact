@@ -15,7 +15,7 @@ from semapact.observation.models import (
     ObservedProperty,
     ObservedPropertyIdentity,
 )
-from semapact.platforms.databricks.schema_mapper import (
+from semapact.platforms.databricks.schema_planner import (
     plan_databricks_schema_transition,
     validate_databricks_desired_schema,
 )
