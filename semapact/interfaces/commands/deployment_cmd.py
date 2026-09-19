@@ -25,7 +25,6 @@ from semapact.interfaces.outcomes import (
     ProcessOutcome,
     outcome_from_reconciliation_status,
 )
-from semapact.observation import RuntimeProvider
 from semapact.reconciliation import classify_reconciliation_status
 
 
@@ -108,9 +107,12 @@ def run_deployment_execute(args: argparse.Namespace) -> DeploymentCommandResult:
 def run_deployment_verify(args: argparse.Namespace) -> DeploymentCommandResult:
     """Verify exact DeploymentPlan convergence through the existing M1 path."""
     plan = _load_model(args.plan, DeploymentPlan)
+    from semapact.platforms.runtime_registry import create_deployment_adapter
+
+    adapter = create_deployment_adapter(plan.target.platform)
     result = DeploymentService().verify(
         plan,
-        runtime_provider=_runtime_provider(plan),
+        adapter=adapter,
     )
     status = classify_reconciliation_status(result)
     rendered = (
@@ -122,13 +124,6 @@ def run_deployment_verify(args: argparse.Namespace) -> DeploymentCommandResult:
         output=rendered,
         outcome=outcome_from_reconciliation_status(status),
     )
-
-
-def _runtime_provider(plan: DeploymentPlan) -> RuntimeProvider:
-    from semapact.platforms.runtime_registry import create_runtime_provider_registry
-
-    registry = create_runtime_provider_registry(plan.target.platform)
-    return registry.get(plan.target.platform)
 
 
 def _load_model(path: str, model_type: type[_ModelT]) -> _ModelT:
