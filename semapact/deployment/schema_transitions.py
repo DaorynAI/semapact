@@ -14,6 +14,7 @@ from typing import Sequence
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from semapact.exceptions import ValidationError
+from semapact.observation.models import ObservedAsset
 from semapact.schema import (
     SchemaComparisonResult,
     SchemaDifferenceType,
@@ -80,6 +81,7 @@ class SchemaTransitionPlanner(ABC):
         physical_name: str,
         desired_columns: Sequence[SchemaPropertyState],
         comparison: SchemaComparisonResult,
+        observed_asset: ObservedAsset | None = None,
     ) -> SchemaTransition:
         raise NotImplementedError
 
@@ -96,7 +98,9 @@ class AdditiveSchemaTransitionPlanner(SchemaTransitionPlanner):
         physical_name: str,
         desired_columns: Sequence[SchemaPropertyState],
         comparison: SchemaComparisonResult,
+        observed_asset: ObservedAsset | None = None,
     ) -> SchemaTransition:
+        del observed_asset
         return plan_additive_schema_transition(
             governed_asset=governed_asset,
             physical_name=physical_name,
