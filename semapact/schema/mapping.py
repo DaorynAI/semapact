@@ -101,7 +101,7 @@ def map_observed_schema_asset(
         key = identity.casefold()
         if key in seen:
             raise ValidationError(
-                f"Duplicate normalized observed property identity: '{identity}'"
+                f"Duplicate canonical observed property identity found: '{key}'"
             )
         seen.add(key)
 
