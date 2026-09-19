@@ -71,16 +71,24 @@ class DeploymentOrchestrator(DeploymentAdapter):
         self._validate_and_map_plan(plan)
 
     def preview(self, plan: DeploymentPlan) -> DeploymentPreview:
-        """Observe runtime and derive exact provider-native operations."""
+        """Validate, observe runtime, and derive exact provider-native operations."""
+        desired_by_action = self._validate_and_map_plan(plan)
         observed_state = self._observe_plan_scope(plan)
-        return self._preview_from_observation(plan, observed_state)
+        return self._preview_from_observation(
+            plan,
+            observed_state,
+            desired_by_action=desired_by_action,
+        )
 
     def _preview_from_observation(
         self,
         plan: DeploymentPlan,
         observed_state: ObservedPlatformState,
+        *,
+        desired_by_action: dict[str, SchemaAssetState] | None = None,
     ) -> DeploymentPreview:
-        desired_by_action = self._validate_and_map_plan(plan)
+        if desired_by_action is None:
+            desired_by_action = self._validate_and_map_plan(plan)
         self._validate_observation(plan, observed_state)
 
         observed_by_asset = {
