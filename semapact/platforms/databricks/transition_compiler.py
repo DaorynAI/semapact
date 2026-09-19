@@ -12,12 +12,12 @@ from semapact.deployment.schema_transitions import (
     SchemaTransitionKind,
 )
 from semapact.exceptions import ValidationError
-from semapact.platforms.databricks.identifiers import validate_databricks_identifier
+from semapact.schema import validate_simple_sql_identifier
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
 from semapact.schema import SchemaPropertyState
 
 
-class DatabricksTransitionCompiler:
+class DatabricksTransitionCompiler(TransitionCompiler):
     """Render only Databricks-specific transition syntax.
 
     Column definitions are opaque target-schema compiler output retained by the
@@ -33,9 +33,9 @@ class DatabricksTransitionCompiler:
         transition: SchemaTransition,
     ) -> NativeOperation:
         catalog, schema_name = parse_databricks_runtime_target(runtime_target)
-        validate_databricks_identifier(catalog, "catalog")
-        validate_databricks_identifier(schema_name, "schema")
-        validate_databricks_identifier(transition.physical_name, "asset")
+        validate_simple_sql_identifier(catalog, "catalog")
+        validate_simple_sql_identifier(schema_name, "schema")
+        validate_simple_sql_identifier(transition.physical_name, "asset")
 
         if transition.kind is SchemaTransitionKind.NO_OP:
             return NativeOperation(
@@ -140,5 +140,5 @@ def _qualified_name(catalog: str, schema_name: str, table_name: str) -> str:
 
 
 def _quote_identifier(value: str) -> str:
-    validate_databricks_identifier(value, "identifier")
+    validate_simple_sql_identifier(value, "identifier")
     return f"`{value}`"
