@@ -1,4 +1,4 @@
-"""Databricks schema projection and normalization for deployment planning."""
+"""Databricks implementation of the shared schema mapping contract."""
 
 from __future__ import annotations
 
@@ -18,10 +18,12 @@ from semapact.observation.models import ObservedAsset
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
 from semapact.schema import (
     SchemaAssetState,
-    SchemaPropertyState,
-    SchemaSnapshot,
+    SchemaMapper,
     compare_schema_snapshots,
+    map_desired_schema_asset,
+    map_observed_schema_asset,
 )
+from semapact.schema.comparison import SchemaSnapshot
 
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
@@ -32,14 +34,45 @@ _UNRESOLVED_DATABRICKS_TYPES = {
 }
 
 
+class DatabricksSchemaMapper:
+    """Normalize ODCS/runtime physical types into Databricks comparable state."""
+
+    key = "databricks"
+
+    def normalize_desired_type(self, prop: SchemaProperty) -> str | None:
+        raw = getattr(prop, "physicalType", None)
+        if raw is None or not str(raw).strip():
+            name = getattr(prop, "physicalName", None) or getattr(prop, "name", None)
+            raise ValidationError(
+                f"Databricks deployment requires physicalType for column '{name}'"
+            )
+
+        raw_text = str(raw).strip()
+        mapped = convert_to_databricks(prop)
+        return _normalize_databricks_type(mapped or raw_text)
+
+    def normalize_observed_type(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_databricks_type(value)
+
+
+_DATABRICKS_SCHEMA_MAPPER: SchemaMapper = DatabricksSchemaMapper()
+
+
 def validate_databricks_desired_schema(
     *,
     table_name: str,
     desired: SchemaObject,
 ) -> None:
-    """Validate and normalize one desired schema against the supported slice."""
-    validate_databricks_identifier(table_name, "asset")
-    _desired_columns(desired)
+    """Validate one desired schema through the shared mapping contract."""
+    asset = map_desired_schema_asset(
+        desired,
+        asset_identity=table_name,
+        mapper=_DATABRICKS_SCHEMA_MAPPER,
+        use_physical_property_names=True,
+    )
+    _validate_databricks_asset_state(asset)
 
 
 def plan_databricks_schema_transition(
@@ -50,58 +83,44 @@ def plan_databricks_schema_transition(
     desired: SchemaObject,
     observed: ObservedAsset | None,
 ) -> SchemaTransition:
-    """Project Databricks state, compare it once, then derive convergence intent."""
+    """Map provider state, compare through core, then derive convergence intent."""
     catalog, schema_name = parse_databricks_runtime_target(runtime_target)
     validate_databricks_identifier(catalog, "catalog")
     validate_databricks_identifier(schema_name, "schema")
-    validate_databricks_desired_schema(table_name=table_name, desired=desired)
+
+    desired_asset = map_desired_schema_asset(
+        desired,
+        asset_identity=table_name,
+        mapper=_DATABRICKS_SCHEMA_MAPPER,
+        use_physical_property_names=True,
+    )
+    _validate_databricks_asset_state(desired_asset)
 
     if observed is not None:
-        if observed.identity.platform.casefold() != "databricks":
-            raise ValidationError(
-                "Databricks deployment planning requires Databricks runtime evidence"
-            )
-        expected_namespace = (catalog.casefold(), schema_name.casefold())
-        actual_namespace = tuple(part.casefold() for part in observed.identity.namespace)
-        if actual_namespace != expected_namespace:
-            raise ValidationError(
-                "Observed asset is outside the requested Databricks namespace"
-            )
-        if observed.identity.asset.casefold() != table_name.casefold():
-            raise ValidationError(
-                "Observed asset does not match the requested Databricks table"
-            )
-        if (observed.asset_type or "").strip().casefold() != "managed":
-            raise ValidationError(
-                "Existing Databricks asset must be a MANAGED table for deployment mutation"
-            )
-
-    desired_columns = _desired_columns(desired)
-    expected_snapshot = SchemaSnapshot(
-        assets=(
-            SchemaAssetState(
-                identity=table_name,
-                properties=desired_columns,
+        _validate_databricks_observed_asset(
+            observed=observed,
+            catalog=catalog,
+            schema_name=schema_name,
+            table_name=table_name,
+        )
+        observed_assets = (
+            map_observed_schema_asset(
+                observed,
+                asset_identity=table_name,
+                mapper=_DATABRICKS_SCHEMA_MAPPER,
             ),
         )
-    )
+    else:
+        observed_assets = ()
 
-    observed_snapshot = SchemaSnapshot(
-        assets=()
-        if observed is None
-        else (
-            SchemaAssetState(
-                identity=table_name,
-                properties=_observed_columns(observed),
-            ),
-        )
+    comparison = compare_schema_snapshots(
+        SchemaSnapshot(assets=(desired_asset,)),
+        SchemaSnapshot(assets=observed_assets),
     )
-
-    comparison = compare_schema_snapshots(expected_snapshot, observed_snapshot)
     return plan_additive_schema_transition(
         governed_asset=governed_asset,
         physical_name=table_name,
-        desired_columns=desired_columns,
+        desired_columns=desired_asset.properties,
         comparison=comparison,
     )
 
@@ -113,68 +132,42 @@ def validate_databricks_identifier(value: str, role: str) -> None:
         )
 
 
-def _desired_columns(desired: SchemaObject) -> tuple[SchemaPropertyState, ...]:
-    columns: list[SchemaPropertyState] = []
-    seen: set[str] = set()
-    for prop in desired.properties or []:
-        name = _property_physical_name(prop)
-        validate_databricks_identifier(name, "column")
-        key = name.casefold()
-        if key in seen:
-            raise ValidationError(
-                f"Duplicate physical column binding in desired schema: '{name}'"
-            )
-        seen.add(key)
-
-        physical_type = getattr(prop, "physicalType", None)
-        if physical_type is None or not str(physical_type).strip():
-            raise ValidationError(
-                f"Databricks deployment requires physicalType for column '{name}'"
-            )
-
-        columns.append(
-            SchemaPropertyState(
-                identity=name,
-                physical_type=_map_desired_type(prop),
-                nullable=not bool(getattr(prop, "required", False)),
-            )
-        )
-
-    if not columns:
+def _validate_databricks_asset_state(asset: SchemaAssetState) -> None:
+    validate_databricks_identifier(asset.identity, "asset")
+    if not asset.properties:
         raise ValidationError("Databricks deployment requires at least one schema property")
-    return tuple(columns)
+    for prop in asset.properties:
+        validate_databricks_identifier(prop.identity, "column")
 
 
-def _observed_columns(observed: ObservedAsset) -> tuple[SchemaPropertyState, ...]:
-    columns: list[SchemaPropertyState] = []
-    for prop in observed.properties:
-        columns.append(
-            SchemaPropertyState(
-                identity=prop.identity.property,
-                physical_type=(
-                    None
-                    if prop.physical_type is None
-                    else _map_type_text(prop.physical_type)
-                ),
-                nullable=prop.nullable,
-            )
+def _validate_databricks_observed_asset(
+    *,
+    observed: ObservedAsset,
+    catalog: str,
+    schema_name: str,
+    table_name: str,
+) -> None:
+    if observed.identity.platform.casefold() != "databricks":
+        raise ValidationError(
+            "Databricks deployment planning requires Databricks runtime evidence"
         )
-    return tuple(columns)
 
+    expected_namespace = (catalog.casefold(), schema_name.casefold())
+    actual_namespace = tuple(part.casefold() for part in observed.identity.namespace)
+    if actual_namespace != expected_namespace:
+        raise ValidationError(
+            "Observed asset is outside the requested Databricks namespace"
+        )
 
-def _map_desired_type(prop: SchemaProperty) -> str:
-    raw = str(prop.physicalType).strip()
-    mapped = convert_to_databricks(prop)
-    return _normalize_databricks_type(mapped or raw)
+    if observed.identity.asset.casefold() != table_name.casefold():
+        raise ValidationError(
+            "Observed asset does not match the requested Databricks table"
+        )
 
-
-def _map_type_text(value: str) -> str:
-    synthetic = SchemaProperty(
-        name="_observed",
-        logicalType="string",
-        physicalType=value,
-    )
-    return _map_desired_type(synthetic)
+    if (observed.asset_type or "").strip().casefold() != "managed":
+        raise ValidationError(
+            "Existing Databricks asset must be a MANAGED table for deployment mutation"
+        )
 
 
 def _normalize_databricks_type(value: str) -> str:
@@ -197,13 +190,3 @@ def _normalize_databricks_type(value: str) -> str:
         raise ValidationError(f"Unsupported Databricks physicalType: '{value}'")
 
     return parsed.sql(dialect="databricks")
-
-
-def _property_physical_name(prop: SchemaProperty) -> str:
-    physical = getattr(prop, "physicalName", None)
-    if physical is not None and str(physical).strip():
-        return str(physical).strip()
-    name = getattr(prop, "name", None)
-    if name is None or not str(name).strip():
-        raise ValidationError("Schema property name is required for deployment binding")
-    return str(name).strip()
