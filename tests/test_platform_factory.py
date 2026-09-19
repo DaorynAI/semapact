@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 from open_data_contract_standard.model import OpenDataContractStandard, Server
 
-from semapact.deployment import DeploymentAdapter, DeploymentPlan
+from semapact.deployment import DeploymentAdapter
 from semapact.platforms.factories import PlatformFactory
 from semapact.platforms import runtime_registry
 
@@ -77,12 +77,10 @@ def test_one_factory_loader_extends_all_platform_composition_paths(
         "fake",
         lambda: factory,
     )
-    server = Server.model_validate(
-        {
-            "server": "production",
-            "type": "fake",
-            "host": "https://fake.example",
-        }
+    server = Server.model_construct(
+        server="production",
+        type="fake",
+        host="https://fake.example",
     )
 
     location = runtime_registry.resolve_runtime_location(_contract(server))
