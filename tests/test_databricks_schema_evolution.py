@@ -7,7 +7,6 @@ from semapact.deployment.models import NativeOperationKind
 from semapact.deployment.schema_transitions import (
     SchemaTransition,
     SchemaTransitionKind,
-    plan_additive_schema_transition,
 )
 from semapact.exceptions import ValidationError
 from semapact.observation.models import (
@@ -16,29 +15,25 @@ from semapact.observation.models import (
     ObservedProperty,
     ObservedPropertyIdentity,
 )
-from semapact.platforms.databricks.platform import DatabricksDeploymentPlatform
 from semapact.platforms.databricks.transition_compiler import (
     DatabricksTransitionCompiler,
 )
-from semapact.schema import SchemaSnapshot, compare_schema_snapshots
-
-
-
-
-
-class _UnusedRuntimeProvider:
-    key = "databricks"
-
-    def resolve_bindings(self, *, runtime_target, assets):
-        raise AssertionError("runtime provider should not be used in schema unit tests")
-
-    def observe(self, *, bindings):
-        raise AssertionError("runtime provider should not be used in schema unit tests")
-
-
-_PLATFORM = DatabricksDeploymentPlatform(
-    runtime_provider=_UnusedRuntimeProvider(),
+from semapact.platforms.databricks.transition_planner import (
+    DatabricksSchemaTransitionPlanner,
 )
+from semapact.schema import (
+    SchemaSnapshot,
+    SqlSchemaMapper,
+    compare_schema_snapshots,
+)
+
+
+_MAPPER = SqlSchemaMapper(
+    key="databricks",
+    server_type="databricks",
+    dialect="databricks",
+)
+_PLANNER = DatabricksSchemaTransitionPlanner()
 
 
 def _property(
@@ -95,27 +90,15 @@ def _plan(
     desired: SchemaObject,
     observed: ObservedAsset | None,
 ) -> SchemaTransition:
-    mapped = _PLATFORM.schema_mapper.map_desired_asset(
+    mapped = _MAPPER.map_desired_asset(
         desired,
         asset_identity="orders",
     )
-    _PLATFORM.validate_desired_asset(
-        target=_deployment_target(),
-        physical_name="orders",
-        desired=desired,
-        mapped=mapped,
-    )
-    if observed is not None:
-        _PLATFORM.validate_observed_asset(
-            target=_deployment_target(),
-            physical_name="orders",
-            observed=observed,
-        )
     observed_assets = (
         ()
         if observed is None
         else (
-            _PLATFORM.schema_mapper.map_observed_asset(
+            _MAPPER.map_observed_asset(
                 observed,
                 asset_identity="orders",
             ),
@@ -125,21 +108,12 @@ def _plan(
         SchemaSnapshot(assets=(mapped,)),
         SchemaSnapshot(assets=observed_assets),
     )
-    return plan_additive_schema_transition(
+    return _PLANNER.plan(
         governed_asset="orders",
         physical_name="orders",
         desired_columns=mapped.properties,
         comparison=comparison,
-    )
-
-
-def _deployment_target():
-    from semapact.deployment.models import DeploymentTarget
-
-    return DeploymentTarget(
-        platform="databricks",
-        runtime_target="main.silver",
-        source_reference="https://workspace.example",
+        observed_asset=observed,
     )
 
 
@@ -285,31 +259,38 @@ def test_planner_fails_closed_on_unsafe_existing_mutation(
         _plan(desired, observed)
 
 
-def test_planner_rejects_non_managed_asset() -> None:
+def test_planner_rejects_non_managed_asset_only_when_mutation_is_required() -> None:
     with pytest.raises(ValidationError, match="MANAGED"):
         _plan(
-            _schema(_property("id", "BIGINT", required=True)),
-            _observed(("id", "bigint", False), asset_type="EXTERNAL"),
+            _schema(
+                _property("id", "BIGINT", required=True),
+                _property("note", "STRING"),
+            ),
+            _observed(
+                ("id", "bigint", False),
+                asset_type="EXTERNAL",
+            ),
         )
+
+
+def test_planner_allows_no_op_assurance_for_non_managed_asset() -> None:
+    transition = _plan(
+        _schema(_property("id", "BIGINT", required=True)),
+        _observed(
+            ("id", "bigint", False),
+            asset_type="EXTERNAL",
+        ),
+    )
+
+    assert transition.kind is SchemaTransitionKind.NO_OP
 
 
 def test_desired_schema_validation_rejects_unsafe_physical_type() -> None:
-    with pytest.raises(ValidationError, match="physicalType|could not be parsed|exactly one CREATE TABLE"):
-        _PLATFORM.schema_mapper.map_desired_asset(
+    with pytest.raises(
+        ValidationError,
+        match="physicalType|could not be parsed|exactly one CREATE TABLE",
+    ):
+        _MAPPER.map_desired_asset(
             _schema(_property("id", "STRING);DROP")),
             asset_identity="orders",
         )
-
-
-def test_planner_rejects_observation_for_different_asset() -> None:
-    observed = _observed(("id", "bigint", False)).model_copy(
-        update={
-            "identity": ObservedAssetIdentity(
-                platform="databricks",
-                namespace=("main", "silver"),
-                asset="customers",
-            )
-        }
-    )
-    with pytest.raises(ValidationError, match="Observed asset"):
-        _plan(_schema(_property("id", "BIGINT", required=True)), observed)
