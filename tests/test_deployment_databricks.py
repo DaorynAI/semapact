@@ -29,7 +29,10 @@ from semapact.observation.models import (
     ObservedPropertyIdentity,
 )
 from semapact.observation.providers import RuntimeAssetBinding
-from semapact.platforms.databricks.deployment import DatabricksDeploymentAdapter
+from semapact.platforms.databricks.deployment import (
+    DatabricksDeploymentAdapter,
+    DatabricksStatementExecutor,
+)
 
 CAPTURED_AT = datetime(2026, 9, 10, 5, 0, tzinfo=timezone.utc)
 SOURCE_REFERENCE = "workspace-a"
@@ -388,3 +391,68 @@ def test_runtime_source_participates_in_plan_identity() -> None:
     plan_b = _plan(_property("id", "BIGINT", required=True), source_reference="workspace-b")
 
     assert plan_a.deployment_plan_id != plan_b.deployment_plan_id
+
+
+
+class _PollingStatements:
+    def __init__(self, terminal_state: str = "SUCCEEDED") -> None:
+        self.terminal_state = terminal_state
+        self.get_calls = 0
+
+    def execute_statement(self, *, statement, warehouse_id, wait_timeout):
+        return SimpleNamespace(
+            statement_id="s-2",
+            status=SimpleNamespace(state="PENDING", error=None),
+        )
+
+    def get_statement(self, statement_id):
+        self.get_calls += 1
+        state = "RUNNING" if self.get_calls == 1 else self.terminal_state
+        return SimpleNamespace(
+            statement_id=statement_id,
+            status=SimpleNamespace(
+                state=state,
+                error="boom" if state == "FAILED" else None,
+            ),
+        )
+
+
+def test_statement_executor_polls_until_success() -> None:
+    client = _Client()
+    client.statement_execution = _PollingStatements()
+    executor = DatabricksStatementExecutor(
+        client=client,
+        warehouse_id="warehouse-1",
+        poll_interval_seconds=0,
+        max_poll_attempts=3,
+    )
+
+    executor.execute(
+        NativeOperation(
+            kind=NativeOperationKind.ALTER,
+            governed_asset="orders",
+            statement="ALTER TABLE x ADD COLUMNS (y STRING)",
+        )
+    )
+
+    assert client.statement_execution.get_calls == 2
+
+
+def test_statement_executor_surfaces_failed_terminal_state() -> None:
+    client = _Client()
+    client.statement_execution = _PollingStatements(terminal_state="FAILED")
+    executor = DatabricksStatementExecutor(
+        client=client,
+        warehouse_id="warehouse-1",
+        poll_interval_seconds=0,
+        max_poll_attempts=3,
+    )
+
+    with pytest.raises(RuntimeError, match="FAILED"):
+        executor.execute(
+            NativeOperation(
+                kind=NativeOperationKind.ALTER,
+                governed_asset="orders",
+                statement="ALTER TABLE x ADD COLUMNS (y STRING)",
+            )
+        )
