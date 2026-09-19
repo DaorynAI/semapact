@@ -130,7 +130,7 @@ def _native_column_definition(column: SchemaPropertyState) -> str:
             f"'{column.identity}'"
         )
 
-    return parsed.sql(dialect="databricks")
+    return parsed.sql(dialect="databricks", identify=True)
 
 
 def _qualified_name(catalog: str, schema_name: str, table_name: str) -> str:
