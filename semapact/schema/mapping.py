@@ -161,18 +161,17 @@ def parse_sql_target_asset(
             f"Target schema compiler emitted {dialect} DDL that could not be parsed"
         ) from exc
 
-    creates = [
-        statement
-        for statement in statements
-        if isinstance(statement, exp.Create)
-        and (statement.kind or "").upper() == "TABLE"
-    ]
-    if len(creates) != 1:
+    if (
+        len(statements) != 1
+        or not isinstance(statements[0], exp.Create)
+        or (statements[0].kind or "").upper() != "TABLE"
+    ):
         raise ValidationError(
-            "Target schema compilation must emit exactly one CREATE TABLE"
+            "Target schema compilation must emit exactly one CREATE TABLE "
+            "and no additional statements"
         )
 
-    table_schema = creates[0].this
+    table_schema = statements[0].this
     if not isinstance(table_schema, exp.Schema):
         raise ValidationError(
             "Target schema compiler emitted CREATE TABLE without a column schema"
