@@ -206,7 +206,15 @@ def parse_sql_target_asset(
                 f"Unsupported target physicalType for column '{name}'"
             )
 
-        nullable = column.find(exp.NotNullColumnConstraint) is None
+        constraints = column.args.get("constraints") or []
+        nullable = not any(
+            isinstance(constraint, exp.ColumnConstraint)
+            and isinstance(
+                constraint.args.get("kind"),
+                exp.NotNullColumnConstraint,
+            )
+            for constraint in constraints
+        )
         physical_type = data_type.sql(dialect=dialect)
         quoted_name = exp.to_identifier(name, quoted=True).sql(dialect=dialect)
         native_definition = f"{quoted_name} {physical_type}"
