@@ -22,10 +22,9 @@ from semapact.contractops import (
     build_change_set_from_decision,
     build_release_plan,
     resolve_release_version,
+    VersionAuthorityConfig,
 )
-from semapact.contractops.versioning import VersionAuthorityConfig
 from semapact.deployment import (
-    DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
     DeploymentTarget,
