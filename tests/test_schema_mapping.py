@@ -12,8 +12,6 @@ from semapact.schema import (
     PassThroughSchemaMapper,
     SchemaMapper,
     build_physical_property_bindings,
-    map_desired_schema_asset,
-    map_observed_schema_asset,
 )
 
 
@@ -65,75 +63,52 @@ def _observed() -> ObservedAsset:
     )
 
 
-def test_shared_mapping_projects_logical_or_physical_property_identity() -> None:
+def test_pass_through_mapper_projects_governed_logical_identity() -> None:
     mapper = PassThroughSchemaMapper()
-    schema = _schema()
 
-    logical = map_desired_schema_asset(
-        schema,
+    desired = mapper.map_desired_asset(
+        _schema(),
         asset_identity="orders",
-        mapper=mapper,
-        use_physical_property_names=False,
-    )
-    physical = map_desired_schema_asset(
-        schema,
-        asset_identity="orders",
-        mapper=mapper,
-        use_physical_property_names=True,
     )
 
-    assert [prop.identity for prop in logical.properties] == [
+    assert [prop.identity for prop in desired.properties] == [
         "customer_id",
         "note",
     ]
-    assert [prop.identity for prop in physical.properties] == [
-        "customerId",
-        "note",
-    ]
-    assert logical.properties[0].nullable is False
-    assert logical.properties[1].nullable is True
+    assert desired.properties[0].physical_type == "BIGINT"
+    assert desired.properties[0].nullable is False
+    assert desired.properties[1].nullable is True
 
 
-def test_shared_mapping_projects_runtime_physical_names_back_to_governed_identity() -> None:
+def test_pass_through_mapper_projects_runtime_physical_names_back_to_governed_identity() -> None:
     schema = _schema()
-    mapped = map_observed_schema_asset(
+    mapper = PassThroughSchemaMapper()
+
+    observed = mapper.map_observed_asset(
         _observed(),
         asset_identity="orders",
-        mapper=PassThroughSchemaMapper(),
         property_bindings=build_physical_property_bindings(
             schema.properties or []
         ),
     )
 
-    assert [prop.identity for prop in mapped.properties] == [
+    assert [prop.identity for prop in observed.properties] == [
         "customer_id",
         "note",
     ]
 
 
-def test_provider_mapper_owns_type_normalization_only() -> None:
-    class UppercaseMapper:
-        key = "test"
+def test_schema_mapper_contract_operates_on_whole_assets() -> None:
+    mapper: SchemaMapper = PassThroughSchemaMapper()
 
-        def normalize_desired_type(self, prop: SchemaProperty) -> str | None:
-            value = getattr(prop, "physicalType", None)
-            return None if value is None else str(value).upper()
-
-        def normalize_observed_type(self, value: str | None) -> str | None:
-            return None if value is None else value.upper()
-
-    mapper: SchemaMapper = UppercaseMapper()
-    desired = map_desired_schema_asset(
+    desired = mapper.map_desired_asset(
         _schema(),
         asset_identity="orders",
-        mapper=mapper,
-        use_physical_property_names=True,
     )
-    observed = map_observed_schema_asset(
+    observed = mapper.map_observed_asset(
         _observed(),
         asset_identity="orders",
-        mapper=mapper,
     )
 
-    assert desired.properties[0].physical_type == "BIGINT"
-    assert observed.properties[0].physical_type == "BIGINT"
+    assert desired.identity == "orders"
+    assert observed.identity == "orders"
