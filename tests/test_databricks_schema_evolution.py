@@ -259,6 +259,27 @@ def test_planner_fails_closed_on_unsafe_existing_mutation(
         _plan(desired, observed)
 
 
+@pytest.mark.parametrize(
+    ("desired_type", "observed_type"),
+    [
+        ("INT", "DECIMAL(18,2)"),
+        ("DECIMAL(10,2)", "DECIMAL(18,2)"),
+        ("DECIMAL(18,2)", "DECIMAL(18,4)"),
+        ("DECIMAL(18,2)", "DECIMAL(10,2)"),
+        ("BIGINT", "INT"),
+    ],
+)
+def test_existing_numeric_type_changes_fail_closed(
+    desired_type: str,
+    observed_type: str,
+) -> None:
+    with pytest.raises(ValidationError, match="type mutation"):
+        _plan(
+            _schema(_property("amount", desired_type)),
+            _observed(("amount", observed_type, True)),
+        )
+
+
 def test_planner_rejects_non_managed_asset_only_when_mutation_is_required() -> None:
     with pytest.raises(ValidationError, match="MANAGED"):
         _plan(
