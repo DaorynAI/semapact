@@ -4,17 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from open_data_contract_standard.model import OpenDataContractStandard, SchemaProperty
+from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject
 
 from semapact.exceptions import ValidationError
-from semapact.lifecycle.identity import (
-    PropertyIdentity,
-    build_property_index,
-    build_schema_index,
-    normalize_identity_name,
-)
+from semapact.lifecycle.identity import build_schema_index, normalize_identity_name
 from semapact.observation.fingerprint import fingerprint_observed_state
-from semapact.observation.models import ObservedAsset, ObservedPlatformState, ObservedProperty
+from semapact.observation.models import ObservedAsset, ObservedPlatformState
 from semapact.observation.providers import RuntimeAssetBinding
 from semapact.reconciliation.models import (
     ReconciliationDifference,
@@ -24,12 +19,16 @@ from semapact.reconciliation.models import (
     RuntimeReasonCode,
 )
 from semapact.schema import (
-    SchemaAssetState,
+    PassThroughSchemaMapper,
     SchemaDifference,
-    SchemaPropertyState,
     SchemaSnapshot,
+    build_physical_property_bindings,
     compare_schema_snapshots,
+    map_desired_schema_asset,
+    map_observed_schema_asset,
 )
+
+_PASSTHROUGH_SCHEMA_MAPPER = PassThroughSchemaMapper()
 
 _REASON_CODE_BY_RAW_DIFFERENCE: dict[
     tuple[ReconciliationDifferenceType, ReconciliationSubject], RuntimeReasonCode
@@ -51,9 +50,9 @@ def reconcile_governed_contract(
 ) -> ReconciliationResult:
     """Compare governed ODCS desired state with platform-neutral observed state.
 
-    Projection into normalized schema snapshots owns ODCS/runtime identity
-    binding. The shared comparator owns structural comparison exactly once.
-    Reconciliation then projects raw schema facts into stable runtime reason codes.
+    Shared schema mapping projects both source models into normalized snapshots.
+    The shared comparator finds raw schema facts exactly once. Reconciliation
+    projects those facts into stable runtime reason codes.
     """
     governed_assets = build_schema_index(contract)
     if asset_bindings is None:
@@ -73,82 +72,56 @@ def reconcile_governed_contract(
         ),
     )
 
-    differences = tuple(_reconciliation_difference(item) for item in comparison.differences)
     return ReconciliationResult(
         contract_id=_required_contract_text(getattr(contract, "id", None), field="id"),
         contract_version=_required_contract_text(getattr(contract, "version", None), field="version"),
         observation_source_identifier=observation.source_identifier,
         observation_fingerprint=observation.fingerprint or fingerprint_observed_state(observation),
-        differences=differences,
+        differences=tuple(
+            _reconciliation_difference(item)
+            for item in comparison.differences
+        ),
         unverified_paths=comparison.unverified_paths,
     )
 
 
 def _governed_snapshot(
-    governed_assets: dict[str, object],
+    governed_assets: dict[str, SchemaObject],
 ) -> SchemaSnapshot:
-    assets: list[SchemaAssetState] = []
-    for asset_key, governed_schema in governed_assets.items():
-        properties: list[SchemaPropertyState] = []
-        for prop in governed_schema.properties or []:
-            name = normalize_identity_name(str(prop.name), "Property")
-            physical = _optional_text(getattr(prop, "physicalType", None))
-            required = getattr(prop, "required", None)
-            properties.append(
-                SchemaPropertyState(
-                    identity=name,
-                    physical_type=physical,
-                    nullable=(not required) if isinstance(required, bool) else None,
-                )
+    return SchemaSnapshot(
+        assets=tuple(
+            map_desired_schema_asset(
+                governed_schema,
+                asset_identity=asset_key,
+                mapper=_PASSTHROUGH_SCHEMA_MAPPER,
+                use_physical_property_names=False,
             )
-        assets.append(
-            SchemaAssetState(
-                identity=asset_key,
-                properties=tuple(properties),
-            )
+            for asset_key, governed_schema in governed_assets.items()
         )
-    return SchemaSnapshot(assets=tuple(assets))
+    )
 
 
 def _observed_snapshot(
     *,
-    governed_assets: dict[str, object],
+    governed_assets: dict[str, SchemaObject],
     observed_assets: dict[str, ObservedAsset],
 ) -> SchemaSnapshot:
-    assets: list[SchemaAssetState] = []
+    assets = []
     for asset_key, observed_asset in observed_assets.items():
         governed_schema = governed_assets.get(asset_key)
-        if governed_schema is None:
-            properties = tuple(
-                SchemaPropertyState(
-                    identity=normalize_identity_name(
-                        prop.identity.property,
-                        "Observed property",
-                    ),
-                    physical_type=_optional_text(prop.physical_type),
-                    nullable=prop.nullable,
-                )
-                for prop in observed_asset.properties
+        property_bindings = (
+            None
+            if governed_schema is None
+            else build_physical_property_bindings(
+                governed_schema.properties or []
             )
-        else:
-            observed_properties = _build_observed_property_index(
-                asset_key,
-                observed_asset,
-                governed_properties=governed_schema.properties or [],
-            )
-            properties = tuple(
-                SchemaPropertyState(
-                    identity=property_key[1],
-                    physical_type=_optional_text(prop.physical_type),
-                    nullable=prop.nullable,
-                )
-                for property_key, prop in observed_properties.items()
-            )
-
+        )
         assets.append(
-            SchemaAssetState(
-                identity=asset_key,
-                properties=properties,
+            map_observed_schema_asset(
+                observed_asset,
+                asset_identity=asset_key,
+                mapper=_PASSTHROUGH_SCHEMA_MAPPER,
+                property_bindings=property_bindings,
             )
         )
     return SchemaSnapshot(assets=tuple(assets))
@@ -172,12 +145,16 @@ def _reconciliation_difference(
     )
 
 
-def _build_observed_asset_index(observation: ObservedPlatformState) -> dict[str, ObservedAsset]:
+def _build_observed_asset_index(
+    observation: ObservedPlatformState,
+) -> dict[str, ObservedAsset]:
     index: dict[str, ObservedAsset] = {}
     for asset in observation.assets:
         key = normalize_identity_name(asset.identity.asset, "Observed asset")
         if key in index:
-            raise ValidationError(f"Duplicate canonical observed asset identity found: '{key}'")
+            raise ValidationError(
+                f"Duplicate canonical observed asset identity found: '{key}'"
+            )
         index[key] = asset
     return index
 
@@ -192,14 +169,23 @@ def _build_bound_observed_asset_index(
     bound_runtime_keys: set[tuple[str, ...]] = set()
 
     for binding in bindings:
-        governed_key = normalize_identity_name(binding.governed_asset, "Runtime binding governed asset")
+        governed_key = normalize_identity_name(
+            binding.governed_asset,
+            "Runtime binding governed asset",
+        )
         if governed_key in binding_by_governed:
-            raise ValidationError(f"Duplicate runtime binding for governed asset: '{governed_key}'")
+            raise ValidationError(
+                f"Duplicate runtime binding for governed asset: '{governed_key}'"
+            )
         if binding.observed_asset.platform.casefold() != observation.platform.casefold():
-            raise ValidationError("Runtime binding platform must match observed platform state")
+            raise ValidationError(
+                "Runtime binding platform must match observed platform state"
+            )
         runtime_key = binding.observed_asset.canonical_key
         if runtime_key in bound_runtime_keys:
-            raise ValidationError("Multiple governed assets cannot bind to one runtime asset")
+            raise ValidationError(
+                "Multiple governed assets cannot bind to one runtime asset"
+            )
         bound_runtime_keys.add(runtime_key)
         binding_by_governed[governed_key] = binding
 
@@ -236,54 +222,6 @@ def _build_bound_observed_asset_index(
     return index
 
 
-def _build_observed_property_index(
-    asset_key: str,
-    asset: ObservedAsset,
-    *,
-    governed_properties: Sequence[SchemaProperty],
-) -> dict[PropertyIdentity, ObservedProperty]:
-    physical_to_governed = _property_binding_index(governed_properties)
-    index: dict[PropertyIdentity, ObservedProperty] = {}
-    for prop in asset.properties:
-        if prop.identity.asset != asset.identity:
-            raise ValidationError("Observed property asset identity must match its containing asset")
-        observed_name = normalize_identity_name(prop.identity.property, "Observed property")
-        governed_name = physical_to_governed.get(observed_name, observed_name)
-        key: PropertyIdentity = (asset_key, governed_name)
-        if key in index:
-            raise ValidationError(
-                f"Duplicate canonical observed property identity found: '{governed_name}'"
-                f" in asset '{asset_key}'"
-            )
-        index[key] = prop
-    return index
-
-
-def _property_binding_index(
-    governed_properties: Sequence[SchemaProperty],
-) -> dict[str, str]:
-    physical_to_governed: dict[str, str] = {}
-    for prop in governed_properties:
-        logical_raw = getattr(prop, "name", None)
-        if logical_raw is None:
-            raise ValidationError("Governed property name is required for runtime binding")
-        governed_name = normalize_identity_name(str(logical_raw), "Property")
-        physical_raw = getattr(prop, "physicalName", None)
-        physical_text = str(physical_raw).strip() if physical_raw is not None else ""
-        physical_name = normalize_identity_name(
-            physical_text or str(logical_raw),
-            "Property physical binding",
-        )
-        existing = physical_to_governed.get(physical_name)
-        if existing is not None and existing != governed_name:
-            raise ValidationError(
-                "Multiple governed properties cannot bind to one physical runtime property: "
-                f"'{physical_name}'"
-            )
-        physical_to_governed[physical_name] = governed_name
-    return physical_to_governed
-
-
 def _runtime_reason_code(
     *,
     difference_type: ReconciliationDifferenceType,
@@ -299,16 +237,13 @@ def _runtime_reason_code(
 
 
 def _required_contract_text(value: object, *, field: str) -> str:
-    text = _optional_text(value)
-    if text is None:
+    if value is None:
+        raise ValidationError(
+            f"Governed desired-state contract {field} is required for reconciliation"
+        )
+    text = str(value).strip()
+    if not text:
         raise ValidationError(
             f"Governed desired-state contract {field} is required for reconciliation"
         )
     return text
-
-
-def _optional_text(value: object | None) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
