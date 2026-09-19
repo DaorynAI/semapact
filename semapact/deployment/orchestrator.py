@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from open_data_contract_standard.model import SchemaObject
 
+from semapact.deployment.adapters import DeploymentAdapter
 from semapact.deployment.models import (
     DeploymentActionKind,
     DeploymentAuthorization,
@@ -29,7 +30,7 @@ from semapact.schema import (
 )
 
 
-class DeploymentOrchestrator:
+class DeploymentOrchestrator(DeploymentAdapter):
     """Provider-neutral deployment lifecycle.
 
     Flow:
@@ -54,6 +55,10 @@ class DeploymentOrchestrator:
             raise ValueError(
                 "Deployment platform and native operation executor keys must match"
             )
+        if platform.key.casefold() != platform.runtime_provider.key.casefold():
+            raise ValueError(
+                "Deployment platform and runtime provider keys must match"
+            )
         self._platform = platform
         self._executor = executor
 
@@ -65,12 +70,16 @@ class DeploymentOrchestrator:
         """Validate one plan and all mapped desired assets fail-closed."""
         self._validate_and_map_plan(plan)
 
-    def preview(
+    def preview(self, plan: DeploymentPlan) -> DeploymentPreview:
+        """Observe runtime and derive exact provider-native operations."""
+        observed_state = self._observe_plan_scope(plan)
+        return self._preview_from_observation(plan, observed_state)
+
+    def _preview_from_observation(
         self,
         plan: DeploymentPlan,
         observed_state: ObservedPlatformState,
     ) -> DeploymentPreview:
-        """Derive exact provider-native operations from fresh runtime evidence."""
         desired_by_action = self._validate_and_map_plan(plan)
         self._validate_observation(plan, observed_state)
 
@@ -188,7 +197,7 @@ class DeploymentOrchestrator:
                 "Runtime state changed since DeploymentPreview was produced"
             )
 
-        expected = self.preview(plan, current)
+        expected = self._preview_from_observation(plan, current)
         if expected != preview:
             raise ValidationError(
                 "DeploymentPreview no longer equals the deterministic preview for "
