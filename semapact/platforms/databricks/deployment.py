@@ -119,8 +119,6 @@ class DatabricksStatementExecutor(NativeOperationExecutor):
 class DatabricksDeploymentAdapter(DeploymentOrchestrator):
     """Databricks wiring over the generic deployment orchestrator."""
 
-    key = "databricks"
-
     def __init__(
         self,
         *,
@@ -133,7 +131,7 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
         super().__init__(
             runtime_provider=runtime_provider,
             schema_mapper=SqlSchemaMapper(
-                key=self.key,
+                key="databricks",
                 server_type="databricks",
                 dialect="databricks",
             ),
