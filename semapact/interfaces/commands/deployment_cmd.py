@@ -59,14 +59,11 @@ def run_deployment_plan(args: argparse.Namespace) -> DeploymentCommandResult:
 def run_deployment_preview(args: argparse.Namespace) -> DeploymentCommandResult:
     """Observe exact runtime scope and render the adapter's canonical preview."""
     plan = _load_model(args.plan, DeploymentPlan)
-    provider = _runtime_provider(plan)
-
     from semapact.platforms.runtime_registry import create_deployment_adapter
 
     adapter = create_deployment_adapter(plan.target.platform)
     preview = DeploymentService().preview(
         plan,
-        runtime_provider=provider,
         adapter=adapter,
     )
     return DeploymentCommandResult(
