@@ -59,18 +59,24 @@ Likewise, an object that exists in runtime but is absent from one contract must 
 
 Concrete provider-native operations therefore begin at the platform adapter boundary, where validation and preview combine the DeploymentPlan with provider semantics and fresh runtime evidence.
 
-Provider preview should keep **transition semantics** separate from SQL rendering. Conceptually:
+Provider preview should keep **comparison facts**, **transition semantics**, and SQL rendering separate. Conceptually:
 
 ```text
-desired schema + observed schema
+normalized desired schema + normalized observed schema
         ↓
-semantic transition
-  CREATE_ASSET / ADD_PROPERTY / NO_OP / unsupported
+shared schema comparator
+        ↓
+SchemaDifference[]
+        ↓
+deployment transition projection
+  CREATE_ASSET / ADD_PROPERTIES / NO_OP
         ↓
 provider compiler
         ↓
 CREATE / ALTER / NO_OP native operation
 ```
+
+The same shared schema comparison facts are consumed by runtime reconciliation. Reconciliation projects them into drift reason codes; deployment projects them into convergence intent. Provider adapters must not implement a second desired-vs-observed comparator.
 
 The semantic transition layer is an internal planning boundary, not a new release artifact or authorization authority. This lets compatible execution families share transition semantics while keeping provider-specific naming, capability checks, SQL rendering, authentication, and execution in their adapters.
 
