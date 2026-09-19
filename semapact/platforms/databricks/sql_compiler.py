@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from semapact.deployment.models import NativeOperation, NativeOperationKind
 from semapact.deployment.schema_transitions import (
-    SchemaColumnState,
     SchemaTransition,
     SchemaTransitionKind,
 )
+from semapact.schema import SchemaPropertyState
 from semapact.platforms.databricks.schema_evolution import (
     validate_databricks_identifier,
 )
@@ -61,10 +61,10 @@ def _create_table_statement(
     catalog: str,
     schema_name: str,
     table_name: str,
-    columns: tuple[SchemaColumnState, ...],
+    columns: tuple[SchemaPropertyState, ...],
 ) -> str:
     rendered = ", ".join(
-        f"{_quote_identifier(column.name)} {column.physical_type}"
+        f"{_quote_identifier(column.identity)} {column.physical_type}"
         + ("" if column.nullable else " NOT NULL")
         for column in columns
     )
@@ -79,10 +79,10 @@ def _add_columns_statement(
     catalog: str,
     schema_name: str,
     table_name: str,
-    columns: tuple[SchemaColumnState, ...],
+    columns: tuple[SchemaPropertyState, ...],
 ) -> str:
     rendered = ", ".join(
-        f"{_quote_identifier(column.name)} {column.physical_type}"
+        f"{_quote_identifier(column.identity)} {column.physical_type}"
         for column in columns
     )
     return (
