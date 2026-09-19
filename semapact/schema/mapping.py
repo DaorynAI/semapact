@@ -7,8 +7,9 @@ platform-specific validation/capability rules.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
-from typing import Callable, Protocol
+from typing import Callable
 
 import sqlglot
 from datacontract.export.sql_exporter import to_sql_ddl
@@ -31,28 +32,34 @@ _UNRESOLVED_SQL_TYPES = {
 }
 
 
-class SchemaMapper(Protocol):
+class SchemaMapper(ABC):
     """Map desired and observed schema state into one comparable model."""
 
     key: str
 
+    @abstractmethod
     def map_desired_asset(
         self,
         schema: SchemaObject,
         *,
         asset_identity: str,
-    ) -> SchemaAssetState: ...
+    ) -> SchemaAssetState:
+        """Map desired source state into normalized comparable state."""
+        raise NotImplementedError
 
+    @abstractmethod
     def map_observed_asset(
         self,
         observed: ObservedAsset,
         *,
         asset_identity: str,
         property_bindings: Mapping[str, str] | None = None,
-    ) -> SchemaAssetState: ...
+    ) -> SchemaAssetState:
+        """Map observed runtime state into normalized comparable state."""
+        raise NotImplementedError
 
 
-class SqlSchemaMapper:
+class SqlSchemaMapper(SchemaMapper):
     """Common SQL target-schema mapper backed by datacontract-cli + sqlglot."""
 
     def __init__(
@@ -105,7 +112,7 @@ class SqlSchemaMapper:
         )
 
 
-class PassThroughSchemaMapper:
+class PassThroughSchemaMapper(SchemaMapper):
     """Provider-neutral mapper preserving ODCS/runtime physical type text."""
 
     key = "generic"
