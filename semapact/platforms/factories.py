@@ -17,6 +17,11 @@ class PlatformFactory(ABC):
     key: str
 
     @abstractmethod
+    def runtime_target_from_server(self, server: Server) -> str:
+        """Project one ODCS server into this platform's runtime target."""
+        raise NotImplementedError
+
+    @abstractmethod
     def create_runtime_provider(
         self,
         *,
