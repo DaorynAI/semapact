@@ -3,8 +3,10 @@ from __future__ import annotations
 from semapact.deployment import (
     DeploymentAdapter,
     DeploymentOrchestrator,
+    AdditiveSchemaTransitionPlanner,
     DeploymentPlatform,
     NativeOperationExecutor,
+    SchemaTransitionPlanner,
     TransitionCompiler,
 )
 from semapact.platforms.databricks.deployment import (
@@ -22,6 +24,7 @@ from semapact.schema import SchemaMapper, SqlSchemaMapper
 
 def test_shared_deployment_contracts_own_platform_extension_points() -> None:
     assert issubclass(SqlSchemaMapper, SchemaMapper)
+    assert issubclass(AdditiveSchemaTransitionPlanner, SchemaTransitionPlanner)
     assert issubclass(DatabricksTransitionCompiler, TransitionCompiler)
     assert issubclass(DatabricksDeploymentPlatform, DeploymentPlatform)
     assert issubclass(DatabricksStatementExecutor, NativeOperationExecutor)
