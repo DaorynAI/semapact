@@ -21,6 +21,7 @@ from semapact.deployment.models import (
 from semapact.deployment.orchestrator import DeploymentOrchestrator
 from semapact.deployment.providers import DeploymentPlatform, NativeOperationExecutor
 from semapact.deployment.schema_transitions import (
+    AdditiveSchemaTransitionPlanner,
     SchemaTransition,
     SchemaTransitionKind,
 )
@@ -94,6 +95,7 @@ class _Platform(DeploymentPlatform):
     def __init__(self, runtime_provider: _RuntimeProvider) -> None:
         self.runtime_provider = runtime_provider
         self.schema_mapper = PassThroughSchemaMapper()
+        self.transition_planner = AdditiveSchemaTransitionPlanner()
         self.transition_compiler = _Compiler()
 
     def validate_target(self, target: DeploymentTarget) -> None:
