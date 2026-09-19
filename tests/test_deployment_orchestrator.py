@@ -19,7 +19,7 @@ from semapact.deployment.models import (
     compute_deployment_plan_id,
 )
 from semapact.deployment.orchestrator import DeploymentOrchestrator
-from semapact.deployment.providers import DeploymentPlatform, NativeOperationExecutor
+from semapact.deployment.providers import NativeOperationExecutor
 from semapact.deployment.schema_transitions import (
     AdditiveSchemaTransitionPlanner,
     SchemaTransition,
@@ -34,7 +34,7 @@ from semapact.observation.models import (
 )
 from semapact.observation.providers import RuntimeAssetBinding
 from semapact.reconciliation import RuntimeDriftStatus, classify_reconciliation_status
-from semapact.schema import PassThroughSchemaMapper, SchemaAssetState
+from semapact.schema import PassThroughSchemaMapper
 
 
 class _RuntimeProvider:
@@ -74,7 +74,9 @@ class _AlwaysNoOpPlanner(SchemaTransitionPlanner):
         physical_name,
         desired_columns,
         comparison,
+        observed_asset=None,
     ):
+        del observed_asset
         return SchemaTransition(
             kind=SchemaTransitionKind.NO_OP,
             governed_asset=governed_asset,
@@ -106,46 +108,6 @@ class _Compiler(TransitionCompiler):
             governed_asset=transition.governed_asset,
             statement=f"{transition.kind.value} {transition.physical_name}",
         )
-
-
-class _Platform(DeploymentPlatform):
-    key = "fake"
-
-    def __init__(
-        self,
-        runtime_provider: _RuntimeProvider,
-        *,
-        transition_planner: SchemaTransitionPlanner | None = None,
-    ) -> None:
-        self.runtime_provider = runtime_provider
-        self.schema_mapper = PassThroughSchemaMapper()
-        self.transition_planner = transition_planner or AdditiveSchemaTransitionPlanner()
-        self.transition_compiler = _Compiler()
-
-    def validate_target(self, target: DeploymentTarget) -> None:
-        assert target.runtime_target == "main"
-
-    def validate_desired_asset(
-        self,
-        *,
-        target: DeploymentTarget,
-        physical_name: str,
-        desired: SchemaObject,
-        mapped: SchemaAssetState,
-    ) -> None:
-        assert target.platform == "fake"
-        assert physical_name == "orders"
-        assert desired.name == "orders"
-        assert mapped.identity == "orders"
-
-    def validate_observed_asset(
-        self,
-        *,
-        target: DeploymentTarget,
-        physical_name: str,
-        observed: ObservedAsset,
-    ) -> None:
-        raise AssertionError("missing asset scenario should not validate an observed asset")
 
 
 class _Executor(NativeOperationExecutor):
@@ -214,7 +176,10 @@ def test_generic_orchestrator_owns_observe_preview_freshness_and_execute() -> No
     runtime_provider = _RuntimeProvider(_observation())
     executor = _Executor()
     orchestrator = DeploymentOrchestrator(
-        platform=_Platform(runtime_provider),
+        runtime_provider=runtime_provider,
+        schema_mapper=PassThroughSchemaMapper(),
+        transition_planner=AdditiveSchemaTransitionPlanner(),
+        transition_compiler=_Compiler(),
         executor=executor,
     )
 
@@ -249,10 +214,10 @@ def test_generic_orchestrator_delegates_transition_policy_to_platform() -> None:
     plan = _plan()
     runtime_provider = _RuntimeProvider(_observation())
     orchestrator = DeploymentOrchestrator(
-        platform=_Platform(
-            runtime_provider,
-            transition_planner=_AlwaysNoOpPlanner(),
-        ),
+        runtime_provider=runtime_provider,
+        schema_mapper=PassThroughSchemaMapper(),
+        transition_planner=_AlwaysNoOpPlanner(),
+        transition_compiler=_Compiler(),
         executor=_Executor(),
     )
 
@@ -270,7 +235,10 @@ def test_generic_orchestrator_owns_verification_entrypoint() -> None:
     plan = _plan()
     runtime_provider = _RuntimeProvider(_observation())
     orchestrator = DeploymentOrchestrator(
-        platform=_Platform(runtime_provider),
+        runtime_provider=runtime_provider,
+        schema_mapper=PassThroughSchemaMapper(),
+        transition_planner=AdditiveSchemaTransitionPlanner(),
+        transition_compiler=_Compiler(),
         executor=_Executor(),
     )
 
@@ -288,6 +256,9 @@ def test_generic_orchestrator_rejects_component_key_mismatch() -> None:
 
     with pytest.raises(ValueError, match="executor keys must match"):
         DeploymentOrchestrator(
-            platform=_Platform(runtime_provider),
+            runtime_provider=runtime_provider,
+            schema_mapper=PassThroughSchemaMapper(),
+            transition_planner=AdditiveSchemaTransitionPlanner(),
+            transition_compiler=_Compiler(),
             executor=executor,
         )
