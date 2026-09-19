@@ -51,7 +51,7 @@ provider NativeOperationExecutor / RuntimeProvider
 runtime
 ```
 
-The orchestration above is provider-neutral. Platform packages configure or implement only the narrow `DeploymentPlatform`, `SchemaMapper`, `SchemaTransitionPlanner`, `TransitionCompiler`, `RuntimeProvider`, and `NativeOperationExecutor` seams. The initial Databricks path reuses the shared fail-closed `AdditiveSchemaTransitionPlanner`; a future platform can supply a different planner without changing orchestration.
+The orchestration above is provider-neutral. Platform packages configure or implement only the narrow `SchemaMapper`, `SchemaTransitionPlanner`, `TransitionCompiler`, `RuntimeProvider`, and `NativeOperationExecutor` seams. The initial Databricks path reuses the shared fail-closed `AdditiveSchemaTransitionPlanner`; a future platform can supply a different planner without changing orchestration.
 
 ## What a DeploymentPlan means
 
@@ -265,11 +265,11 @@ Action ordering is canonical even when schemas appear in a different order in so
 
 `semapact.platforms.runtime_registry` is the composition root. It lazily constructs the selected platform's runtime provider and deployment adapter and owns the small amount of dispatch needed for supported built-in platforms. SemaPact does not introduce a separate platform-factory hierarchy merely to construct these objects.
 
-Platform extensibility belongs in behavior seams—`RuntimeProvider`, `DeploymentPlatform`, `SchemaMapper`, `SchemaTransitionPlanner`, `TransitionCompiler`, and `NativeOperationExecutor`—rather than in an additional composition abstraction.
+Platform extensibility belongs in behavior seams—`RuntimeProvider`, `SchemaMapper`, `SchemaTransitionPlanner`, `TransitionCompiler`, and `NativeOperationExecutor`—rather than in an additional platform wrapper or composition abstraction.
 
 DeploymentPlan intentionally does not contain generic `preconditions`, `adapterKey`, or guessed platform-specific operations.
 
-The public deployment contracts define the complete orchestration boundary. `DeploymentOrchestrator` owns lifecycle ordering and invariant checks; platform implementations provide only target/runtime validation, target schema mapping configuration, transition compilation, and native execution.
+The public deployment contracts define the complete orchestration boundary. `DeploymentOrchestrator` owns lifecycle ordering and generic binding invariants; platform implementations provide only runtime binding/observation, target-schema mapping configuration, transition capability policy, transition compilation, and native execution.
 
 For Databricks, the native side effect is executed through the Databricks SDK Statement Execution API using an exact SQL warehouse. SemaPact does not shell out to the Databricks CLI for deployment.
 
