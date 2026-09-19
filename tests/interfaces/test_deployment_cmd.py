@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 import sys
 
-from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject, SchemaProperty
+from open_data_contract_standard.model import (
+    OpenDataContractStandard,
+    SchemaObject,
+    SchemaProperty,
+    Server,
+)
 import pytest
 
 from semapact.contractops import AppliedContractRelease
@@ -69,9 +74,29 @@ def _release() -> AppliedContractRelease:
     )
 
 
-def test_deployment_parser_exposes_four_explicit_phases() -> None:
+def test_deployment_parser_exposes_read_only_assessment_and_explicit_phases() -> None:
     parser = cli._build_parser()
 
+    assess = parser.parse_args(
+        [
+            "deployment",
+            "assess",
+            "--base",
+            "base.yaml",
+            "--candidate",
+            "candidate.yaml",
+            "--base-revision-ref",
+            "git:base",
+            "--candidate-revision-ref",
+            "git:candidate",
+            "--effective-date",
+            "2026-09-20",
+            "--server",
+            "production",
+            "--output",
+            "json",
+        ]
+    )
     plan = parser.parse_args(
         [
             "deployment",
@@ -105,6 +130,9 @@ def test_deployment_parser_exposes_four_explicit_phases() -> None:
         ["deployment", "verify", "--plan", "plan.json", "--output", "json"]
     )
 
+    assert assess.deployment_command == "assess"
+    assert assess.output == "json"
+    assert assess.server == "production"
     assert plan.deployment_command == "plan"
     assert plan.source_reference == SOURCE_REFERENCE
     assert preview.deployment_command == "preview"
@@ -253,3 +281,48 @@ def test_verify_command_uses_unified_deployment_adapter(
     assert result.outcome is ProcessOutcome.SUCCESS
     assert adapter.verify_calls == 1
     assert json.loads(result.output)["status"] == "IN_SYNC"
+
+
+def test_assessment_source_reference_prefers_contract_server_host() -> None:
+    server = Server.model_validate(
+        {
+            "server": "production",
+            "type": "databricks",
+            "host": SOURCE_REFERENCE,
+            "catalog": "main",
+            "schema": "silver",
+        }
+    )
+
+    assert (
+        deployment_cmd._assessment_source_reference(server, None)
+        == SOURCE_REFERENCE
+    )
+
+
+def test_assessment_source_reference_requires_cli_fallback_without_server() -> None:
+    assert (
+        deployment_cmd._assessment_source_reference(None, SOURCE_REFERENCE)
+        == SOURCE_REFERENCE
+    )
+
+    with pytest.raises(ValidationError, match="provide --source-reference"):
+        deployment_cmd._assessment_source_reference(None, None)
+
+
+def test_assessment_source_reference_cannot_override_contract_host() -> None:
+    server = Server.model_validate(
+        {
+            "server": "production",
+            "type": "databricks",
+            "host": SOURCE_REFERENCE,
+            "catalog": "main",
+            "schema": "silver",
+        }
+    )
+
+    with pytest.raises(ValidationError, match="cannot override"):
+        deployment_cmd._assessment_source_reference(
+            server,
+            "https://other-workspace.example",
+        )
