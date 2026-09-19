@@ -214,6 +214,29 @@ def test_desired_target_schema_comes_from_datacontract_physical_projection() -> 
     assert transition.columns[0].nullable is False
 
 
+def test_transition_compiler_executes_only_governed_physical_shape() -> None:
+    prop = SchemaProperty(
+        name="id",
+        physicalName="id",
+        logicalType="integer",
+        physicalType="BIGINT",
+        required=True,
+        primaryKey=True,
+        description="business identifier",
+    )
+
+    transition = _plan(_schema(prop), None)
+
+    assert transition.columns[0].native_definition == "`id` BIGINT NOT NULL"
+    operation = _compile(transition)
+    assert operation.statement == (
+        "CREATE TABLE `main`.`silver`.`orders` "
+        "(`id` BIGINT NOT NULL) USING DELTA"
+    )
+    assert "PRIMARY KEY" not in operation.statement
+    assert "COMMENT" not in operation.statement
+
+
 @pytest.mark.parametrize(
     ("desired", "observed", "message"),
     [
