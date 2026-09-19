@@ -160,6 +160,7 @@ class DeploymentOrchestrator(DeploymentAdapter):
         return verify_deployment_convergence(
             plan,
             self._platform.runtime_provider,
+            schema_mapper=self._platform.schema_mapper,
         )
 
     def execute(
