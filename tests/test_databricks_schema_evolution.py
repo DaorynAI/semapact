@@ -15,8 +15,8 @@ from semapact.observation.models import (
     ObservedProperty,
     ObservedPropertyIdentity,
 )
-from semapact.platforms.databricks.schema_evolution import (
-    plan_databricks_schema_evolution,
+from semapact.platforms.databricks.schema_mapping import (
+    plan_databricks_schema_transition,
     validate_databricks_desired_schema,
 )
 from semapact.platforms.databricks.sql_compiler import (
@@ -78,7 +78,7 @@ def _plan(
     desired: SchemaObject,
     observed: ObservedAsset | None,
 ) -> SchemaTransition:
-    return plan_databricks_schema_evolution(
+    return plan_databricks_schema_transition(
         runtime_target="main.silver",
         governed_asset="orders",
         table_name="orders",
