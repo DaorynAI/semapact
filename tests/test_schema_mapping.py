@@ -12,6 +12,7 @@ from semapact.schema import (
     PassThroughSchemaMapper,
     SchemaMapper,
     build_physical_property_bindings,
+    parse_sql_target_asset,
 )
 
 
@@ -112,3 +113,26 @@ def test_schema_mapper_contract_operates_on_whole_assets() -> None:
 
     assert desired.identity == "orders"
     assert observed.identity == "orders"
+
+
+
+def test_sql_target_parser_keeps_only_top_level_nested_columns() -> None:
+    asset = parse_sql_target_asset(
+        (
+            "CREATE TABLE orders ("
+            "payload STRUCT<a: INT, b: STRING>, "
+            "attrs MAP<STRING, BIGINT>, "
+            "values ARRAY<DECIMAL(10,2)>"
+            ")"
+        ),
+        asset_identity="orders",
+        dialect="databricks",
+    )
+
+    assert [prop.identity for prop in asset.properties] == [
+        "payload",
+        "attrs",
+        "values",
+    ]
+    assert len(asset.properties) == 3
+    assert asset.properties[0].native_definition.startswith("`payload` STRUCT")
