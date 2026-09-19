@@ -7,10 +7,10 @@ class ApplicationServiceError(RuntimeError):
     """Base error for application-boundary failures owned by SemaPact."""
 
 
-class ApplicationCapabilityUnavailableError(ApplicationServiceError):
+class ApplicationDependencyUnavailableError(ApplicationServiceError):
     """A supported application capability is not configured for this service instance."""
 
-    def __init__(self, capability: str) -> None:
+    def __init__(self, dependency: str) -> None:
         cleaned = _required_text(capability, "capability")
         super().__init__(f"Application capability is not configured: {cleaned}")
         self.capability = cleaned
