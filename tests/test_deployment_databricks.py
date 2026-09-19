@@ -258,8 +258,11 @@ def test_unsafe_existing_mutations_fail_closed(plan, state, message) -> None:
         adapter.preview(plan)
 
 
-def test_non_managed_asset_and_unsafe_type_fail_closed() -> None:
-    plan = _plan(_property("id", "BIGINT", required=True))
+def test_non_managed_mutation_and_unsafe_type_fail_closed() -> None:
+    plan = _plan(
+        _property("id", "BIGINT", required=True),
+        _property("note", "STRING"),
+    )
     external = _state(("id", "bigint", False), asset_type="EXTERNAL")
     adapter, _, _ = _adapter(external)
     with pytest.raises(ValidationError, match="MANAGED"):
