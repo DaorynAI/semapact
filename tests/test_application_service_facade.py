@@ -8,7 +8,7 @@ from open_data_contract_standard.model import (
 import pytest
 
 from semapact.application import (
-    ApplicationCapabilityUnavailableError,
+    ApplicationDependencyUnavailableError,
     SemaPactApplicationService,
 )
 from semapact.application.models.evolution import ContractEvolution
@@ -147,7 +147,7 @@ def test_facade_reads_history_through_m3_read_service() -> None:
 
 
 @pytest.mark.parametrize(
-    "operation,capability",
+    "operation,dependency",
     [
         ("decision", "decision_history"),
         ("history", "evolution_history"),
@@ -155,11 +155,11 @@ def test_facade_reads_history_through_m3_read_service() -> None:
 )
 def test_unconfigured_optional_read_capability_has_stable_application_error(
     operation: str,
-    capability: str,
+    dependency: str,
 ) -> None:
     service = SemaPactApplicationService()
 
-    with pytest.raises(ApplicationCapabilityUnavailableError) as caught:
+    with pytest.raises(ApplicationDependencyUnavailableError) as caught:
         if operation == "decision":
             service.get_decision("decision-1")
         else:
