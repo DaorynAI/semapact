@@ -165,10 +165,20 @@ def parse_sql_target_asset(
             "Target schema compilation must emit exactly one CREATE TABLE"
         )
 
+    table_schema = creates[0].this
+    if not isinstance(table_schema, exp.Schema):
+        raise ValidationError(
+            "Target schema compiler emitted CREATE TABLE without a column schema"
+        )
+
     properties: list[SchemaPropertyState] = []
     seen: set[str] = set()
 
-    for column in creates[0].find_all(exp.ColumnDef):
+    for column in (
+        expression
+        for expression in table_schema.expressions
+        if isinstance(expression, exp.ColumnDef)
+    ):
         name = column.name.strip()
         if not name:
             raise ValidationError("Target schema contains an empty column identity")
