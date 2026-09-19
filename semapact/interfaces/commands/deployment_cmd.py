@@ -23,6 +23,7 @@ from semapact.deployment import (
 from semapact.exceptions import ValidationError
 from semapact.interfaces.outcomes import (
     ProcessOutcome,
+    outcome_from_gate_result,
     outcome_from_reconciliation_status,
 )
 from semapact.reconciliation import classify_reconciliation_status
@@ -37,6 +38,74 @@ class DeploymentCommandResult:
 
     output: str
     outcome: ProcessOutcome
+
+
+def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
+    """Assess one candidate contract against fresh runtime without execution authority."""
+    from semapact.application.services.deployment_workflow import (
+        DeploymentWorkflowService,
+    )
+    from semapact.core.loader import ContractLoader
+    from semapact.governance import GovernanceOperation, evaluate_governance_gate
+    from semapact.platforms.runtime_registry import (
+        create_deployment_adapter,
+        resolve_runtime_location,
+    )
+
+    loader = ContractLoader(runtime_context=args.runtime_context)
+    base_contract = loader.load(args.base)
+    candidate_contract = loader.load(args.candidate)
+    location = resolve_runtime_location(
+        candidate_contract,
+        server_name=args.server,
+        fallback_platform=args.platform,
+        fallback_runtime_target=args.runtime,
+    )
+    source_reference = _assessment_source_reference(
+        location.contract_server,
+        args.source_reference,
+    )
+    target = DeploymentTarget(
+        platform=location.platform,
+        runtime_target=location.runtime_target,
+        source_reference=source_reference,
+        server_name=location.server_name,
+    )
+    adapter = create_deployment_adapter(
+        location.platform,
+        contract_server=location.contract_server,
+    )
+    result = DeploymentWorkflowService().assess(
+        base_contract,
+        candidate_contract,
+        effective_date=args.effective_date,
+        base_revision_ref=args.base_revision_ref,
+        candidate_revision_ref=args.candidate_revision_ref,
+        authority_reference=args.authority_reference,
+        target=target,
+        adapter=adapter,
+    )
+    gate = evaluate_governance_gate(
+        result.release.decision,
+        GovernanceOperation.DEPLOY,
+    )
+    payload = {
+        "executable": False,
+        "governanceDecision": result.release.decision.model_dump(mode="json"),
+        "changeSet": result.release.change_set.model_dump(mode="json"),
+        "releasePlan": result.release.release_plan.model_dump(mode="json"),
+        "versionResolution": result.release.version_resolution.model_dump(mode="json"),
+        "deploymentAssessment": result.deployment.model_dump(mode="json"),
+    }
+    rendered = (
+        json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True)
+        if args.output == "json"
+        else _assessment_text(result)
+    )
+    return DeploymentCommandResult(
+        output=rendered,
+        outcome=outcome_from_gate_result(gate),
+    )
 
 
 def run_deployment_plan(args: argparse.Namespace) -> DeploymentCommandResult:
@@ -205,4 +274,57 @@ def _verification_text(status: str, result: BaseModel) -> str:
         lines.extend(f"  - {path}" for path in unverified_paths)
     else:
         lines.append("Unverified paths: none")
+    return "\n".join(lines)
+
+
+
+def _assessment_source_reference(contract_server, cli_source_reference: str | None) -> str:
+    cli_value = (cli_source_reference or "").strip()
+    if contract_server is None:
+        if not cli_value:
+            raise ValidationError(
+                "Contract defines no server host; provide --source-reference"
+            )
+        return cli_value
+
+    host = str(getattr(contract_server, "host", "") or "").strip()
+    if not host:
+        raise ValidationError(
+            "Selected contract server must define host for deployment assessment"
+        )
+    if cli_value and cli_value != host:
+        raise ValidationError(
+            "--source-reference cannot override the selected contract server host"
+        )
+    return host
+
+
+def _assessment_text(result) -> str:
+    release = result.release
+    assessment = result.deployment
+    lines = [
+        f"Contract: {assessment.contract_id}@{assessment.candidate_version}",
+        f"Governance: {release.decision.decision.value}",
+        f"Required bump: {release.decision.required_version_bump}",
+        (
+            f"Target: {assessment.target.platform}/"
+            f"{assessment.target.runtime_target}"
+        ),
+        "Executable: no (read-only assessment)",
+        "Operations:",
+    ]
+    for operation in assessment.operations:
+        detail = f"  - {operation.kind.value} {operation.governed_asset}"
+        if operation.statement is not None:
+            detail += f": {operation.statement}"
+        lines.append(detail)
+    if not assessment.operations:
+        lines.append("  - none")
+    lines.extend(
+        [
+            f"Observation source: {assessment.source_identifier}",
+            f"Observation fingerprint: {assessment.observation_fingerprint}",
+            f"Assessment id: {assessment.deployment_assessment_id}",
+        ]
+    )
     return "\n".join(lines)
