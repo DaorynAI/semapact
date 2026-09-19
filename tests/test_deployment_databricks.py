@@ -375,6 +375,20 @@ def test_mutation_execute_without_warehouse_fails_closed() -> None:
     assert client.statement_execution.calls == []
 
 
+def test_verify_can_assure_non_managed_runtime_without_claiming_mutation_support() -> None:
+    plan = _plan(_property("id", "BIGINT", required=True))
+    external = _state(
+        ("id", "BIGINT", False),
+        asset_type="EXTERNAL",
+    )
+    adapter, _, _ = _adapter(external)
+
+    result = adapter.verify(plan)
+
+    assert result.differences == ()
+    assert result.unverified_paths == ()
+
+
 def test_verify_uses_same_databricks_target_mapping_as_preview() -> None:
     plan = _plan(_property("id", "integer", required=True))
     current = _state(("id", "INT", False))
