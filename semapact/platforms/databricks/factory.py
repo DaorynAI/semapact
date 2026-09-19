@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 from open_data_contract_standard.model import Server
 
 from semapact.deployment.adapters import DeploymentAdapter
+from semapact.deployment.providers import DeploymentExecutionConfig
 from semapact.observation.providers import RuntimeProvider
 from semapact.exceptions import ValidationError
 from semapact.platforms.databricks.client import create_databricks_workspace_client
-from semapact.platforms.databricks.deployment import DatabricksDeploymentAdapter
+from semapact.platforms.databricks.deployment import (
+    DatabricksDeploymentAdapter,
+    DatabricksDeploymentExecutionConfig,
+)
 from semapact.platforms.databricks.runtime import DatabricksRuntimeProvider
 from semapact.platforms.factories import PlatformFactory
 
@@ -41,24 +43,23 @@ class DatabricksPlatformFactory(PlatformFactory):
         self,
         *,
         contract_server: Server | None = None,
-        execution_options: Mapping[str, object] | None = None,
+        execution_config: DeploymentExecutionConfig | None = None,
     ) -> DeploymentAdapter:
-        options = dict(execution_options or {})
-        unsupported = sorted(set(options) - {"warehouse_id"})
-        if unsupported:
+        config = (
+            DatabricksDeploymentExecutionConfig()
+            if execution_config is None
+            else execution_config
+        )
+        if not isinstance(config, DatabricksDeploymentExecutionConfig):
             raise ValueError(
-                f"Unsupported Databricks deployment execution options: {unsupported}"
+                "Databricks deployment requires DatabricksDeploymentExecutionConfig"
             )
-
-        warehouse_id = options.get("warehouse_id")
-        if warehouse_id is not None and not isinstance(warehouse_id, str):
-            raise ValueError("Databricks warehouse_id must be a string")
 
         client = self._client(contract_server)
         return DatabricksDeploymentAdapter(
             client=client,
             runtime_provider=self._runtime_provider(client),
-            warehouse_id=warehouse_id,
+            warehouse_id=config.warehouse_id,
         )
 
     @staticmethod
