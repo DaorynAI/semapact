@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
-
 from open_data_contract_standard.model import Server
 
 from semapact.deployment.adapters import DeploymentAdapter
+from semapact.deployment.providers import DeploymentExecutionConfig
 from semapact.observation.providers import RuntimeProvider
 
 
@@ -34,6 +33,6 @@ class PlatformFactory(ABC):
         self,
         *,
         contract_server: Server | None = None,
-        execution_options: Mapping[str, object] | None = None,
+        execution_config: DeploymentExecutionConfig | None = None,
     ) -> DeploymentAdapter:
         raise NotImplementedError
