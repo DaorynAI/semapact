@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from open_data_contract_standard.model import SchemaObject, SchemaProperty
 
 from semapact.deployment.compilers import TransitionCompiler
@@ -24,6 +26,7 @@ from semapact.deployment.schema_transitions import (
 )
 from semapact.observation.fingerprint import with_observed_state_fingerprint
 from semapact.observation.models import ObservedAsset, ObservedPlatformState
+from semapact.reconciliation import RuntimeDriftStatus, classify_reconciliation_status
 from semapact.schema import PassThroughSchemaMapper, SchemaAssetState
 
 
@@ -200,3 +203,30 @@ def test_generic_orchestrator_owns_observe_preview_freshness_and_execute() -> No
 
     assert runtime_provider.observe_calls == 2
     assert executor.operations == [preview.operations[0]]
+
+
+def test_generic_orchestrator_owns_verification_entrypoint() -> None:
+    plan = _plan()
+    runtime_provider = _RuntimeProvider(_observation())
+    orchestrator = DeploymentOrchestrator(
+        platform=_Platform(runtime_provider),
+        executor=_Executor(),
+    )
+
+    result = orchestrator.verify(plan)
+
+    assert runtime_provider.observe_calls == 1
+    assert classify_reconciliation_status(result) is RuntimeDriftStatus.DRIFT
+    assert result.differences[0].asset_identity == "orders"
+
+
+def test_generic_orchestrator_rejects_component_key_mismatch() -> None:
+    runtime_provider = _RuntimeProvider(_observation())
+    executor = _Executor()
+    executor.key = "other"
+
+    with pytest.raises(ValueError, match="executor keys must match"):
+        DeploymentOrchestrator(
+            platform=_Platform(runtime_provider),
+            executor=executor,
+        )
