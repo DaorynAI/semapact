@@ -1,10 +1,11 @@
-"""Generic deployment orchestration over provider contracts."""
+"""Generic deployment orchestration over explicit provider behavior seams."""
 
 from __future__ import annotations
 
 from open_data_contract_standard.model import SchemaObject
 
 from semapact.deployment.adapters import DeploymentAdapter
+from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
     DeploymentActionKind,
     DeploymentAuthorization,
@@ -17,149 +18,78 @@ from semapact.deployment.models import (
     validate_deployment_plan_identity,
     validate_deployment_preview_identity,
 )
-from semapact.deployment.providers import DeploymentPlatform, NativeOperationExecutor
+from semapact.deployment.providers import NativeOperationExecutor
+from semapact.deployment.schema_transitions import SchemaTransitionPlanner
 from semapact.deployment.verification import verify_deployment_convergence
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.observation.fingerprint import fingerprint_observed_state
-from semapact.observation.models import ObservedPlatformState
+from semapact.observation.models import ObservedAssetIdentity, ObservedPlatformState
+from semapact.observation.providers import RuntimeAssetBinding, RuntimeProvider
 from semapact.reconciliation import ReconciliationResult
 from semapact.runtime import RuntimeAssetSpec
 from semapact.schema import (
     SchemaAssetState,
+    SchemaMapper,
     SchemaSnapshot,
     compare_schema_snapshots,
 )
 
 
 class DeploymentOrchestrator(DeploymentAdapter):
-    """Provider-neutral deployment lifecycle.
-
-    Flow:
-        validate / map desired state
-        → observe runtime
-        → validate / map observed state
-        → compare
-        → derive transition
-        → compile provider-native operation
-        → bind deterministic preview
-        → re-observe/freshness check
-        → execute exact authorized operation
-    """
+    """Provider-neutral deployment lifecycle over explicit behavior dependencies."""
 
     def __init__(
         self,
         *,
-        platform: DeploymentPlatform,
+        runtime_provider: RuntimeProvider,
+        schema_mapper: SchemaMapper,
+        transition_planner: SchemaTransitionPlanner,
+        transition_compiler: TransitionCompiler,
         executor: NativeOperationExecutor,
     ) -> None:
-        if platform.key.casefold() != executor.key.casefold():
+        provider_key = runtime_provider.key.strip().casefold()
+        if not provider_key:
+            raise ValueError("Runtime provider key is required")
+        if transition_compiler.key.strip().casefold() != provider_key:
             raise ValueError(
-                "Deployment platform and native operation executor keys must match"
+                "Runtime provider and transition compiler keys must match"
             )
-        if platform.key.casefold() != platform.runtime_provider.key.casefold():
+        if executor.key.strip().casefold() != provider_key:
             raise ValueError(
-                "Deployment platform and runtime provider keys must match"
+                "Runtime provider and native operation executor keys must match"
             )
-        self._platform = platform
+
+        self._runtime_provider = runtime_provider
+        self._schema_mapper = schema_mapper
+        self._transition_planner = transition_planner
+        self._transition_compiler = transition_compiler
         self._executor = executor
 
     @property
     def key(self) -> str:
-        return self._platform.key
+        return self._runtime_provider.key
 
     def validate(self, plan: DeploymentPlan) -> None:
-        """Validate one plan and all mapped desired assets fail-closed."""
+        """Validate one exact plan without runtime observation side effects."""
         self._validate_and_map_plan(plan)
 
     def preview(self, plan: DeploymentPlan) -> DeploymentPreview:
-        """Validate, observe runtime, and derive exact provider-native operations."""
+        """Validate, observe, compare, plan, and compile one deterministic preview."""
         desired_by_action = self._validate_and_map_plan(plan)
-        observed_state = self._observe_plan_scope(plan)
+        observed_state, bindings = self._observe_plan_scope(plan)
         return self._preview_from_observation(
             plan,
             observed_state,
+            bindings=bindings,
             desired_by_action=desired_by_action,
         )
 
-    def _preview_from_observation(
-        self,
-        plan: DeploymentPlan,
-        observed_state: ObservedPlatformState,
-        *,
-        desired_by_action: dict[str, SchemaAssetState] | None = None,
-    ) -> DeploymentPreview:
-        if desired_by_action is None:
-            desired_by_action = self._validate_and_map_plan(plan)
-        self._validate_observation(plan, observed_state)
-
-        observed_by_asset = {
-            asset.identity.asset.casefold(): asset
-            for asset in observed_state.assets
-        }
-
-        operations: list[NativeOperation] = []
-        for action in plan.actions:
-            desired_asset = desired_by_action[action.governed_asset]
-            observed = observed_by_asset.get(action.physical_name.casefold())
-
-            observed_assets = ()
-            if observed is not None:
-                self._platform.validate_observed_asset(
-                    target=plan.target,
-                    physical_name=action.physical_name,
-                    observed=observed,
-                )
-                observed_assets = (
-                    self._platform.schema_mapper.map_observed_asset(
-                        observed,
-                        asset_identity=action.physical_name,
-                    ),
-                )
-
-            comparison = compare_schema_snapshots(
-                SchemaSnapshot(assets=(desired_asset,)),
-                SchemaSnapshot(assets=observed_assets),
-            )
-            transition = self._platform.transition_planner.plan(
-                governed_asset=action.governed_asset,
-                physical_name=action.physical_name,
-                desired_columns=desired_asset.properties,
-                comparison=comparison,
-            )
-            operations.append(
-                self._platform.transition_compiler.compile(
-                    runtime_target=plan.target.runtime_target,
-                    transition=transition,
-                )
-            )
-
-        ordered = tuple(operations)
-        if observed_state.fingerprint is None:
-            raise ValidationError("Runtime observation fingerprint is required")
-
-        return DeploymentPreview(
-            deployment_preview_id=compute_deployment_preview_id(
-                deployment_plan_id=plan.deployment_plan_id,
-                platform=self.key,
-                runtime_target=plan.target.runtime_target,
-                source_identifier=observed_state.source_identifier,
-                observation_fingerprint=observed_state.fingerprint,
-                operations=ordered,
-            ),
-            deployment_plan_id=plan.deployment_plan_id,
-            platform=self.key,
-            runtime_target=plan.target.runtime_target,
-            source_identifier=observed_state.source_identifier,
-            observation_fingerprint=observed_state.fingerprint,
-            operations=ordered,
-        )
-
     def verify(self, plan: DeploymentPlan) -> ReconciliationResult:
-        """Verify convergence without applying mutation capability policy."""
+        """Verify convergence using the same runtime provider and schema mapping."""
         return verify_deployment_convergence(
             plan,
-            self._platform.runtime_provider,
-            schema_mapper=self._platform.schema_mapper,
+            self._runtime_provider,
+            schema_mapper=self._schema_mapper,
         )
 
     def execute(
@@ -191,7 +121,7 @@ class DeploymentOrchestrator(DeploymentAdapter):
             )
         if preview.platform.casefold() != self.key.casefold():
             raise ValidationError(
-                "DeploymentPreview platform does not match deployment platform"
+                "DeploymentPreview platform does not match runtime provider"
             )
         if preview.runtime_target != plan.target.runtime_target:
             raise ValidationError(
@@ -203,7 +133,7 @@ class DeploymentOrchestrator(DeploymentAdapter):
                 "source reference"
             )
 
-        current = self._observe_plan_scope(plan)
+        current, bindings = self._observe_plan_scope(plan)
         if current.source_identifier != preview.source_identifier:
             raise ValidationError(
                 "Runtime source changed since DeploymentPreview was produced"
@@ -216,6 +146,7 @@ class DeploymentOrchestrator(DeploymentAdapter):
         expected = self._preview_from_observation(
             plan,
             current,
+            bindings=bindings,
             desired_by_action=desired_by_action,
         )
         if expected != preview:
@@ -229,6 +160,76 @@ class DeploymentOrchestrator(DeploymentAdapter):
                 continue
             self._executor.execute(operation)
 
+    def _preview_from_observation(
+        self,
+        plan: DeploymentPlan,
+        observed_state: ObservedPlatformState,
+        *,
+        bindings: tuple[RuntimeAssetBinding, ...],
+        desired_by_action: dict[str, SchemaAssetState] | None = None,
+    ) -> DeploymentPreview:
+        if desired_by_action is None:
+            desired_by_action = self._validate_and_map_plan(plan)
+        self._validate_observation(plan, observed_state, bindings=bindings)
+
+        observed_by_asset = {
+            asset.identity.asset.casefold(): asset
+            for asset in observed_state.assets
+        }
+
+        operations: list[NativeOperation] = []
+        for action in plan.actions:
+            desired_asset = desired_by_action[action.governed_asset]
+            observed = observed_by_asset.get(action.physical_name.casefold())
+            observed_assets = (
+                ()
+                if observed is None
+                else (
+                    self._schema_mapper.map_observed_asset(
+                        observed,
+                        asset_identity=action.physical_name,
+                    ),
+                )
+            )
+
+            comparison = compare_schema_snapshots(
+                SchemaSnapshot(assets=(desired_asset,)),
+                SchemaSnapshot(assets=observed_assets),
+            )
+            transition = self._transition_planner.plan(
+                governed_asset=action.governed_asset,
+                physical_name=action.physical_name,
+                desired_columns=desired_asset.properties,
+                comparison=comparison,
+                observed_asset=observed,
+            )
+            operations.append(
+                self._transition_compiler.compile(
+                    runtime_target=plan.target.runtime_target,
+                    transition=transition,
+                )
+            )
+
+        if observed_state.fingerprint is None:
+            raise ValidationError("Runtime observation fingerprint is required")
+        ordered = tuple(operations)
+        return DeploymentPreview(
+            deployment_preview_id=compute_deployment_preview_id(
+                deployment_plan_id=plan.deployment_plan_id,
+                platform=self.key,
+                runtime_target=plan.target.runtime_target,
+                source_identifier=observed_state.source_identifier,
+                observation_fingerprint=observed_state.fingerprint,
+                operations=ordered,
+            ),
+            deployment_plan_id=plan.deployment_plan_id,
+            platform=self.key,
+            runtime_target=plan.target.runtime_target,
+            source_identifier=observed_state.source_identifier,
+            observation_fingerprint=observed_state.fingerprint,
+            operations=ordered,
+        )
+
     def _validate_and_map_plan(
         self,
         plan: DeploymentPlan,
@@ -236,11 +237,9 @@ class DeploymentOrchestrator(DeploymentAdapter):
         validate_deployment_plan_identity(plan)
         if plan.target.platform.casefold() != self.key.casefold():
             raise ValidationError(
-                f"Deployment platform '{self.key}' cannot deploy "
+                f"Runtime provider '{self.key}' cannot deploy "
                 f"'{plan.target.platform}'"
             )
-
-        self._platform.validate_target(plan.target)
 
         physical_assets: set[str] = set()
         desired_by_action: dict[str, SchemaAssetState] = {}
@@ -260,28 +259,88 @@ class DeploymentOrchestrator(DeploymentAdapter):
             physical_assets.add(physical_key)
 
             desired = SchemaObject.model_validate_json(action.desired_state_json)
-            mapped = self._platform.schema_mapper.map_desired_asset(
+            mapped = self._schema_mapper.map_desired_asset(
                 desired,
                 asset_identity=action.physical_name,
             )
-            self._platform.validate_desired_asset(
-                target=plan.target,
-                physical_name=action.physical_name,
-                desired=desired,
-                mapped=mapped,
-            )
+            if mapped.identity.casefold() != physical_key:
+                raise ValidationError(
+                    "Mapped desired asset identity does not match physical target"
+                )
             desired_by_action[action.governed_asset] = mapped
 
+        # Binding resolution is pure provider-local identity resolution. Calling it
+        # here validates runtime-target syntax and exact plan bindings without I/O.
+        self._resolve_plan_bindings(plan)
         return desired_by_action
+
+    def _resolve_plan_bindings(
+        self,
+        plan: DeploymentPlan,
+    ) -> tuple[RuntimeAssetBinding, ...]:
+        assets = tuple(
+            RuntimeAssetSpec(
+                governed_asset=action.governed_asset,
+                physical_name=action.physical_name,
+            )
+            for action in plan.actions
+        )
+        bindings = self._runtime_provider.resolve_bindings(
+            runtime_target=plan.target.runtime_target,
+            assets=assets,
+        )
+
+        expected = {
+            action.governed_asset: action.physical_name.casefold()
+            for action in plan.actions
+        }
+        if len(bindings) != len(expected):
+            raise ValidationError(
+                "Runtime provider did not resolve exactly one binding per deployment action"
+            )
+
+        seen_governed: set[str] = set()
+        seen_observed: set[tuple[str, tuple[str, ...], str]] = set()
+        for binding in bindings:
+            if binding.governed_asset not in expected:
+                raise ValidationError(
+                    "Runtime provider returned a binding outside DeploymentPlan scope"
+                )
+            if binding.governed_asset in seen_governed:
+                raise ValidationError(
+                    "Runtime provider returned duplicate governed asset bindings"
+                )
+            seen_governed.add(binding.governed_asset)
+
+            identity = binding.observed_asset
+            if identity.platform.casefold() != self.key.casefold():
+                raise ValidationError(
+                    "Runtime binding platform does not match runtime provider"
+                )
+            if identity.asset.casefold() != expected[binding.governed_asset]:
+                raise ValidationError(
+                    "Runtime binding asset does not match DeploymentPlan physical asset"
+                )
+
+            identity_key = _identity_key(identity)
+            if identity_key in seen_observed:
+                raise ValidationError(
+                    "Runtime provider returned duplicate observed asset bindings"
+                )
+            seen_observed.add(identity_key)
+
+        return bindings
 
     def _validate_observation(
         self,
         plan: DeploymentPlan,
         observed_state: ObservedPlatformState,
+        *,
+        bindings: tuple[RuntimeAssetBinding, ...],
     ) -> None:
         if observed_state.platform.casefold() != self.key.casefold():
             raise ValidationError(
-                "Runtime observation platform does not match deployment platform"
+                "Runtime observation platform does not match runtime provider"
             )
         if not observed_state.source_identifier.strip():
             raise ValidationError(
@@ -299,36 +358,39 @@ class DeploymentOrchestrator(DeploymentAdapter):
                 "Runtime observation fingerprint does not match its content"
             )
 
-        expected_assets = {
-            action.physical_name.casefold()
-            for action in plan.actions
+        expected_identities = {
+            _identity_key(binding.observed_asset)
+            for binding in bindings
         }
-        seen: set[str] = set()
+        seen: set[tuple[str, tuple[str, ...], str]] = set()
         for asset in observed_state.assets:
-            asset_key = asset.identity.asset.casefold()
-            if asset_key not in expected_assets:
+            identity_key = _identity_key(asset.identity)
+            if identity_key not in expected_identities:
                 raise ValidationError(
-                    "Runtime evidence contains an asset outside plan scope"
+                    "Runtime evidence contains an asset outside resolved plan scope"
                 )
-            if asset_key in seen:
+            if identity_key in seen:
                 raise ValidationError(
                     "Runtime evidence contains duplicate asset identities"
                 )
-            seen.add(asset_key)
+            seen.add(identity_key)
 
     def _observe_plan_scope(
         self,
         plan: DeploymentPlan,
-    ) -> ObservedPlatformState:
-        assets = tuple(
-            RuntimeAssetSpec(
-                governed_asset=action.governed_asset,
-                physical_name=action.physical_name,
-            )
-            for action in plan.actions
+    ) -> tuple[ObservedPlatformState, tuple[RuntimeAssetBinding, ...]]:
+        bindings = self._resolve_plan_bindings(plan)
+        return (
+            self._runtime_provider.observe(bindings=bindings),
+            bindings,
         )
-        bindings = self._platform.runtime_provider.resolve_bindings(
-            runtime_target=plan.target.runtime_target,
-            assets=assets,
-        )
-        return self._platform.runtime_provider.observe(bindings=bindings)
+
+
+def _identity_key(
+    identity: ObservedAssetIdentity,
+) -> tuple[str, tuple[str, ...], str]:
+    return (
+        identity.platform.casefold(),
+        tuple(part.casefold() for part in identity.namespace),
+        identity.asset.casefold(),
+    )
