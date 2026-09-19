@@ -10,19 +10,14 @@ from __future__ import annotations
 from enum import Enum
 from typing import Sequence
 
-from open_data_contract_standard.model import SchemaObject
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from semapact.exceptions import ValidationError
-from semapact.observation.models import ObservedAsset
 from semapact.schema import (
     SchemaComparisonResult,
-    SchemaMapper,
-    SchemaSnapshot,
     SchemaDifferenceType,
     SchemaPropertyState,
     SchemaSubject,
-    compare_schema_snapshots,
 )
 
 
@@ -68,40 +63,6 @@ class SchemaTransition(SchemaTransitionModel):
 
 
 
-
-def plan_schema_transition(
-    *,
-    mapper: SchemaMapper,
-    governed_asset: str,
-    physical_name: str,
-    desired: SchemaObject,
-    observed: ObservedAsset | None,
-) -> SchemaTransition:
-    """Map, compare and derive one provider-neutral additive transition."""
-    desired_asset = mapper.map_desired_asset(
-        desired,
-        asset_identity=physical_name,
-    )
-    observed_assets = (
-        ()
-        if observed is None
-        else (
-            mapper.map_observed_asset(
-                observed,
-                asset_identity=physical_name,
-            ),
-        )
-    )
-    comparison = compare_schema_snapshots(
-        SchemaSnapshot(assets=(desired_asset,)),
-        SchemaSnapshot(assets=observed_assets),
-    )
-    return plan_additive_schema_transition(
-        governed_asset=governed_asset,
-        physical_name=physical_name,
-        desired_columns=desired_asset.properties,
-        comparison=comparison,
-    )
 
 def plan_additive_schema_transition(
     *,
