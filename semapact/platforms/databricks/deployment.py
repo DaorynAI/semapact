@@ -26,9 +26,11 @@ from semapact.observation.providers import RuntimeProvider
 from semapact.platforms.databricks.identifiers import (
     validate_databricks_identifier,
 )
-from semapact.platforms.databricks.schema_planner import (
-    plan_databricks_schema_transition,
+from semapact.deployment.schema_transitions import plan_schema_transition
+from semapact.platforms.databricks.schema import (
+    DATABRICKS_SCHEMA_MAPPER,
     validate_databricks_desired_schema,
+    validate_databricks_observed_asset,
 )
 from semapact.platforms.databricks.sql_compiler import (
     compile_databricks_schema_transition,
@@ -111,10 +113,17 @@ class DatabricksDeploymentAdapter:
         for action in plan.actions:
             desired = SchemaObject.model_validate_json(action.desired_state_json)
             observed = observed_by_asset.get(action.physical_name.casefold())
-            transition = plan_databricks_schema_transition(
-                runtime_target=plan.target.runtime_target,
+            if observed is not None:
+                validate_databricks_observed_asset(
+                    observed=observed,
+                    catalog=catalog,
+                    schema_name=schema_name,
+                    table_name=action.physical_name,
+                )
+            transition = plan_schema_transition(
+                mapper=DATABRICKS_SCHEMA_MAPPER,
                 governed_asset=action.governed_asset,
-                table_name=action.physical_name,
+                physical_name=action.physical_name,
                 desired=desired,
                 observed=observed,
             )
