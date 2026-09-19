@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
 from open_data_contract_standard.model import OpenDataContractStandard, Server
 
 from semapact.deployment.adapters import DeploymentAdapter
+from semapact.deployment.providers import DeploymentExecutionConfig
 from semapact.exceptions import ValidationError
 from semapact.observation import RuntimeProviderRegistry
 from semapact.platforms.factories import PlatformFactory
@@ -120,13 +121,13 @@ def create_deployment_adapter(
     platform: str,
     *,
     contract_server: Server | None = None,
-    execution_options: Mapping[str, object] | None = None,
+    execution_config: DeploymentExecutionConfig | None = None,
 ) -> DeploymentAdapter:
     """Compose the selected deployment adapter through one platform factory."""
     factory = get_platform_factory(platform)
     return factory.create_deployment_adapter(
         contract_server=contract_server,
-        execution_options=execution_options,
+        execution_config=execution_config,
     )
 
 
