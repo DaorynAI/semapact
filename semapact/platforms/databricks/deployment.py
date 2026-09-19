@@ -3,17 +3,38 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import field_validator
 
 from semapact.deployment.models import NativeOperation
 from semapact.deployment.orchestrator import DeploymentOrchestrator
-from semapact.deployment.providers import NativeOperationExecutor
+from semapact.deployment.providers import (
+    DeploymentExecutionConfig,
+    NativeOperationExecutor,
+)
 from semapact.exceptions import ValidationError
 from semapact.observation.providers import RuntimeProvider
 from semapact.platforms.databricks.platform import DatabricksDeploymentPlatform
 
 
 _TERMINAL_STATES = {"SUCCEEDED", "FAILED", "CANCELED", "CLOSED"}
+
+
+
+class DatabricksDeploymentExecutionConfig(DeploymentExecutionConfig):
+    """Typed Databricks execution configuration."""
+
+    platform: Literal["databricks"] = "databricks"
+    warehouse_id: str | None = None
+
+    @field_validator("warehouse_id")
+    @classmethod
+    def _normalize_warehouse_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class DatabricksStatementExecutor(NativeOperationExecutor):
