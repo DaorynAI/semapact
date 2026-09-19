@@ -1,9 +1,9 @@
-"""Shared schema projection contract and helpers.
+"""Shared schema mapping contract and provider-neutral helpers.
 
-Schema mapping converts source object models into the normalized SchemaSnapshot
-vocabulary consumed by the shared comparator. Provider implementations own
-native type normalization; identity projection and ODCS/runtime shape handling
-remain shared.
+Schema mapping projects source object models into the normalized SchemaSnapshot
+vocabulary consumed by the shared comparator. Provider implementations may
+delegate desired-state compilation to an external compiler such as
+datacontract-cli rather than reinterpreting ODCS themselves.
 """
 
 from __future__ import annotations
@@ -19,35 +19,68 @@ from semapact.schema.comparison import SchemaAssetState, SchemaPropertyState
 
 
 class SchemaMapper(Protocol):
-    """Provider seam for native physical-type normalization."""
+    """Map desired and observed provider state into one comparable schema model."""
 
     key: str
 
-    def normalize_desired_type(self, prop: SchemaProperty) -> str | None: ...
+    def map_desired_asset(
+        self,
+        schema: SchemaObject,
+        *,
+        asset_identity: str,
+    ) -> SchemaAssetState: ...
 
-    def normalize_observed_type(self, value: str | None) -> str | None: ...
+    def map_observed_asset(
+        self,
+        observed: ObservedAsset,
+        *,
+        asset_identity: str,
+        property_bindings: Mapping[str, str] | None = None,
+    ) -> SchemaAssetState: ...
 
 
 class PassThroughSchemaMapper:
-    """Provider-neutral mapper that preserves declared native type text."""
+    """Provider-neutral mapper preserving ODCS/runtime physical type text."""
 
     key = "generic"
 
-    def normalize_desired_type(self, prop: SchemaProperty) -> str | None:
-        return _optional_text(getattr(prop, "physicalType", None))
+    def map_desired_asset(
+        self,
+        schema: SchemaObject,
+        *,
+        asset_identity: str,
+    ) -> SchemaAssetState:
+        return map_odcs_schema_asset(
+            schema,
+            asset_identity=asset_identity,
+            use_physical_property_names=False,
+        )
 
-    def normalize_observed_type(self, value: str | None) -> str | None:
-        return _optional_text(value)
+    def map_observed_asset(
+        self,
+        observed: ObservedAsset,
+        *,
+        asset_identity: str,
+        property_bindings: Mapping[str, str] | None = None,
+    ) -> SchemaAssetState:
+        return map_observed_schema_asset(
+            observed,
+            asset_identity=asset_identity,
+            property_bindings=property_bindings,
+        )
 
 
-def map_desired_schema_asset(
+def map_odcs_schema_asset(
     schema: SchemaObject,
     *,
     asset_identity: str,
-    mapper: SchemaMapper,
     use_physical_property_names: bool,
 ) -> SchemaAssetState:
-    """Project one ODCS schema into normalized comparable state."""
+    """Direct ODCS projection for provider-neutral callers only.
+
+    Provider target compilation should prefer a provider SchemaMapper
+    implementation backed by the platform compiler rather than this helper.
+    """
     properties: list[SchemaPropertyState] = []
     seen: set[str] = set()
 
@@ -67,7 +100,7 @@ def map_desired_schema_asset(
         properties.append(
             SchemaPropertyState(
                 identity=identity,
-                physical_type=mapper.normalize_desired_type(prop),
+                physical_type=_optional_text(getattr(prop, "physicalType", None)),
                 nullable=(not required) if isinstance(required, bool) else None,
             )
         )
@@ -82,8 +115,8 @@ def map_observed_schema_asset(
     observed: ObservedAsset,
     *,
     asset_identity: str,
-    mapper: SchemaMapper,
     property_bindings: Mapping[str, str] | None = None,
+    normalize_physical_type=None,
 ) -> SchemaAssetState:
     """Project one observed runtime asset into normalized comparable state."""
     bindings = {
@@ -105,10 +138,14 @@ def map_observed_schema_asset(
             )
         seen.add(key)
 
+        physical_type = prop.physical_type
+        if normalize_physical_type is not None:
+            physical_type = normalize_physical_type(physical_type)
+
         properties.append(
             SchemaPropertyState(
                 identity=identity,
-                physical_type=mapper.normalize_observed_type(prop.physical_type),
+                physical_type=_optional_text(physical_type),
                 nullable=prop.nullable,
             )
         )
