@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 from open_data_contract_standard.model import OpenDataContractStandard, Server
 
-from semapact.deployment import DeploymentAdapter
+from semapact.deployment import DeploymentAdapter, DeploymentExecutionConfig
 from semapact.platforms.factories import PlatformFactory
 from semapact.platforms import runtime_registry
 
@@ -41,7 +39,7 @@ class _FakePlatformFactory(PlatformFactory):
     def __init__(self) -> None:
         self.provider = _FakeRuntimeProvider()
         self.adapter = _FakeDeploymentAdapter()
-        self.execution_options: Mapping[str, object] | None = None
+        self.execution_config: DeploymentExecutionConfig | None = None
 
     def runtime_target_from_server(self, server: Server) -> str:
         return "tenant.dataset"
@@ -53,9 +51,9 @@ class _FakePlatformFactory(PlatformFactory):
         self,
         *,
         contract_server=None,
-        execution_options=None,
+        execution_config=None,
     ):
-        self.execution_options = execution_options
+        self.execution_config = execution_config
         return self.adapter
 
 
@@ -87,11 +85,11 @@ def test_one_factory_loader_extends_all_platform_composition_paths(
     provider = runtime_registry.create_runtime_provider_registry("fake").get("fake")
     adapter = runtime_registry.create_deployment_adapter(
         "fake",
-        execution_options={"mode": "test"},
+        execution_config=DeploymentExecutionConfig(platform="fake"),
     )
 
     assert location.platform == "fake"
     assert location.runtime_target == "tenant.dataset"
     assert provider is factory.provider
     assert adapter is factory.adapter
-    assert factory.execution_options == {"mode": "test"}
+    assert factory.execution_config == DeploymentExecutionConfig(platform="fake")
