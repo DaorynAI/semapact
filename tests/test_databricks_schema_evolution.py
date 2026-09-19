@@ -16,13 +16,25 @@ from semapact.observation.models import (
     ObservedProperty,
     ObservedPropertyIdentity,
 )
-from semapact.platforms.databricks.schema import (
-    DATABRICKS_SCHEMA_MAPPER,
-    validate_databricks_desired_schema,
-    validate_databricks_observed_asset,
-)
+from semapact.platforms.databricks.platform import DatabricksDeploymentPlatform
 from semapact.platforms.databricks.transition_compiler import (
     DATABRICKS_TRANSITION_COMPILER,
+)
+
+
+
+
+
+class _UnusedRuntimeProvider:
+    def resolve_bindings(self, *, runtime_target, assets):
+        raise AssertionError("runtime provider should not be used in schema unit tests")
+
+    def observe(self, *, bindings):
+        raise AssertionError("runtime provider should not be used in schema unit tests")
+
+
+_PLATFORM = DatabricksDeploymentPlatform(
+    runtime_provider=_UnusedRuntimeProvider(),
 )
 
 
@@ -80,23 +92,38 @@ def _plan(
     desired: SchemaObject,
     observed: ObservedAsset | None,
 ) -> SchemaTransition:
-    validate_databricks_desired_schema(
-        table_name="orders",
+    mapped = _PLATFORM.schema_mapper.map_desired_asset(
+        desired,
+        asset_identity="orders",
+    )
+    _PLATFORM.validate_desired_asset(
+        target=_deployment_target(),
+        physical_name="orders",
         desired=desired,
+        mapped=mapped,
     )
     if observed is not None:
-        validate_databricks_observed_asset(
+        _PLATFORM.validate_observed_asset(
+            target=_deployment_target(),
+            physical_name="orders",
             observed=observed,
-            catalog="main",
-            schema_name="silver",
-            table_name="orders",
         )
     return plan_schema_transition(
-        mapper=DATABRICKS_SCHEMA_MAPPER,
+        mapper=_PLATFORM.schema_mapper,
         governed_asset="orders",
         physical_name="orders",
         desired=desired,
         observed=observed,
+    )
+
+
+def _deployment_target():
+    from semapact.deployment.models import DeploymentTarget
+
+    return DeploymentTarget(
+        platform="databricks",
+        runtime_target="main.silver",
+        source_reference="https://workspace.example",
     )
 
 
@@ -228,10 +255,10 @@ def test_planner_rejects_non_managed_asset() -> None:
 
 
 def test_desired_schema_validation_rejects_unsafe_physical_type() -> None:
-    with pytest.raises(ValidationError, match="physicalType"):
-        validate_databricks_desired_schema(
-            table_name="orders",
-            desired=_schema(_property("id", "STRING);DROP")),
+    with pytest.raises(ValidationError, match="physicalType|could not be parsed"):
+        _PLATFORM.schema_mapper.map_desired_asset(
+            _schema(_property("id", "STRING);DROP")),
+            asset_identity="orders",
         )
 
 
