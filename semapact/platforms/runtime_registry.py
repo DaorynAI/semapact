@@ -125,6 +125,14 @@ def create_deployment_adapter(
 ) -> DeploymentAdapter:
     """Compose the selected deployment adapter through one platform factory."""
     factory = get_platform_factory(platform)
+    if (
+        execution_config is not None
+        and execution_config.platform != factory.key.strip().casefold()
+    ):
+        raise ValidationError(
+            "Deployment execution config platform does not match selected platform: "
+            f"{execution_config.platform!r} != {factory.key!r}"
+        )
     return factory.create_deployment_adapter(
         contract_server=contract_server,
         execution_config=execution_config,
