@@ -206,12 +206,19 @@ def parse_sql_target_asset(
                 f"Unsupported target physicalType for column '{name}'"
             )
 
+        nullable = column.find(exp.NotNullColumnConstraint) is None
+        physical_type = data_type.sql(dialect=dialect)
+        quoted_name = exp.to_identifier(name, quoted=True).sql(dialect=dialect)
+        native_definition = f"{quoted_name} {physical_type}"
+        if not nullable:
+            native_definition += " NOT NULL"
+
         properties.append(
             SchemaPropertyState(
                 identity=name,
-                physical_type=data_type.sql(dialect=dialect),
-                nullable=column.find(exp.NotNullColumnConstraint) is None,
-                native_definition=column.sql(dialect=dialect, identify=True),
+                physical_type=physical_type,
+                nullable=nullable,
+                native_definition=native_definition,
             )
         )
 
