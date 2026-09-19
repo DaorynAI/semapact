@@ -90,16 +90,15 @@ def resolve_runtime_location(
             "--server cannot be used because the contract defines no servers"
         )
 
-    platform = _clean(fallback_platform)
+    platform = _clean(fallback_platform, casefold=True)
     runtime_target = _clean(fallback_runtime_target)
     if not platform or not runtime_target:
         raise ValidationError(
             "Contract defines no servers; provide both --platform and --runtime"
         )
 
-    factory = get_platform_factory(platform)
     return ResolvedRuntimeLocation(
-        platform=factory.key,
+        platform=platform,
         runtime_target=runtime_target,
         source="cli",
     )
