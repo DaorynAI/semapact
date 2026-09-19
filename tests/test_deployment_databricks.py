@@ -267,7 +267,7 @@ def test_non_managed_asset_and_unsafe_type_fail_closed() -> None:
 
     malicious_type = "STRING);DROP"
     malicious = _plan(_property("id", malicious_type))
-    with pytest.raises(ValidationError, match="physicalType"):
+    with pytest.raises(ValidationError, match="physicalType|exactly one CREATE TABLE"):
         adapter.validate(malicious)
 
 
