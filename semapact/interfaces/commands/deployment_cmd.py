@@ -81,7 +81,7 @@ def run_deployment_execute(args: argparse.Namespace) -> DeploymentCommandResult:
 
     adapter = create_deployment_adapter(
         plan.target.platform,
-        warehouse_id=args.warehouse_id,
+        execution_options={"warehouse_id": args.warehouse_id},
     )
     DeploymentService().execute(
         plan,
