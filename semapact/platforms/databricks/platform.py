@@ -5,6 +5,7 @@ from __future__ import annotations
 from open_data_contract_standard.model import SchemaObject
 
 from semapact.deployment.models import DeploymentTarget
+from semapact.deployment.schema_transitions import AdditiveSchemaTransitionPlanner
 from semapact.deployment.providers import DeploymentPlatform
 from semapact.exceptions import ValidationError
 from semapact.observation.models import ObservedAsset
@@ -32,6 +33,7 @@ class DatabricksDeploymentPlatform(DeploymentPlatform):
             server_type="databricks",
             dialect="databricks",
         )
+        self.transition_planner = AdditiveSchemaTransitionPlanner()
         self.transition_compiler = DatabricksTransitionCompiler()
 
     def validate_target(self, target: DeploymentTarget) -> None:
