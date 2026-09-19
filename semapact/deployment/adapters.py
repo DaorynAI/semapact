@@ -9,6 +9,7 @@ from semapact.deployment.models import (
     DeploymentPlan,
     DeploymentPreview,
 )
+from semapact.reconciliation import ReconciliationResult
 
 
 class DeploymentAdapter(ABC):
@@ -24,6 +25,11 @@ class DeploymentAdapter(ABC):
     @abstractmethod
     def preview(self, plan: DeploymentPlan) -> DeploymentPreview:
         """Observe current runtime and derive the exact deployment preview."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def verify(self, plan: DeploymentPlan) -> ReconciliationResult:
+        """Observe runtime and verify convergence for one exact plan."""
         raise NotImplementedError
 
     @abstractmethod
