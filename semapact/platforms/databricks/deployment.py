@@ -23,10 +23,12 @@ from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.observation.fingerprint import fingerprint_observed_state
 from semapact.observation.models import ObservedPlatformState
 from semapact.observation.providers import RuntimeProvider
-from semapact.platforms.databricks.schema_mapper import (
+from semapact.platforms.databricks.identifiers import (
+    validate_databricks_identifier,
+)
+from semapact.platforms.databricks.schema_planner import (
     plan_databricks_schema_transition,
     validate_databricks_desired_schema,
-    validate_databricks_identifier,
 )
 from semapact.platforms.databricks.sql_compiler import (
     compile_databricks_schema_transition,
