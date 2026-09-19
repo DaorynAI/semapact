@@ -1,9 +1,8 @@
-"""Shared schema mapping contract and provider-neutral helpers.
+"""Provider-neutral schema mapping contracts and common implementations.
 
-Schema mapping projects source object models into the normalized SchemaSnapshot
-vocabulary consumed by the shared comparator. Provider implementations may
-delegate desired-state compilation to an external compiler such as
-datacontract-cli rather than reinterpreting ODCS themselves.
+The shared layer owns generic mapping mechanics. Platform modules only
+instantiate a mapper with target compiler/dialect parameters or add genuinely
+platform-specific validation/capability rules.
 """
 
 from __future__ import annotations
@@ -11,15 +10,29 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Callable, Protocol
 
-from open_data_contract_standard.model import SchemaObject, SchemaProperty
+import sqlglot
+from datacontract.export.sql_exporter import to_sql_ddl
+from open_data_contract_standard.model import (
+    OpenDataContractStandard,
+    SchemaObject,
+    SchemaProperty,
+)
+from sqlglot import exp
 
 from semapact.exceptions import ValidationError
 from semapact.observation.models import ObservedAsset
 from semapact.schema.comparison import SchemaAssetState, SchemaPropertyState
 
 
+_UNRESOLVED_SQL_TYPES = {
+    exp.DataType.Type.UNKNOWN,
+    exp.DataType.Type.USERDEFINED,
+    exp.DataType.Type.NULL,
+}
+
+
 class SchemaMapper(Protocol):
-    """Map desired and observed provider state into one comparable schema model."""
+    """Map desired and observed schema state into one comparable model."""
 
     key: str
 
@@ -37,6 +50,59 @@ class SchemaMapper(Protocol):
         asset_identity: str,
         property_bindings: Mapping[str, str] | None = None,
     ) -> SchemaAssetState: ...
+
+
+class SqlSchemaMapper:
+    """Common SQL target-schema mapper backed by datacontract-cli + sqlglot."""
+
+    def __init__(
+        self,
+        *,
+        key: str,
+        server_type: str,
+        dialect: str,
+    ) -> None:
+        self.key = _required_text(key, "schema mapper key")
+        self.server_type = _required_text(server_type, "SQL server type")
+        self.dialect = _required_text(dialect, "SQL dialect")
+
+    def map_desired_asset(
+        self,
+        schema: SchemaObject,
+        *,
+        asset_identity: str,
+    ) -> SchemaAssetState:
+        """Compile ODCS with datacontract-cli and adapt the target DDL."""
+        desired = schema.model_copy(update={"name": asset_identity})
+        contract = OpenDataContractStandard.model_construct(
+            id="semapact:deployment-target",
+            version="0.0.0",
+            schema_=[desired],
+            servers=[],
+        )
+        ddl = to_sql_ddl(contract, server_type=self.server_type)
+        return parse_sql_target_asset(
+            ddl,
+            asset_identity=asset_identity,
+            dialect=self.dialect,
+        )
+
+    def map_observed_asset(
+        self,
+        observed: ObservedAsset,
+        *,
+        asset_identity: str,
+        property_bindings: Mapping[str, str] | None = None,
+    ) -> SchemaAssetState:
+        return map_observed_schema_asset(
+            observed,
+            asset_identity=asset_identity,
+            property_bindings=property_bindings,
+            normalize_physical_type=lambda value: normalize_sql_type(
+                value,
+                dialect=self.dialect,
+            ),
+        )
 
 
 class PassThroughSchemaMapper:
@@ -70,17 +136,113 @@ class PassThroughSchemaMapper:
         )
 
 
+def parse_sql_target_asset(
+    ddl: str,
+    *,
+    asset_identity: str,
+    dialect: str,
+) -> SchemaAssetState:
+    """Parse one compiler-emitted CREATE TABLE into normalized schema state."""
+    try:
+        statements = [
+            statement
+            for statement in sqlglot.parse(ddl, read=dialect)
+            if statement is not None
+        ]
+    except Exception as exc:
+        raise ValidationError(
+            f"Target schema compiler emitted {dialect} DDL that could not be parsed"
+        ) from exc
+
+    creates = [
+        statement
+        for statement in statements
+        if isinstance(statement, exp.Create)
+        and (statement.kind or "").upper() == "TABLE"
+    ]
+    if len(creates) != 1:
+        raise ValidationError(
+            "Target schema compilation must emit exactly one CREATE TABLE"
+        )
+
+    properties: list[SchemaPropertyState] = []
+    seen: set[str] = set()
+
+    for column in creates[0].find_all(exp.ColumnDef):
+        name = column.name.strip()
+        if not name:
+            raise ValidationError("Target schema contains an empty column identity")
+
+        key = name.casefold()
+        if key in seen:
+            raise ValidationError(
+                f"Duplicate physical column binding in target schema: '{name}'"
+            )
+        seen.add(key)
+
+        data_type = column.args.get("kind")
+        if (
+            not isinstance(data_type, exp.DataType)
+            or data_type.this in _UNRESOLVED_SQL_TYPES
+        ):
+            raise ValidationError(
+                f"Unsupported target physicalType for column '{name}'"
+            )
+
+        properties.append(
+            SchemaPropertyState(
+                identity=name,
+                physical_type=data_type.sql(dialect=dialect),
+                nullable=column.find(exp.NotNullColumnConstraint) is None,
+                native_definition=column.sql(dialect=dialect),
+            )
+        )
+
+    if not properties:
+        raise ValidationError("Target schema compilation emitted no properties")
+
+    return SchemaAssetState(
+        identity=asset_identity,
+        properties=tuple(properties),
+    )
+
+
+def normalize_sql_type(
+    value: str | None,
+    *,
+    dialect: str,
+) -> str | None:
+    """Canonicalize one observed native type using a SQL dialect parser."""
+    if value is None:
+        return None
+
+    try:
+        parsed = sqlglot.parse_one(
+            value.strip(),
+            into=exp.DataType,
+            dialect=dialect,
+        )
+    except Exception as exc:
+        raise ValidationError(
+            f"Unsupported {dialect} physicalType: '{value}'"
+        ) from exc
+
+    if (
+        not isinstance(parsed, exp.DataType)
+        or parsed.this in _UNRESOLVED_SQL_TYPES
+    ):
+        raise ValidationError(f"Unsupported {dialect} physicalType: '{value}'")
+
+    return parsed.sql(dialect=dialect)
+
+
 def map_odcs_schema_asset(
     schema: SchemaObject,
     *,
     asset_identity: str,
     use_physical_property_names: bool,
 ) -> SchemaAssetState:
-    """Direct ODCS projection for provider-neutral callers only.
-
-    Provider target compilation should prefer a provider SchemaMapper
-    implementation backed by the platform compiler rather than this helper.
-    """
+    """Direct ODCS projection for provider-neutral reconciliation callers."""
     properties: list[SchemaPropertyState] = []
     seen: set[str] = set()
 
@@ -130,6 +292,7 @@ def map_observed_schema_asset(
         observed_name = prop.identity.property.strip()
         if not observed_name:
             raise ValidationError("Observed property identity must not be empty")
+
         identity = bindings.get(observed_name.casefold(), observed_name)
         key = identity.casefold()
         if key in seen:
@@ -192,6 +355,13 @@ def property_identity(
 
     physical = _optional_text(getattr(prop, "physicalName", None))
     return physical or logical
+
+
+def _required_text(value: str, field: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError(f"{field} is required")
+    return cleaned
 
 
 def _optional_text(value: object | None) -> str | None:
