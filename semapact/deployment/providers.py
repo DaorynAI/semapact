@@ -8,6 +8,7 @@ from open_data_contract_standard.model import SchemaObject
 
 from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import DeploymentTarget, NativeOperation
+from semapact.deployment.schema_transitions import SchemaTransitionPlanner
 from semapact.observation.models import ObservedAsset
 from semapact.observation.providers import RuntimeProvider
 from semapact.schema import SchemaAssetState, SchemaMapper
@@ -29,6 +30,7 @@ class DeploymentPlatform(ABC):
 
     key: str
     schema_mapper: SchemaMapper
+    transition_planner: SchemaTransitionPlanner
     transition_compiler: TransitionCompiler
     runtime_provider: RuntimeProvider
 
