@@ -17,6 +17,17 @@ from semapact.platforms.factories import PlatformFactory
 class DatabricksPlatformFactory(PlatformFactory):
     key = "databricks"
 
+    def runtime_target_from_server(self, server: Server) -> str:
+        catalog = _required(
+            server.catalog,
+            "Databricks contract server must define catalog",
+        )
+        schema_name = _required(
+            server.schema_,
+            "Databricks contract server must define schema",
+        )
+        return f"{catalog}.{schema_name}"
+
     def create_runtime_provider(
         self,
         *,
@@ -71,3 +82,12 @@ def _clean(value: object) -> str | None:
         return None
     cleaned = str(value).strip()
     return cleaned or None
+
+
+
+def _required(value: object, message: str) -> str:
+    cleaned = _clean(value)
+    if not cleaned:
+        from semapact.exceptions import ValidationError
+        raise ValidationError(message)
+    return cleaned
