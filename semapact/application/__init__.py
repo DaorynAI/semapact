@@ -1,13 +1,13 @@
 """Interface-independent application use cases for SemaPact."""
 
 from semapact.application.errors import (
-    ApplicationCapabilityUnavailableError,
+    ApplicationDependencyUnavailableError,
     ApplicationServiceError,
 )
 from semapact.application.service import SemaPactApplicationService
 
 __all__ = [
-    "ApplicationCapabilityUnavailableError",
+    "ApplicationDependencyUnavailableError",
     "ApplicationServiceError",
     "SemaPactApplicationService",
 ]
