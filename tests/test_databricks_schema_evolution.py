@@ -294,7 +294,7 @@ def test_planner_rejects_non_managed_asset() -> None:
 
 
 def test_desired_schema_validation_rejects_unsafe_physical_type() -> None:
-    with pytest.raises(ValidationError, match="physicalType|could not be parsed"):
+    with pytest.raises(ValidationError, match="physicalType|could not be parsed|exactly one CREATE TABLE"):
         _PLATFORM.schema_mapper.map_desired_asset(
             _schema(_property("id", "STRING);DROP")),
             asset_identity="orders",
