@@ -4,7 +4,6 @@ from semapact.deployment import (
     AdditiveSchemaTransitionPlanner,
     DeploymentAdapter,
     DeploymentOrchestrator,
-    DeploymentPlatform,
     NativeOperationExecutor,
     SchemaTransitionPlanner,
     TransitionCompiler,
@@ -13,18 +12,20 @@ from semapact.platforms.databricks.deployment import (
     DatabricksDeploymentAdapter,
     DatabricksStatementExecutor,
 )
-from semapact.platforms.databricks.platform import DatabricksDeploymentPlatform
 from semapact.platforms.databricks.transition_compiler import (
     DatabricksTransitionCompiler,
+)
+from semapact.platforms.databricks.transition_planner import (
+    DatabricksSchemaTransitionPlanner,
 )
 from semapact.schema import SchemaMapper, SqlSchemaMapper
 
 
-def test_shared_deployment_contracts_own_platform_behavior_seams() -> None:
+def test_shared_deployment_contracts_own_behavior_seams() -> None:
     assert issubclass(SqlSchemaMapper, SchemaMapper)
     assert issubclass(AdditiveSchemaTransitionPlanner, SchemaTransitionPlanner)
+    assert issubclass(DatabricksSchemaTransitionPlanner, SchemaTransitionPlanner)
     assert issubclass(DatabricksTransitionCompiler, TransitionCompiler)
-    assert issubclass(DatabricksDeploymentPlatform, DeploymentPlatform)
     assert issubclass(DatabricksStatementExecutor, NativeOperationExecutor)
 
 
