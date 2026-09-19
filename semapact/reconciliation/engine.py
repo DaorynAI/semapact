@@ -24,8 +24,6 @@ from semapact.schema import (
     SchemaSnapshot,
     build_physical_property_bindings,
     compare_schema_snapshots,
-    map_desired_schema_asset,
-    map_observed_schema_asset,
 )
 
 _PASSTHROUGH_SCHEMA_MAPPER = PassThroughSchemaMapper()
@@ -90,11 +88,9 @@ def _governed_snapshot(
 ) -> SchemaSnapshot:
     return SchemaSnapshot(
         assets=tuple(
-            map_desired_schema_asset(
+            _PASSTHROUGH_SCHEMA_MAPPER.map_desired_asset(
                 governed_schema,
                 asset_identity=asset_key,
-                mapper=_PASSTHROUGH_SCHEMA_MAPPER,
-                use_physical_property_names=False,
             )
             for asset_key, governed_schema in governed_assets.items()
         )
@@ -117,10 +113,9 @@ def _observed_snapshot(
             )
         )
         assets.append(
-            map_observed_schema_asset(
+            _PASSTHROUGH_SCHEMA_MAPPER.map_observed_asset(
                 observed_asset,
                 asset_identity=asset_key,
-                mapper=_PASSTHROUGH_SCHEMA_MAPPER,
                 property_bindings=property_bindings,
             )
         )
