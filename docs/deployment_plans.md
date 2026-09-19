@@ -78,7 +78,11 @@ CREATE / ALTER / NO_OP native operation
 
 The same shared schema comparison facts are consumed by runtime reconciliation. Reconciliation projects them into drift reason codes; deployment projects them into convergence intent. Provider adapters must not implement a second desired-vs-observed comparator.
 
-Schema projection is also shared. `semapact.schema` defines the mapping contract that converts ODCS and observed runtime state into normalized `SchemaSnapshot` values. Provider implementations supply only native physical-type normalization and provider-local validation. For example, Databricks maps ODCS types through datacontract-cli and canonicalizes native types through sqlglot, while the common mapping layer still owns logical/physical property projection and normalized snapshot construction.
+Schema projection is also shared. `semapact.schema` defines the mapping contract that converts provider target-schema output and observed runtime state into normalized `SchemaSnapshot` values. SemaPact should not reimplement an ODCS-to-platform compiler when datacontract-cli already provides one.
+
+For Databricks, the desired side delegates the complete ODCS → Databricks target-schema compilation to datacontract-cli's SQL exporter, including physical property names, target types, nested types, and nullability. SemaPact parses that compiler output into its normalized comparison model and validates it fail-closed. The observed side maps fresh runtime evidence into the same model.
+
+The exported CREATE DDL is **not** execution authority: datacontract-cli currently emits full creation-oriented DDL, while SemaPact must derive CREATE / ALTER / NO_OP from the released target schema versus fresh runtime state and compile only the exact authorized transition.
 
 The semantic transition layer is an internal planning boundary, not a new release artifact or authorization authority. This lets compatible execution families share transition semantics while keeping provider-specific naming, capability checks, SQL rendering, authentication, and execution in their adapters.
 
