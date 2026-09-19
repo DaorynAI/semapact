@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from open_data_contract_standard.model import OpenDataContractStandard, Server
 
@@ -11,6 +11,9 @@ from semapact.deployment.adapters import DeploymentAdapter
 from semapact.deployment.providers import DeploymentExecutionConfig
 from semapact.exceptions import ValidationError
 from semapact.observation import RuntimeProvider, RuntimeProviderRegistry
+
+if TYPE_CHECKING:
+    from semapact.application.services.readiness import ReadinessProbe
 
 
 @dataclass(frozen=True)
@@ -82,6 +85,45 @@ def create_runtime_provider_registry(
         )
     raise ValidationError(
         f"Unsupported runtime provider '{platform}'. Supported providers: databricks"
+    )
+
+
+def create_runtime_readiness_probe(
+    platform: str,
+    *,
+    runtime_target: str,
+    contract_server: Server | None = None,
+    execution_config: DeploymentExecutionConfig | None = None,
+) -> ReadinessProbe:
+    """Compose the selected provider readiness probe without performing checks yet."""
+    normalized = platform.strip().casefold()
+    if normalized != "databricks":
+        raise ValidationError(
+            f"Unsupported readiness provider '{platform}'. Supported providers: databricks"
+        )
+
+    from semapact.platforms.databricks.deployment import (
+        DatabricksDeploymentExecutionConfig,
+    )
+    from semapact.platforms.databricks.readiness import DatabricksReadinessProbe
+
+    config = (
+        DatabricksDeploymentExecutionConfig()
+        if execution_config is None
+        else execution_config
+    )
+    if not isinstance(config, DatabricksDeploymentExecutionConfig):
+        raise ValidationError(
+            "Databricks readiness requires DatabricksDeploymentExecutionConfig"
+        )
+
+    return DatabricksReadinessProbe(
+        runtime_target=_required(
+            runtime_target,
+            "Databricks readiness requires a runtime target",
+        ),
+        workspace_url=_clean(contract_server.host) if contract_server else None,
+        warehouse_id=config.warehouse_id,
     )
 
 
