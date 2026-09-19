@@ -10,10 +10,8 @@ from semapact.deployment import (
     DeploymentPreview,
     DeploymentTarget,
     build_deployment_plan,
-    verify_deployment_convergence,
 )
 from semapact.exceptions import ValidationError
-from semapact.observation import RuntimeProvider
 from semapact.reconciliation import ReconciliationResult
 
 
@@ -33,7 +31,6 @@ class DeploymentService:
         *,
         adapter: DeploymentAdapter,
     ) -> DeploymentPreview:
-        """Delegate the complete read-only deployment workflow to the adapter."""
         _validate_component_key(adapter.key, plan.target.platform, "deployment adapter")
         return adapter.preview(plan)
 
@@ -45,7 +42,6 @@ class DeploymentService:
         *,
         adapter: DeploymentAdapter,
     ) -> None:
-        """Delegate the complete exact side-effect workflow to the adapter."""
         _validate_component_key(adapter.key, plan.target.platform, "deployment adapter")
         adapter.execute(plan, preview, authorization)
 
@@ -53,10 +49,10 @@ class DeploymentService:
         self,
         plan: DeploymentPlan,
         *,
-        runtime_provider: RuntimeProvider,
+        adapter: DeploymentAdapter,
     ) -> ReconciliationResult:
-        """Verify exact plan convergence through the existing reconciliation path."""
-        return verify_deployment_convergence(plan, runtime_provider)
+        _validate_component_key(adapter.key, plan.target.platform, "deployment adapter")
+        return adapter.verify(plan)
 
 
 def _validate_component_key(
