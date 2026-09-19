@@ -5,7 +5,6 @@ from __future__ import annotations
 from open_data_contract_standard.model import SchemaObject
 
 from semapact.deployment.models import (
-    DeploymentAction,
     DeploymentActionKind,
     DeploymentAuthorization,
     DeploymentPlan,
