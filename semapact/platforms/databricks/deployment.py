@@ -23,8 +23,8 @@ from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.observation.fingerprint import fingerprint_observed_state
 from semapact.observation.models import ObservedPlatformState
 from semapact.observation.providers import RuntimeProvider
-from semapact.platforms.databricks.schema_evolution import (
-    plan_databricks_schema_evolution,
+from semapact.platforms.databricks.schema_mapping import (
+    plan_databricks_schema_transition,
     validate_databricks_desired_schema,
     validate_databricks_identifier,
 )
@@ -109,7 +109,7 @@ class DatabricksDeploymentAdapter:
         for action in plan.actions:
             desired = SchemaObject.model_validate_json(action.desired_state_json)
             observed = observed_by_asset.get(action.physical_name.casefold())
-            transition = plan_databricks_schema_evolution(
+            transition = plan_databricks_schema_transition(
                 runtime_target=plan.target.runtime_target,
                 governed_asset=action.governed_asset,
                 table_name=action.physical_name,
