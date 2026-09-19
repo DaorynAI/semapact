@@ -263,7 +263,9 @@ Action ordering is canonical even when schemas appear in a different order in so
 
 ## Provider support belongs behind generic deployment contracts
 
-Platform composition is centralized behind `PlatformFactory`. A platform owns its ODCS Server → runtime-target projection and composes its RuntimeProvider and DeploymentAdapter; the shared registry only dispatches a platform key to a lazy factory loader. Adding another platform does not require another deployment lifecycle or another runtime/deployment composition branch.
+`semapact.platforms.runtime_registry` is the composition root. It lazily constructs the selected platform's runtime provider and deployment adapter and owns the small amount of dispatch needed for supported built-in platforms. SemaPact does not introduce a separate platform-factory hierarchy merely to construct these objects.
+
+Platform extensibility belongs in behavior seams—`RuntimeProvider`, `DeploymentPlatform`, `SchemaMapper`, `SchemaTransitionPlanner`, `TransitionCompiler`, and `NativeOperationExecutor`—rather than in an additional composition abstraction.
 
 DeploymentPlan intentionally does not contain generic `preconditions`, `adapterKey`, or guessed platform-specific operations.
 
