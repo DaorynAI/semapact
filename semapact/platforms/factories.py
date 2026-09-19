@@ -7,8 +7,8 @@ from collections.abc import Mapping
 
 from open_data_contract_standard.model import Server
 
-from semapact.deployment import DeploymentAdapter
-from semapact.observation import RuntimeProvider
+from semapact.deployment.adapters import DeploymentAdapter
+from semapact.observation.providers import RuntimeProvider
 
 
 class PlatformFactory(ABC):
