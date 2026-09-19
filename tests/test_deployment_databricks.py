@@ -200,7 +200,7 @@ def test_preview_create_alter_and_no_op() -> None:
     create_plan = _plan(_property("id", "BIGINT", required=True))
     missing = _state(present=False)
     adapter, _, _ = _adapter(missing)
-    create_preview = adapter.preview(create_plan, missing)
+    create_preview = adapter.preview(create_plan)
     assert create_preview.operations[0].kind is NativeOperationKind.CREATE
 
     alter_plan = _plan(
@@ -209,11 +209,11 @@ def test_preview_create_alter_and_no_op() -> None:
     )
     current = _state(("id", "bigint", False))
     adapter, _, _ = _adapter(current)
-    alter_preview = adapter.preview(alter_plan, current)
+    alter_preview = adapter.preview(alter_plan)
     assert alter_preview.operations[0].kind is NativeOperationKind.ALTER
     assert "ADD COLUMNS (`note` STRING)" in alter_preview.operations[0].statement
 
-    no_op = adapter.preview(create_plan, current)
+    no_op = adapter.preview(create_plan)
     assert no_op.operations == (
         NativeOperation(kind=NativeOperationKind.NO_OP, governed_asset="orders"),
     )
@@ -223,7 +223,7 @@ def test_preview_never_drops_extra_runtime_columns() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     current = _state(("id", "bigint", False), ("extra", "string", True))
     adapter, _, _ = _adapter(current)
-    assert adapter.preview(plan, current).operations[0].kind is NativeOperationKind.NO_OP
+    assert adapter.preview(plan).operations[0].kind is NativeOperationKind.NO_OP
 
 
 @pytest.mark.parametrize(
@@ -252,7 +252,7 @@ def test_preview_never_drops_extra_runtime_columns() -> None:
 def test_unsafe_existing_mutations_fail_closed(plan, state, message) -> None:
     adapter, _, _ = _adapter(state)
     with pytest.raises(ValidationError, match=message):
-        adapter.preview(plan, state)
+        adapter.preview(plan)
 
 
 def test_non_managed_asset_and_unsafe_type_fail_closed() -> None:
@@ -260,7 +260,7 @@ def test_non_managed_asset_and_unsafe_type_fail_closed() -> None:
     external = _state(("id", "bigint", False), asset_type="EXTERNAL")
     adapter, _, _ = _adapter(external)
     with pytest.raises(ValidationError, match="MANAGED"):
-        adapter.preview(plan, external)
+        adapter.preview(plan)
 
     malicious_type = "STRING);DROP"
     malicious = _plan(_property("id", malicious_type))
@@ -274,14 +274,14 @@ def test_preview_rejects_cross_source_runtime_evidence() -> None:
     adapter, _, _ = _adapter(other_workspace)
 
     with pytest.raises(ValidationError, match="source reference"):
-        adapter.preview(plan, other_workspace)
+        adapter.preview(plan)
 
 
 def test_execute_fails_closed_for_denied_stale_and_cross_source() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     before = _state(("id", "bigint", False))
     adapter, provider, _ = _adapter(before)
-    preview = adapter.preview(plan, before)
+    preview = adapter.preview(plan)
 
     with pytest.raises(ContractOpsAuthorizationError, match="not allowed"):
         adapter.execute(plan, preview, _authorization(plan, False))
@@ -302,7 +302,7 @@ def test_execute_rejects_tampered_plan_and_forged_native_command() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     current = _state(("id", "bigint", False))
     adapter, _, client = _adapter(current)
-    preview = adapter.preview(plan, current)
+    preview = adapter.preview(plan)
 
     tampered = plan.model_copy(update={"selected_version": "9.9.9"})
     with pytest.raises(ValueError, match="DeploymentPlan deterministic identity"):
@@ -338,7 +338,7 @@ def test_execute_runs_exact_preview_statement() -> None:
     )
     current = _state(("id", "bigint", False))
     adapter, _, client = _adapter(current)
-    preview = adapter.preview(plan, current)
+    preview = adapter.preview(plan)
 
     adapter.execute(plan, preview, _authorization(plan))
 
@@ -351,7 +351,7 @@ def test_no_op_execute_does_not_require_warehouse() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     current = _state(("id", "bigint", False))
     adapter, _, client = _adapter(current, warehouse_id=None)
-    preview = adapter.preview(plan, current)
+    preview = adapter.preview(plan)
 
     assert preview.operations[0].kind is NativeOperationKind.NO_OP
     adapter.execute(plan, preview, _authorization(plan))
@@ -365,7 +365,7 @@ def test_mutation_execute_without_warehouse_fails_closed() -> None:
     )
     current = _state(("id", "bigint", False))
     adapter, _, client = _adapter(current, warehouse_id=None)
-    preview = adapter.preview(plan, current)
+    preview = adapter.preview(plan)
 
     with pytest.raises(ValidationError, match="warehouse_id"):
         adapter.execute(plan, preview, _authorization(plan))
