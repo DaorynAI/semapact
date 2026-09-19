@@ -38,11 +38,16 @@ class SchemaSubject(str, Enum):
 
 
 class SchemaPropertyState(SchemaComparisonModel):
-    """Normalized comparable state for one property."""
+    """Normalized comparable state for one property.
+
+    native_definition is opaque provider output retained for later transition
+    rendering. It is deliberately excluded from schema comparison semantics.
+    """
 
     identity: str
     physical_type: str | None = None
     nullable: bool | None = None
+    native_definition: str | None = None
 
     @field_validator("identity")
     @classmethod
@@ -52,7 +57,7 @@ class SchemaPropertyState(SchemaComparisonModel):
             raise ValueError("schema property identity must not be empty")
         return cleaned
 
-    @field_validator("physical_type")
+    @field_validator("physical_type", "native_definition")
     @classmethod
     def _normalize_optional_type(cls, value: str | None) -> str | None:
         if value is None:
