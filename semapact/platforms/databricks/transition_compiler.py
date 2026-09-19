@@ -69,9 +69,6 @@ class DatabricksTransitionCompiler(TransitionCompiler):
         )
 
 
-DATABRICKS_TRANSITION_COMPILER: TransitionCompiler = DatabricksTransitionCompiler()
-
-
 def _create_table_statement(
     *,
     catalog: str,
