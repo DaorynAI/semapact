@@ -11,7 +11,7 @@ from semapact.observation.models import ObservedAsset
 from semapact.observation.providers import RuntimeProvider
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
 from semapact.platforms.databricks.transition_compiler import (
-    DATABRICKS_TRANSITION_COMPILER,
+    DatabricksTransitionCompiler,
 )
 from semapact.schema import (
     SchemaAssetState,
@@ -32,7 +32,7 @@ class DatabricksDeploymentPlatform(DeploymentPlatform):
             server_type="databricks",
             dialect="databricks",
         )
-        self.transition_compiler = DATABRICKS_TRANSITION_COMPILER
+        self.transition_compiler = DatabricksTransitionCompiler()
 
     def validate_target(self, target: DeploymentTarget) -> None:
         catalog, schema_name = parse_databricks_runtime_target(
