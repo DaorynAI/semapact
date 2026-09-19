@@ -449,6 +449,43 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="deployment_command", required=True
     )
 
+    deployment_assess_parser = deployment_subparsers.add_parser(
+        "assess",
+        help="Assess base/candidate contract change against fresh runtime without mutation",
+    )
+    deployment_assess_parser.add_argument("--base", required=True)
+    deployment_assess_parser.add_argument("--candidate", required=True)
+    deployment_assess_parser.add_argument("--base-revision-ref", required=True)
+    deployment_assess_parser.add_argument("--candidate-revision-ref", required=True)
+    deployment_assess_parser.add_argument(
+        "--authority-reference",
+        help="Explicit Git release reference when release.versionAuthority=git",
+    )
+    deployment_assess_parser.add_argument(
+        "--server",
+        help="Contract server identifier when the candidate defines multiple servers",
+    )
+    deployment_assess_parser.add_argument(
+        "--platform",
+        help="Fallback runtime provider when the candidate defines no servers",
+    )
+    deployment_assess_parser.add_argument(
+        "--runtime",
+        help="Fallback provider-local runtime target when the candidate defines no servers",
+    )
+    deployment_assess_parser.add_argument(
+        "--source-reference",
+        help="Fallback stable runtime source identity when the candidate defines no server host",
+    )
+    deployment_assess_parser.add_argument("--runtime-context", default="auto")
+    deployment_assess_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+    _add_effective_date_argument(deployment_assess_parser)
+
     deployment_plan_parser = deployment_subparsers.add_parser(
         "plan", help="Build a DeploymentPlan from an exact AppliedContractRelease"
     )
@@ -607,6 +644,7 @@ def main() -> int:
 
         if args.command == "deployment":
             from semapact.interfaces.commands.deployment_cmd import (
+                run_deployment_assess,
                 run_deployment_execute,
                 run_deployment_plan,
                 run_deployment_preview,
@@ -614,7 +652,9 @@ def main() -> int:
             )
             from semapact.interfaces.outcomes import exit_code_from_outcome
 
-            if args.deployment_command == "plan":
+            if args.deployment_command == "assess":
+                result = run_deployment_assess(args)
+            elif args.deployment_command == "plan":
                 result = run_deployment_plan(args)
             elif args.deployment_command == "preview":
                 result = run_deployment_preview(args)
