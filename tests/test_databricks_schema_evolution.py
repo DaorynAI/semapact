@@ -7,6 +7,7 @@ from semapact.deployment.models import NativeOperationKind
 from semapact.deployment.schema_transitions import (
     SchemaTransition,
     SchemaTransitionKind,
+    plan_schema_transition,
 )
 from semapact.exceptions import ValidationError
 from semapact.observation.models import (
@@ -15,9 +16,10 @@ from semapact.observation.models import (
     ObservedProperty,
     ObservedPropertyIdentity,
 )
-from semapact.platforms.databricks.schema_planner import (
-    plan_databricks_schema_transition,
+from semapact.platforms.databricks.schema import (
+    DATABRICKS_SCHEMA_MAPPER,
     validate_databricks_desired_schema,
+    validate_databricks_observed_asset,
 )
 from semapact.platforms.databricks.sql_compiler import (
     compile_databricks_schema_transition,
@@ -78,10 +80,21 @@ def _plan(
     desired: SchemaObject,
     observed: ObservedAsset | None,
 ) -> SchemaTransition:
-    return plan_databricks_schema_transition(
-        runtime_target="main.silver",
-        governed_asset="orders",
+    validate_databricks_desired_schema(
         table_name="orders",
+        desired=desired,
+    )
+    if observed is not None:
+        validate_databricks_observed_asset(
+            observed=observed,
+            catalog="main",
+            schema_name="silver",
+            table_name="orders",
+        )
+    return plan_schema_transition(
+        mapper=DATABRICKS_SCHEMA_MAPPER,
+        governed_asset="orders",
+        physical_name="orders",
         desired=desired,
         observed=observed,
     )
