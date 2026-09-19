@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import re
-
 from datacontract.export.sql_type_converter import convert_to_databricks
+import sqlglot
+from sqlglot import exp
 from open_data_contract_standard.model import SchemaObject, SchemaProperty
 
 from semapact.deployment.schema_transitions import (
@@ -17,29 +17,12 @@ from semapact.observation.models import ObservedAsset
 from semapact.platforms.databricks.target import parse_databricks_runtime_target
 
 
-_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
-_DECIMAL_RE = re.compile(r"^DECIMAL\((\d{1,2}),(\d{1,2})\)$")
-_CHAR_RE = re.compile(r"^(CHAR|VARCHAR)\((\d+)\)$")
-_PRIMITIVE_TYPES = {
-    "BIGINT",
-    "BINARY",
-    "BOOLEAN",
-    "BYTE",
-    "DATE",
-    "DOUBLE",
-    "FLOAT",
-    "INT",
-    "INTEGER",
-    "LONG",
-    "REAL",
-    "SHORT",
-    "SMALLINT",
-    "STRING",
-    "TIMESTAMP",
-    "TIMESTAMP_NTZ",
-    "TINYINT",
+_IDENTIFIER_RE = __import__("re").compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+_UNRESOLVED_DATABRICKS_TYPES = {
+    exp.DataType.Type.UNKNOWN,
+    exp.DataType.Type.USERDEFINED,
+    exp.DataType.Type.NULL,
 }
-
 
 def validate_databricks_desired_schema(
     *,
@@ -155,11 +138,8 @@ def _observed_columns(observed: ObservedAsset) -> tuple[SchemaColumnState, ...]:
 
 def _map_desired_type(prop: SchemaProperty) -> str:
     raw = str(prop.physicalType).strip()
-    if _CHAR_RE.fullmatch(re.sub(r"\s+", "", raw.upper())):
-        return _validate_safe_type(raw)
-
     mapped = convert_to_databricks(prop)
-    return _validate_safe_type(mapped or raw)
+    return _normalize_databricks_type(mapped or raw)
 
 
 def _map_type_text(value: str) -> str:
@@ -171,26 +151,32 @@ def _map_type_text(value: str) -> str:
     return _map_desired_type(synthetic)
 
 
-def _validate_safe_type(value: str) -> str:
-    normalized = re.sub(r"\s+", "", value.strip().upper())
-    if normalized in _PRIMITIVE_TYPES:
-        return normalized
+def _normalize_databricks_type(value: str) -> str:
+    """Parse and canonicalize one native type using the Databricks SQL dialect.
 
-    decimal = _DECIMAL_RE.fullmatch(normalized)
-    if decimal:
-        precision = int(decimal.group(1))
-        scale = int(decimal.group(2))
-        if 1 <= precision <= 38 and 0 <= scale <= precision:
-            return f"DECIMAL({precision},{scale})"
-        raise ValidationError(f"Unsupported Databricks DECIMAL type: '{value}'")
+    datacontract-cli owns ODCS-to-Databricks type translation. sqlglot then
+    provides the executable trust boundary: only a value that parses as one
+    native DataType is accepted, so raw physicalType text is never interpolated
+    directly into deployment SQL.
+    """
+    try:
+        parsed = sqlglot.parse_one(
+            value.strip(),
+            into=exp.DataType,
+            dialect="databricks",
+        )
+    except Exception as exc:
+        raise ValidationError(
+            f"Unsupported Databricks physicalType: '{value}'"
+        ) from exc
 
-    char_type = _CHAR_RE.fullmatch(normalized)
-    if char_type:
-        length = int(char_type.group(2))
-        if length > 0:
-            return f"{char_type.group(1)}({length})"
+    if (
+        not isinstance(parsed, exp.DataType)
+        or parsed.this in _UNRESOLVED_DATABRICKS_TYPES
+    ):
+        raise ValidationError(f"Unsupported Databricks physicalType: '{value}'")
 
-    raise ValidationError(f"Unsupported Databricks physicalType: '{value}'")
+    return parsed.sql(dialect="databricks")
 
 
 def _property_physical_name(prop: SchemaProperty) -> str:
