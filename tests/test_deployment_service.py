@@ -246,7 +246,6 @@ def test_assess_delegates_candidate_to_unified_adapter_entrypoint() -> None:
 
     assert result == adapter.assessment_result
     assert adapter.assess_calls == 1
-    assert adapter.assess_calls == 0
     assert adapter.preview_calls == 0
     assert adapter.execute_calls == 0
 
@@ -315,6 +314,7 @@ def test_service_rejects_adapter_platform_mismatch(operation: str) -> None:
                 adapter=adapter,
             )
 
+    assert adapter.assess_calls == 0
     assert adapter.preview_calls == 0
     assert adapter.verify_calls == 0
     assert adapter.execute_calls == 0
