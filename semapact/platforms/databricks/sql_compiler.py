@@ -8,7 +8,7 @@ from semapact.deployment.schema_transitions import (
     SchemaTransitionKind,
 )
 from semapact.schema import SchemaPropertyState
-from semapact.platforms.databricks.schema_evolution import (
+from semapact.platforms.databricks.schema_mapping import (
     validate_databricks_identifier,
 )
 
