@@ -23,13 +23,13 @@ from semapact.reconciliation.models import (
     ReconciliationSubject,
     RuntimeReasonCode,
 )
-
-_SUBJECT_ORDER = {
-    ReconciliationSubject.ASSET: 0,
-    ReconciliationSubject.PROPERTY: 1,
-    ReconciliationSubject.PHYSICAL_TYPE: 2,
-    ReconciliationSubject.NULLABILITY: 3,
-}
+from semapact.schema import (
+    SchemaAssetState,
+    SchemaDifference,
+    SchemaPropertyState,
+    SchemaSnapshot,
+    compare_schema_snapshots,
+)
 
 _REASON_CODE_BY_RAW_DIFFERENCE: dict[
     tuple[ReconciliationDifferenceType, ReconciliationSubject], RuntimeReasonCode
@@ -51,10 +51,9 @@ def reconcile_governed_contract(
 ) -> ReconciliationResult:
     """Compare governed ODCS desired state with platform-neutral observed state.
 
-    ``asset_bindings`` explicitly maps governed logical schema identity to
-    provider-local observed asset identity. Operational runtime-product flows
-    should provide bindings so physical names never redefine governed identity.
-    The legacy name-matching path remains available for existing library callers.
+    Projection into normalized schema snapshots owns ODCS/runtime identity
+    binding. The shared comparator owns structural comparison exactly once.
+    Reconciliation then projects raw schema facts into stable runtime reason codes.
     """
     governed_assets = build_schema_index(contract)
     if asset_bindings is None:
@@ -66,161 +65,111 @@ def reconcile_governed_contract(
             bindings=asset_bindings,
         )
 
-    differences: list[ReconciliationDifference] = []
-    unverified_paths: list[str] = []
-    governed_keys = set(governed_assets)
-    observed_keys = set(observed_assets)
+    comparison = compare_schema_snapshots(
+        _governed_snapshot(governed_assets),
+        _observed_snapshot(
+            governed_assets=governed_assets,
+            observed_assets=observed_assets,
+        ),
+    )
 
-    for asset_key in sorted(governed_keys - observed_keys):
-        differences.append(
-            _difference(
-                difference_type=ReconciliationDifferenceType.MISSING,
-                subject=ReconciliationSubject.ASSET,
-                asset_identity=asset_key,
-            )
-        )
-
-    for asset_key in sorted(observed_keys - governed_keys):
-        differences.append(
-            _difference(
-                difference_type=ReconciliationDifferenceType.UNEXPECTED,
-                subject=ReconciliationSubject.ASSET,
-                asset_identity=asset_key,
-            )
-        )
-
-    for asset_key in sorted(governed_keys & observed_keys):
-        governed_schema = governed_assets[asset_key]
-        observed_asset = observed_assets[asset_key]
-        property_differences, property_unverified_paths = _reconcile_properties(
-            asset_key=asset_key,
-            governed_properties=list(governed_schema.properties or []),
-            observed_asset=observed_asset,
-        )
-        differences.extend(property_differences)
-        unverified_paths.extend(property_unverified_paths)
-
-    ordered = tuple(sorted(differences, key=_difference_sort_key))
+    differences = tuple(_reconciliation_difference(item) for item in comparison.differences)
     return ReconciliationResult(
         contract_id=_required_contract_text(getattr(contract, "id", None), field="id"),
         contract_version=_required_contract_text(getattr(contract, "version", None), field="version"),
         observation_source_identifier=observation.source_identifier,
         observation_fingerprint=observation.fingerprint or fingerprint_observed_state(observation),
-        differences=ordered,
-        unverified_paths=tuple(sorted(unverified_paths)),
+        differences=differences,
+        unverified_paths=comparison.unverified_paths,
     )
 
 
-def _reconcile_properties(
+def _governed_snapshot(
+    governed_assets: dict[str, object],
+) -> SchemaSnapshot:
+    assets: list[SchemaAssetState] = []
+    for asset_key, governed_schema in governed_assets.items():
+        properties: list[SchemaPropertyState] = []
+        for prop in governed_schema.properties or []:
+            name = normalize_identity_name(str(prop.name), "Property")
+            physical = _optional_text(getattr(prop, "physicalType", None))
+            required = getattr(prop, "required", None)
+            properties.append(
+                SchemaPropertyState(
+                    identity=name,
+                    physical_type=physical,
+                    nullable=(not required) if isinstance(required, bool) else None,
+                )
+            )
+        assets.append(
+            SchemaAssetState(
+                identity=asset_key,
+                properties=tuple(properties),
+            )
+        )
+    return SchemaSnapshot(assets=tuple(assets))
+
+
+def _observed_snapshot(
     *,
-    asset_key: str,
-    governed_properties: list[SchemaProperty],
-    observed_asset: ObservedAsset,
-) -> tuple[list[ReconciliationDifference], list[str]]:
-    governed = build_property_index(asset_key, governed_properties)
-    observed = _build_observed_property_index(
-        asset_key,
-        observed_asset,
-        governed_properties=governed_properties,
-    )
-    differences: list[ReconciliationDifference] = []
-    unverified_paths: list[str] = []
-    governed_keys = set(governed)
-    observed_keys = set(observed)
-
-    for prop_key in sorted(governed_keys - observed_keys):
-        differences.append(
-            _difference(
-                difference_type=ReconciliationDifferenceType.MISSING,
-                subject=ReconciliationSubject.PROPERTY,
-                asset_identity=asset_key,
-                property_identity=prop_key[1],
-            )
-        )
-
-    for prop_key in sorted(observed_keys - governed_keys):
-        differences.append(
-            _difference(
-                difference_type=ReconciliationDifferenceType.UNEXPECTED,
-                subject=ReconciliationSubject.PROPERTY,
-                asset_identity=asset_key,
-                property_identity=prop_key[1],
-            )
-        )
-
-    for prop_key in sorted(governed_keys & observed_keys):
-        property_differences, property_unverified_paths = _reconcile_matching_property(
-            asset_key=asset_key,
-            property_key=prop_key,
-            governed=governed[prop_key],
-            observed=observed[prop_key],
-        )
-        differences.extend(property_differences)
-        unverified_paths.extend(property_unverified_paths)
-
-    return differences, unverified_paths
-
-
-def _reconcile_matching_property(
-    *,
-    asset_key: str,
-    property_key: PropertyIdentity,
-    governed: SchemaProperty,
-    observed: ObservedProperty,
-) -> tuple[list[ReconciliationDifference], list[str]]:
-    differences: list[ReconciliationDifference] = []
-    unverified_paths: list[str] = []
-    property_identity = property_key[1]
-
-    expected_physical = _optional_text(getattr(governed, "physicalType", None))
-    observed_physical = _optional_text(observed.physical_type)
-    if expected_physical is not None:
-        if observed_physical is None:
-            unverified_paths.append(
-                _difference_path(
-                    subject=ReconciliationSubject.PHYSICAL_TYPE,
-                    asset_identity=asset_key,
-                    property_identity=property_identity,
+    governed_assets: dict[str, object],
+    observed_assets: dict[str, ObservedAsset],
+) -> SchemaSnapshot:
+    assets: list[SchemaAssetState] = []
+    for asset_key, observed_asset in observed_assets.items():
+        governed_schema = governed_assets.get(asset_key)
+        if governed_schema is None:
+            properties = tuple(
+                SchemaPropertyState(
+                    identity=normalize_identity_name(
+                        prop.identity.property,
+                        "Observed property",
+                    ),
+                    physical_type=_optional_text(prop.physical_type),
+                    nullable=prop.nullable,
                 )
-            )
-        elif _normalize_comparable_text(expected_physical) != _normalize_comparable_text(observed_physical):
-            differences.append(
-                _difference(
-                    difference_type=ReconciliationDifferenceType.MISMATCH,
-                    subject=ReconciliationSubject.PHYSICAL_TYPE,
-                    asset_identity=asset_key,
-                    property_identity=property_identity,
-                    expected=expected_physical,
-                    observed=observed_physical,
-                )
-            )
-
-    required = getattr(governed, "required", None)
-    nullable = observed.nullable
-    if isinstance(required, bool):
-        if not isinstance(nullable, bool):
-            unverified_paths.append(
-                _difference_path(
-                    subject=ReconciliationSubject.NULLABILITY,
-                    asset_identity=asset_key,
-                    property_identity=property_identity,
-                )
+                for prop in observed_asset.properties
             )
         else:
-            expected_nullable = not required
-            if expected_nullable != nullable:
-                differences.append(
-                    _difference(
-                        difference_type=ReconciliationDifferenceType.MISMATCH,
-                        subject=ReconciliationSubject.NULLABILITY,
-                        asset_identity=asset_key,
-                        property_identity=property_identity,
-                        expected=expected_nullable,
-                        observed=nullable,
-                    )
+            observed_properties = _build_observed_property_index(
+                asset_key,
+                observed_asset,
+                governed_properties=governed_schema.properties or [],
+            )
+            properties = tuple(
+                SchemaPropertyState(
+                    identity=property_key[1],
+                    physical_type=_optional_text(prop.physical_type),
+                    nullable=prop.nullable,
                 )
+                for property_key, prop in observed_properties.items()
+            )
 
-    return differences, unverified_paths
+        assets.append(
+            SchemaAssetState(
+                identity=asset_key,
+                properties=properties,
+            )
+        )
+    return SchemaSnapshot(assets=tuple(assets))
+
+
+def _reconciliation_difference(
+    difference: SchemaDifference,
+) -> ReconciliationDifference:
+    return ReconciliationDifference(
+        difference_type=difference.difference_type,
+        subject=difference.subject,
+        reason_code=_runtime_reason_code(
+            difference_type=difference.difference_type,
+            subject=difference.subject,
+        ),
+        path=difference.path,
+        asset_identity=difference.asset_identity,
+        property_identity=difference.property_identity,
+        expected=difference.expected,
+        observed=difference.observed,
+    )
 
 
 def _build_observed_asset_index(observation: ObservedPlatformState) -> dict[str, ObservedAsset]:
@@ -335,31 +284,6 @@ def _property_binding_index(
     return physical_to_governed
 
 
-def _difference(
-    *,
-    difference_type: ReconciliationDifferenceType,
-    subject: ReconciliationSubject,
-    asset_identity: str,
-    property_identity: str | None = None,
-    expected: str | bool | None = None,
-    observed: str | bool | None = None,
-) -> ReconciliationDifference:
-    return ReconciliationDifference(
-        difference_type=difference_type,
-        subject=subject,
-        reason_code=_runtime_reason_code(difference_type=difference_type, subject=subject),
-        path=_difference_path(
-            subject=subject,
-            asset_identity=asset_identity,
-            property_identity=property_identity,
-        ),
-        asset_identity=asset_identity,
-        property_identity=property_identity,
-        expected=expected,
-        observed=observed,
-    )
-
-
 def _runtime_reason_code(
     *,
     difference_type: ReconciliationDifferenceType,
@@ -372,34 +296,6 @@ def _runtime_reason_code(
             f"{difference_type.value}/{subject.value}"
         )
     return reason_code
-
-
-def _difference_path(
-    *,
-    subject: ReconciliationSubject,
-    asset_identity: str,
-    property_identity: str | None,
-) -> str:
-    asset_path = f"schema[{asset_identity}]"
-    if subject is ReconciliationSubject.ASSET:
-        return asset_path
-    if property_identity is None:
-        raise ValueError(f"property_identity is required for {subject.value}")
-    property_path = f"{asset_path}.properties[{property_identity}]"
-    if subject is ReconciliationSubject.PROPERTY:
-        return property_path
-    if subject is ReconciliationSubject.PHYSICAL_TYPE:
-        return f"{property_path}.physicalType"
-    return f"{property_path}.nullability"
-
-
-def _difference_sort_key(difference: ReconciliationDifference) -> tuple[str, str, int, str]:
-    return (
-        difference.asset_identity,
-        difference.property_identity or "",
-        _SUBJECT_ORDER[difference.subject],
-        difference.difference_type.value,
-    )
 
 
 def _required_contract_text(value: object, *, field: str) -> str:
@@ -416,7 +312,3 @@ def _optional_text(value: object | None) -> str | None:
         return None
     text = str(value).strip()
     return text or None
-
-
-def _normalize_comparable_text(value: str) -> str:
-    return value.strip().casefold()
