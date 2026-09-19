@@ -25,7 +25,12 @@ from semapact.deployment.schema_transitions import (
     SchemaTransitionKind,
 )
 from semapact.observation.fingerprint import with_observed_state_fingerprint
-from semapact.observation.models import ObservedAsset, ObservedPlatformState
+from semapact.observation.models import (
+    ObservedAsset,
+    ObservedAssetIdentity,
+    ObservedPlatformState,
+)
+from semapact.observation.providers import RuntimeAssetBinding
 from semapact.reconciliation import RuntimeDriftStatus, classify_reconciliation_status
 from semapact.schema import PassThroughSchemaMapper, SchemaAssetState
 
@@ -40,10 +45,19 @@ class _RuntimeProvider:
     def resolve_bindings(self, *, runtime_target, assets):
         assert runtime_target == "main"
         assert tuple(asset.physical_name for asset in assets) == ("orders",)
-        return ()
+        return (
+            RuntimeAssetBinding(
+                governed_asset="orders",
+                observed_asset=ObservedAssetIdentity(
+                    platform="fake",
+                    namespace=("main",),
+                    asset="orders",
+                ),
+            ),
+        )
 
     def observe(self, *, bindings):
-        assert bindings == ()
+        assert len(tuple(bindings)) == 1
         self.observe_calls += 1
         return self.state
 
