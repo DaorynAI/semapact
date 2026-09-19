@@ -144,9 +144,47 @@ Preview, execution, and verification fail closed when fresh runtime evidence com
 
 The plan does not contain credentials, workspace clients, SQL connections, or provider sessions.
 
+## Candidate assessment before approval
+
+A Data Engineer or CI job can assess a proposed contract revision against fresh runtime state before any release or deployment authority exists:
+
+```text
+base contract + candidate contract
+        ↓
+GovernanceDecision
+→ ChangeSet
+→ ReleasePlan
+→ VersionResolution
+        +
+fresh runtime observation
+        ↓
+DeploymentAssessment
+```
+
+`DeploymentAssessment` is deliberately non-executable. It binds the candidate revision, deployment target, fresh observation fingerprint, and provider-native CREATE / ALTER / NO_OP operations for review, but it contains no `AppliedContractRelease`, `DeploymentPlan`, or authorization identity.
+
+The assessment path reuses the same schema mapper, comparator, transition planner, and provider compiler as executable deployment preview. Approval does not promote the assessment itself into execution authority; post-approval deployment builds the canonical release/deployment artifacts and obtains fresh runtime evidence again.
+
 ## CLI workflow
 
-The deployment CLI consumes and emits canonical JSON artifacts. Planning and preview are read-only; `execute` is the runtime mutation boundary.
+The deployment CLI supports both contract-first assessment and explicit canonical artifacts. Assessment, planning, and preview are read-only; `execute` is the runtime mutation boundary.
+
+### Assess
+
+```bash
+semapact deployment assess \
+  --base ./contracts/orders.yaml \
+  --candidate ./contracts/orders.candidate.yaml \
+  --base-revision-ref git:abc123 \
+  --candidate-revision-ref git:def456 \
+  --effective-date 2026-09-20 \
+  --server production \
+  --output json
+```
+
+When the candidate contract defines the selected server, its platform, catalog/schema target, and host are authoritative. For contracts without servers, provide `--platform`, `--runtime`, and `--source-reference`.
+
+The JSON output contains canonical release-planning artifacts plus `deploymentAssessment` and explicitly reports `"executable": false`. This surface is suitable for local review and CI; it does not create runtime mutation authority.
 
 ### Plan
 
