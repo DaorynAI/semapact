@@ -29,6 +29,7 @@ __all__ = [
     "property_identity",
     "parse_sql_target_asset",
     "normalize_sql_type",
+    "validate_simple_sql_identifier",
 ]
 
 from semapact.schema.mapping import (
@@ -42,3 +43,5 @@ from semapact.schema.mapping import (
     parse_sql_target_asset,
     property_identity,
 )
+
+from semapact.schema.identifiers import validate_simple_sql_identifier
