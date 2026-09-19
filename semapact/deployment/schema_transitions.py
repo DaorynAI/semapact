@@ -7,6 +7,7 @@ not compare desired and observed schemas itself.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Sequence
 
@@ -63,6 +64,45 @@ class SchemaTransition(SchemaTransitionModel):
 
 
 
+
+
+
+class SchemaTransitionPlanner(ABC):
+    """Interpret factual schema differences as provider-supported convergence intent."""
+
+    key: str
+
+    @abstractmethod
+    def plan(
+        self,
+        *,
+        governed_asset: str,
+        physical_name: str,
+        desired_columns: Sequence[SchemaPropertyState],
+        comparison: SchemaComparisonResult,
+    ) -> SchemaTransition:
+        raise NotImplementedError
+
+
+class AdditiveSchemaTransitionPlanner(SchemaTransitionPlanner):
+    """Shared fail-closed planner for the initial additive schema subset."""
+
+    key = "additive"
+
+    def plan(
+        self,
+        *,
+        governed_asset: str,
+        physical_name: str,
+        desired_columns: Sequence[SchemaPropertyState],
+        comparison: SchemaComparisonResult,
+    ) -> SchemaTransition:
+        return plan_additive_schema_transition(
+            governed_asset=governed_asset,
+            physical_name=physical_name,
+            desired_columns=desired_columns,
+            comparison=comparison,
+        )
 
 def plan_additive_schema_transition(
     *,
