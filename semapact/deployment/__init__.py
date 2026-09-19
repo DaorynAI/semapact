@@ -17,7 +17,6 @@ from semapact.deployment.orchestrator import DeploymentOrchestrator
 from semapact.deployment.planner import build_deployment_plan
 from semapact.deployment.providers import (
     DeploymentExecutionConfig,
-    DeploymentPlatform,
     NativeOperationExecutor,
 )
 from semapact.deployment.schema_transitions import (
@@ -34,7 +33,6 @@ __all__ = [
     "DeploymentExecutionConfig",
     "DeploymentOrchestrator",
     "DeploymentPlan",
-    "DeploymentPlatform",
     "DeploymentPreview",
     "DeploymentTarget",
     "AdditiveSchemaTransitionPlanner",
