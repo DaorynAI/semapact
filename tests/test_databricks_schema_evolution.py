@@ -7,7 +7,7 @@ from semapact.deployment.models import NativeOperationKind
 from semapact.deployment.schema_transitions import (
     SchemaTransition,
     SchemaTransitionKind,
-    plan_schema_transition,
+    plan_additive_schema_transition,
 )
 from semapact.exceptions import ValidationError
 from semapact.observation.models import (
@@ -20,12 +20,15 @@ from semapact.platforms.databricks.platform import DatabricksDeploymentPlatform
 from semapact.platforms.databricks.transition_compiler import (
     DatabricksTransitionCompiler,
 )
+from semapact.schema import SchemaSnapshot, compare_schema_snapshots
 
 
 
 
 
 class _UnusedRuntimeProvider:
+    key = "databricks"
+
     def resolve_bindings(self, *, runtime_target, assets):
         raise AssertionError("runtime provider should not be used in schema unit tests")
 
@@ -108,12 +111,25 @@ def _plan(
             physical_name="orders",
             observed=observed,
         )
-    return plan_schema_transition(
-        mapper=_PLATFORM.schema_mapper,
+    observed_assets = (
+        ()
+        if observed is None
+        else (
+            _PLATFORM.schema_mapper.map_observed_asset(
+                observed,
+                asset_identity="orders",
+            ),
+        )
+    )
+    comparison = compare_schema_snapshots(
+        SchemaSnapshot(assets=(mapped,)),
+        SchemaSnapshot(assets=observed_assets),
+    )
+    return plan_additive_schema_transition(
         governed_asset="orders",
         physical_name="orders",
-        desired=desired,
-        observed=observed,
+        desired_columns=mapped.properties,
+        comparison=comparison,
     )
 
 
