@@ -78,6 +78,8 @@ CREATE / ALTER / NO_OP native operation
 
 The same shared schema comparison facts are consumed by runtime reconciliation. Reconciliation projects them into drift reason codes; deployment projects them into convergence intent. Provider adapters must not implement a second desired-vs-observed comparator.
 
+Schema projection is also shared. `semapact.schema` defines the mapping contract that converts ODCS and observed runtime state into normalized `SchemaSnapshot` values. Provider implementations supply only native physical-type normalization and provider-local validation. For example, Databricks maps ODCS types through datacontract-cli and canonicalizes native types through sqlglot, while the common mapping layer still owns logical/physical property projection and normalized snapshot construction.
+
 The semantic transition layer is an internal planning boundary, not a new release artifact or authorization authority. This lets compatible execution families share transition semantics while keeping provider-specific naming, capability checks, SQL rendering, authentication, and execution in their adapters.
 
 ## Identity and physical binding
