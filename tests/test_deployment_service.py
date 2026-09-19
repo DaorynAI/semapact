@@ -7,6 +7,7 @@ from open_data_contract_standard.model import SchemaObject, SchemaProperty
 
 from semapact.deployment import (
     DeploymentAction,
+    DeploymentAdapter,
     DeploymentActionKind,
     DeploymentAuthorization,
     DeploymentPlan,
@@ -29,7 +30,7 @@ CAPTURED_AT = datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc)
 SOURCE_REFERENCE = "https://adb.example"
 
 
-class FakeDeploymentAdapter:
+class FakeDeploymentAdapter(DeploymentAdapter):
     key = "databricks"
 
     def __init__(
