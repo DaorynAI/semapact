@@ -53,6 +53,59 @@ class ReleaseSnapshot(ContractOpsModel):
         return OpenDataContractStandard.model_validate_json(self.released_contract_json)
 
 
+class ContractRelease(ContractOpsModel):
+    """Finalized target-neutral formal contract release."""
+
+    contract_release_id: str
+    contract_id: str
+    contract_version: str
+    decision_id: str
+    change_set_id: str
+    release_plan_id: str
+    version_resolution_id: str
+    release_snapshot_id: str
+    revision_ref: str
+    released_contract_json: str
+
+    @field_validator(
+        "contract_release_id",
+        "contract_id",
+        "contract_version",
+        "decision_id",
+        "change_set_id",
+        "release_plan_id",
+        "version_resolution_id",
+        "release_snapshot_id",
+        "revision_ref",
+        "released_contract_json",
+    )
+    @classmethod
+    def _require_contract_release_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("value must not be empty")
+        return cleaned
+
+    @model_validator(mode="after")
+    def _validate_contract_snapshot(self) -> "ContractRelease":
+        contract = OpenDataContractStandard.model_validate_json(
+            self.released_contract_json
+        )
+        if str(contract.id or "").strip() != self.contract_id:
+            raise ValueError("released contract ID does not match ContractRelease")
+        if str(contract.version or "").strip() != self.contract_version:
+            raise ValueError(
+                "released contract version does not match ContractRelease"
+            )
+        return self
+
+    def to_contract(self) -> OpenDataContractStandard:
+        """Materialize a fresh ODCS model from the finalized release."""
+        return OpenDataContractStandard.model_validate_json(
+            self.released_contract_json
+        )
+
+
 class AppliedContractRelease(ContractOpsModel):
     """Exact released ODCS state produced by an authorized APPLY operation."""
 
