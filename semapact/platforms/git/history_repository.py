@@ -34,6 +34,7 @@ from semapact.governance import GovernanceDecision
 from semapact.governance.gate import GovernanceOperation
 from semapact.history import (
     ChangeSetDecisionLink,
+    ContractReleaseRecord,
     DeploymentRecord,
     HistoryConflictError,
     HistoryCorruptionError,
@@ -45,6 +46,7 @@ from semapact.history import (
     RuntimeReconciliationRecord,
 )
 from semapact.history.integrity import (
+    validate_contract_release_record_identity,
     validate_deployment_record_identity,
     validate_release_record_identity,
     validate_runtime_observation_record_identity,
@@ -119,6 +121,12 @@ _RELEASE_RECORDS = _HistoryKindSpec(
     "release_record_id",
     validate_release_record_identity,
 )
+_CONTRACT_RELEASES = _HistoryKindSpec(
+    "contract_releases",
+    ContractReleaseRecord,
+    "contract_release_id",
+    validate_contract_release_record_identity,
+)
 _DEPLOYMENT_PLANS = _HistoryKindSpec(
     "deployment_plans",
     DeploymentPlan,
@@ -167,6 +175,7 @@ _HISTORY_KIND_SPECS: dict[str, _HistoryKindSpec[BaseModel]] = {
         _CONTRACT_REVISION_SOURCES,
         _RELEASE_PLANS,
         _RELEASE_RECORDS,
+        _CONTRACT_RELEASES,
         _DEPLOYMENT_PLANS,
         _DEPLOYMENT_PREVIEWS,
         _DEPLOYMENT_AUTHORIZATIONS,
@@ -377,6 +386,65 @@ class GitWorkingTreeHistoryRepository:
         if len(matches) != 1:
             raise HistoryCorruptionError(
                 f"Multiple ReleaseRecords exist for {contract_id!r} version {contract_version!r}"
+            )
+        return matches[0]
+
+    def put_contract_release(self, record: ContractReleaseRecord) -> None:
+        if not isinstance(record, ContractReleaseRecord):
+            raise TypeError(
+                "record must be ContractReleaseRecord, "
+                f"got {type(record).__name__}"
+            )
+        validate_contract_release_record_identity(record)
+        for existing in self.list_contract_releases(record.contract_id):
+            if (
+                existing.contract_version == record.contract_version
+                and existing.contract_release_id != record.contract_release_id
+            ):
+                raise HistoryConflictError(
+                    "A different ContractReleaseRecord already exists for "
+                    f"{record.contract_id!r} version {record.contract_version!r}"
+                )
+        self._put(_CONTRACT_RELEASES, record.contract_release_id, record)
+
+    def get_contract_release(
+        self,
+        contract_release_id: str,
+    ) -> ContractReleaseRecord:
+        return self._get(_CONTRACT_RELEASES, contract_release_id)
+
+    def list_contract_releases(
+        self,
+        contract_id: str,
+    ) -> tuple[ContractReleaseRecord, ...]:
+        contract_id = _required_text(contract_id, "contract_id")
+        return tuple(
+            record
+            for record in self._list(_CONTRACT_RELEASES)
+            if record.contract_id == contract_id
+        )
+
+    def get_contract_release_by_version(
+        self,
+        contract_id: str,
+        contract_version: str,
+    ) -> ContractReleaseRecord:
+        contract_id = _required_text(contract_id, "contract_id")
+        contract_version = _required_text(contract_version, "contract_version")
+        matches = tuple(
+            record
+            for record in self.list_contract_releases(contract_id)
+            if record.contract_version == contract_version
+        )
+        if not matches:
+            raise HistoryNotFoundError(
+                f"ContractReleaseRecord for {contract_id!r} "
+                f"version {contract_version!r} was not found"
+            )
+        if len(matches) != 1:
+            raise HistoryCorruptionError(
+                f"Multiple ContractReleaseRecords exist for {contract_id!r} "
+                f"version {contract_version!r}"
             )
         return matches[0]
 
