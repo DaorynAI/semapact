@@ -100,3 +100,86 @@ def test_legacy_release_helpers_are_labeled_as_compatibility_paths() -> None:
     assert "release" in help_text
     assert "Compatibility helper" in release_help
     assert "Compatibility Git workflow" in release_help
+
+
+
+def test_release_parser_exposes_assess_approve_finalize() -> None:
+    parser = cli._build_parser()
+
+    assess = parser.parse_args(
+        [
+            "release",
+            "assess",
+            "--base",
+            "base.yaml",
+            "--candidate",
+            "candidate.yaml",
+            "--base-revision-ref",
+            "git:base",
+            "--candidate-revision-ref",
+            "git:candidate",
+            "--effective-date",
+            "2026-09-20",
+            "--bundle-out",
+            "release.bundle.json",
+        ]
+    )
+    approve = parser.parse_args(
+        [
+            "release",
+            "approve",
+            "--bundle",
+            "release.bundle.json",
+            "--actor-reference",
+            "github-environment:contract-release",
+            "--recorded-at",
+            "2026-09-20T10:00:00+10:00",
+        ]
+    )
+    finalize = parser.parse_args(
+        [
+            "release",
+            "finalize",
+            "--bundle",
+            "release.bundle.json",
+            "--output-contract",
+            "contract.yaml",
+        ]
+    )
+
+    assert assess.release_command == "assess"
+    assert assess.bundle_out == "release.bundle.json"
+    assert approve.release_command == "approve"
+    assert approve.repository_root == "."
+    assert finalize.release_command == "finalize"
+    assert finalize.output_contract == "contract.yaml"
+
+
+def test_main_routes_release_assess_to_release_command_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    expected = {"bundle_digest": "sha256:test"}
+    monkeypatch.setattr(release_cmd, "run_release_assess", lambda args: expected)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "semapact",
+            "release",
+            "assess",
+            "--base",
+            "base.yaml",
+            "--candidate",
+            "candidate.yaml",
+            "--base-revision-ref",
+            "git:base",
+            "--candidate-revision-ref",
+            "git:candidate",
+            "--effective-date",
+            "2026-09-20",
+        ],
+    )
+
+    assert cli.main() == 0
+    assert json.loads(capsys.readouterr().out) == expected
