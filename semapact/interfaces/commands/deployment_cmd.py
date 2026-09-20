@@ -282,11 +282,15 @@ def _bundle_text(
     plan = bundle.deployment_plan
     preview = bundle.review_preview
     lines = [
-        f"Contract: {bundle.release_snapshot.contract_id}@"
-        f"{bundle.release_snapshot.selected_version}",
+        f"Contract: {bundle.deployment_source.contract_id}@"
+        f"{bundle.deployment_source.contract_version}",
         f"Mode: {'release' if bundle.release else 'candidate'}",
         f"Governance: {bundle.decision.decision.value}",
-        f"Required bump: {bundle.decision.required_version_bump}",
+        (
+            f"Required bump: {bundle.decision.required_version_bump}"
+            if bundle.release
+            else "Required bump: not calculated"
+        ),
         f"Target: {plan.target.platform}/{plan.target.runtime_target}",
         f"Deployment plan: {plan.deployment_plan_id}",
         f"Bundle digest: {bundle.bundle_digest}",
@@ -317,6 +321,11 @@ def _deployment_result_text(result) -> str:
         f"Bundle digest: {result.bundle_digest}",
         f"Deployment plan: {result.deployment_plan_id}",
         f"Authorization: {result.authorization_id}",
+        *(
+            [f"Contract release: {result.release_record_id}"]
+            if result.release_record_id is not None
+            else []
+        ),
         "Provider execution: SUCCEEDED",
         f"Verification: {result.status.value}",
         (
