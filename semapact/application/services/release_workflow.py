@@ -15,13 +15,13 @@ from semapact.application.models.release import (
 )
 from semapact.application.services.release_planning import ReleasePlanningService
 from semapact.contractops import (
+    ContractRelease,
     ReviewEvidenceAction,
     authorize_contract_operation,
     build_release_snapshot,
 )
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.governance import DecisionResult, GovernanceOperation
-from semapact.contractops import ContractRelease
 from semapact.history import ContractReleaseHistoryRepository
 
 
