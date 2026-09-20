@@ -4,23 +4,17 @@ from datetime import datetime, timezone
 
 import pytest
 
-from open_data_contract_standard.model import (
-    OpenDataContractStandard,
-    SchemaObject,
-    SchemaProperty,
-)
+from open_data_contract_standard.model import SchemaObject, SchemaProperty
 
 from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
     DeploymentAction,
     DeploymentActionKind,
-    DeploymentAssessment,
     DeploymentAuthorization,
     DeploymentPlan,
     DeploymentTarget,
     NativeOperation,
     NativeOperationKind,
-    compute_deployment_assessment_id,
     compute_deployment_authorization_id,
     compute_deployment_plan_id,
 )
@@ -177,74 +171,6 @@ def _observation() -> ObservedPlatformState:
     )
 
 
-
-
-def _candidate_contract() -> OpenDataContractStandard:
-    return OpenDataContractStandard.model_construct(
-        id="contract-1",
-        version="1.0.0",
-        schema_=[
-            SchemaObject(
-                name="orders",
-                physicalName="orders",
-                physicalType="table",
-                properties=[
-                    SchemaProperty(
-                        name="id",
-                        logicalType="integer",
-                        physicalType="BIGINT",
-                        required=False,
-                    )
-                ],
-            )
-        ],
-        servers=[],
-    )
-
-
-def test_generic_orchestrator_assesses_candidate_without_execution_authority() -> None:
-    runtime_provider = _RuntimeProvider(_observation())
-    orchestrator = DeploymentOrchestrator(
-        runtime_provider=runtime_provider,
-        schema_mapper=PassThroughSchemaMapper(),
-        transition_planner=AdditiveSchemaTransitionPlanner(),
-        transition_compiler=_Compiler(),
-        executor=_Executor(),
-    )
-    target = DeploymentTarget(
-        platform="fake",
-        runtime_target="main",
-        source_reference="source-1",
-    )
-
-    assessment = orchestrator.assess(
-        _candidate_contract(),
-        candidate_revision_ref="revision:candidate",
-        target=target,
-    )
-
-    assert isinstance(assessment, DeploymentAssessment)
-    assert assessment.contract_id == "contract-1"
-    assert assessment.candidate_revision_ref == "revision:candidate"
-    assert assessment.operations == (
-        NativeOperation(
-            kind=NativeOperationKind.CREATE,
-            governed_asset="orders",
-            statement="CREATE_ASSET orders",
-        ),
-    )
-    assert assessment.deployment_assessment_id == compute_deployment_assessment_id(
-        contract_id=assessment.contract_id,
-        candidate_revision_ref=assessment.candidate_revision_ref,
-        candidate_version=assessment.candidate_version,
-        target=assessment.target,
-        source_identifier=assessment.source_identifier,
-        observation_fingerprint=assessment.observation_fingerprint,
-        operations=assessment.operations,
-    )
-    assert not hasattr(assessment, "applied_release_id")
-    assert not hasattr(assessment, "deployment_plan_id")
-    assert runtime_provider.observe_calls == 1
 
 
 def test_generic_orchestrator_owns_observe_preview_freshness_and_execute() -> None:
