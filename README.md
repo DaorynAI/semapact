@@ -223,7 +223,7 @@ A released version is environment-neutral. The same version can later be deploye
 
 `deploy` always re-observes runtime before execution; CI-time preview operations are never replayed blindly.
 
-Deployment telemetry is disabled by default. High-frequency execution history can be enabled explicitly with a SQLite or Delta operational-history backend; it is not written into Git governance history.
+Deployment telemetry is disabled by default. High-frequency execution history can be enabled once in typed `.semapact.yaml` configuration with a SQLite or Delta backend; it is not written into Git governance history. The `--operational-history` CLI option is only an override.
 
 For Databricks, once a **formal release** is verified `IN_SYNC`, SemaPact projects release provenance to governed Unity Catalog tables using reserved tags:
 
@@ -397,7 +397,27 @@ semapact deployment deploy \
   --warehouse-id <databricks-sql-warehouse-id>
 ```
 
-Formal REVIEW releases resolve exact approval evidence from Git-backed history unless `--approval` is supplied explicitly. Candidate deployments do not require release approval. Operational deployment history is optional via `--operational-history sqlite:///...` or `delta:///...`.
+Formal REVIEW releases resolve exact approval evidence from Git-backed history unless `--approval` is supplied explicitly. Candidate deployments do not require release approval.
+
+Operational deployment history is configured project-wide rather than repeated on every deploy:
+
+```yaml
+history:
+  operational:
+    backend: sqlite
+    path: .semapact/operational.db
+```
+
+For a shared Delta sink:
+
+```yaml
+history:
+  operational:
+    backend: delta
+    table_uri: s3://governance/semapact/operational-history
+```
+
+The config is fail-closed against the typed `SemaPactConfigSchema`. `--operational-history` remains available only as a per-invocation override. If neither config nor override is present, operational persistence stays disabled.
 
 ## Optional Dependencies
 
