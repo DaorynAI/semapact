@@ -371,8 +371,8 @@ def test_configured_operational_history_records_failed_candidate_deployment() ->
     assert len(sink.events) == 1
     event = sink.events[0]
     assert event.status == "FAILED"
-    assert event.release is False
     assert event.contract_release_id is None
+    assert not hasattr(event, "deployment_authorization_id")
     assert event.reconciliation_status is None
 
 
