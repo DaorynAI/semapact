@@ -16,6 +16,7 @@ from semapact.deployment.models import (
     DeploymentTarget,
     compute_deployment_plan_id,
 )
+from semapact.deployment.source import DeploymentSourceSnapshot
 from semapact.lifecycle.identity import normalize_identity_name
 from semapact.runtime import runtime_asset_specs_from_contract
 from semapact.utils.deterministic import canonical_compact_json
@@ -74,6 +75,51 @@ def build_deployment_plan(
         plan_version=plan_version,
     )
 
+
+
+
+def build_deployment_plan_from_source(
+    source: DeploymentSourceSnapshot,
+    target: DeploymentTarget,
+) -> DeploymentPlan:
+    """Build a v4 plan from an exact candidate or release deployment source."""
+    if not isinstance(source, DeploymentSourceSnapshot):
+        raise TypeError(
+            "source must be DeploymentSourceSnapshot, "
+            f"got {type(source).__name__}"
+        )
+    if not isinstance(target, DeploymentTarget):
+        raise TypeError(
+            f"target must be DeploymentTarget, got {type(target).__name__}"
+        )
+
+    contract = source.to_contract()
+    ordered_actions = build_deployment_actions(contract)
+    deployment_plan_id = compute_deployment_plan_id(
+        source_snapshot_id=source.source_snapshot_id,
+        contract_id=source.contract_id,
+        revision_ref=source.revision_ref,
+        contract_version=source.contract_version,
+        release=source.release,
+        release_id=source.release_id,
+        release_plan_id=source.release_plan_id,
+        target=target,
+        actions=ordered_actions,
+        plan_version="4",
+    )
+    return DeploymentPlan(
+        deployment_plan_id=deployment_plan_id,
+        source_snapshot_id=source.source_snapshot_id,
+        contract_id=source.contract_id,
+        revision_ref=source.revision_ref,
+        contract_version=source.contract_version,
+        target=target,
+        actions=ordered_actions,
+        release=source.release,
+        release_id=source.release_id,
+        release_plan_id=source.release_plan_id,
+        plan_version="4",
+    )
 
 def build_deployment_actions(
     contract: OpenDataContractStandard,
