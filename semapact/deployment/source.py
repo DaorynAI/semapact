@@ -157,7 +157,7 @@ def build_contract_release_deployment_source(
     contract_json = release.released_contract_json
     source_id = compute_deployment_source_id(
         contract_id=release.contract_id,
-        revision_ref=release.revision_ref,
+        revision_ref=release.source_revision_ref,
         contract_version=release.contract_version,
         contract_json=contract_json,
         release=True,
@@ -167,7 +167,7 @@ def build_contract_release_deployment_source(
     return DeploymentSourceSnapshot(
         source_snapshot_id=source_id,
         contract_id=release.contract_id,
-        revision_ref=release.revision_ref,
+        revision_ref=release.source_revision_ref,
         contract_version=release.contract_version,
         contract_json=contract_json,
         release=True,
