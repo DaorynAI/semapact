@@ -5,13 +5,12 @@ from __future__ import annotations
 from typing import Protocol
 
 from semapact.approval.models import ApprovalRecord
-from semapact.contractops import ChangeSet, ReleasePlan
+from semapact.contractops import ChangeSet, ContractRelease, ReleasePlan
 from semapact.deployment import DeploymentAuthorization, DeploymentPlan, DeploymentPreview
 from semapact.governance import GovernanceDecision
 from semapact.governance.gate import GovernanceOperation
 from semapact.history.models import (
     ChangeSetDecisionLink,
-    ContractReleaseRecord,
     DeploymentRecord,
     HistoryStorageIntegrityIssue,
     ReleaseRecord,
@@ -131,17 +130,17 @@ class ReleaseRecordHistoryRepository(Protocol):
 class ContractReleaseHistoryRepository(Protocol):
     """Persistence capability for finalized formal contract release facts."""
 
-    def put_contract_release(self, record: ContractReleaseRecord) -> None: ...
-    def get_contract_release(self, contract_release_id: str) -> ContractReleaseRecord: ...
+    def put_contract_release(self, record: ContractRelease) -> None: ...
+    def get_contract_release(self, contract_release_id: str) -> ContractRelease: ...
     def list_contract_releases(
         self,
         contract_id: str,
-    ) -> tuple[ContractReleaseRecord, ...]: ...
+    ) -> tuple[ContractRelease, ...]: ...
     def get_contract_release_by_version(
         self,
         contract_id: str,
         contract_version: str,
-    ) -> ContractReleaseRecord: ...
+    ) -> ContractRelease: ...
 
 
 class DeploymentPlanHistoryRepository(Protocol):
