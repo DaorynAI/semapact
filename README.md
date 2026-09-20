@@ -128,7 +128,7 @@ Lifecycle status does not itself mean that a revision has been authorized for re
 
 ### Side effects are operation-scoped
 
-SemaPact distinguishes analysis and planning from side effects. APPLY, PUBLISH, and DEPLOY are separate protected operations. A publication authorization cannot be reused as runtime deployment authority.
+SemaPact distinguishes pure planning/materialization from external side effects. PUBLISH and DEPLOY are protected operation scopes; release snapshot construction itself is pure. A publication authorization cannot be reused as runtime deployment authority.
 
 ### Runtime-aware without becoming platform-owned
 
@@ -155,7 +155,7 @@ SemaPact currently supports deterministic change analysis and lifecycle-aware po
 - relationship change handling;
 - version-policy classification;
 - deterministic `GovernanceDecision` artifacts;
-- centralized governance gates for ANALYZE / PROPOSE / APPLY / PUBLISH / DEPLOY / CI operations.
+- centralized governance and authorization boundaries for planning, publication, and deployment operations.
 
 ### Canonical ContractOps release planning
 
@@ -179,7 +179,7 @@ See [`docs/contractops_phases.md`](docs/contractops_phases.md) and [`docs/versio
 
 ### Governed runtime deployment
 
-`semapact deployment` exposes a canonical CLI/CI surface:
+`semapact deployment` exposes one bundle-driven CLI/CI workflow:
 
 ```text
 assess
@@ -187,27 +187,16 @@ assess
 → content-addressed DeploymentBundle
 → read-only / no execution authority
 
+approve
+→ explicit ApprovalRecord for REVIEW decisions
+
 deploy
 → exact DeploymentBundle + approval when REVIEW
 → fresh preview → execute → fresh verify
-
-plan
-→ DeploymentPlan
-
-preview
-→ fresh runtime observation
-→ DeploymentPreview
-
-execute
-→ exact plan + preview + DeploymentAuthorization
-→ provider execution
-
-verify
-→ fresh observation + reconciliation
 → IN_SYNC / DRIFT / INDETERMINATE
 ```
 
-Assessment, planning, and preview are read-only. The CI assessment path writes a content-addressed `DeploymentBundle` that can be published as a pipeline artifact for later CD consumption. Runtime mutation occurs only through the execution boundary, and provider execution success is not treated as convergence proof.
+`assess` is the CI/manual planning boundary, `approve` records explicit review when required, and `deploy` is the CD/manual execution boundary. Internal planning, preview, execution, and verification primitives remain application/domain APIs rather than separate Data Engineer CLI phases.
 
 The first Databricks write capability is intentionally narrow: create a missing managed Delta table, add missing nullable governed columns to an existing managed table, or perform NO_OP when the governed shape is already satisfied. Rename, existing-column type/nullability mutation, required-column addition without a safe migration strategy, DROP, and existing external/non-managed asset mutation fail closed.
 
@@ -363,15 +352,6 @@ semapact deployment deploy \
 ```
 
 The approval is required only for REVIEW decisions and must bind the exact deployment plan and bundle digest. The deploy command re-observes runtime, derives a fresh preview, executes only that fresh plan, then performs a separate fresh convergence verification.
-
-Low-level deployment commands remain available for explicit artifact workflows and compatibility:
-
-```bash
-semapact deployment plan --help
-semapact deployment preview --help
-semapact deployment execute --help
-semapact deployment verify --help
-```
 
 ## Optional Dependencies
 
