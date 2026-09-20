@@ -10,9 +10,6 @@ from open_data_contract_standard.model import (
 )
 from pydantic import ValidationError as PydanticValidationError
 
-from semapact.application.services.contract_release_history import (
-    ContractReleaseHistoryService,
-)
 from semapact.application.services.deployment_workflow import DeploymentWorkflowService
 from semapact.application.services.release_workflow import ReleaseWorkflowService
 from semapact.deployment import (
@@ -224,7 +221,7 @@ def _finalized_release(tmp_path):
     repository.put_approval_record(approval)
     return workflow.finalize(
         bundle,
-        release_history=ContractReleaseHistoryService(repository),
+        release_history=repository,
         approval=approval,
     )
 
