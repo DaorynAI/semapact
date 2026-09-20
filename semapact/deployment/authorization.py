@@ -178,7 +178,7 @@ def authorize_contract_release_deployment(
         raise ReleaseValidationError(
             "Deployment source and ContractRelease versions do not match"
         )
-    if source.revision_ref != release.revision_ref:
+    if source.revision_ref != release.source_revision_ref:
         raise ReleaseValidationError(
             "Deployment source and ContractRelease revisions do not match"
         )
