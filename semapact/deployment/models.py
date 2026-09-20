@@ -8,7 +8,6 @@ from typing import Literal, Sequence
 
 from open_data_contract_standard.model import SchemaObject
 from pydantic import (
-    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
