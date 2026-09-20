@@ -94,29 +94,20 @@ class DeploymentOrchestrator(DeploymentAdapter):
             schema_mapper=self._schema_mapper,
         )
 
-    def execute(
+    def apply(
         self,
         plan: DeploymentPlan,
         preview: DeploymentPreview,
-        authorization: DeploymentAuthorization,
     ) -> None:
-        """Execute only the exact authorized preview against unchanged runtime state."""
+        """Apply the exact preview against unchanged runtime state.
+
+        The application/CI boundary decides whether execution may run. This adapter
+        only enforces plan/preview/runtime integrity and never interprets release
+        facts as deployment authorization.
+        """
         validate_deployment_preview_identity(preview)
-        validate_deployment_authorization_identity(authorization)
         desired_by_action = self._validate_and_map_plan(plan)
 
-        if not authorization.allowed:
-            raise ContractOpsAuthorizationError(
-                "DeploymentAuthorization is not allowed"
-            )
-        if authorization.deployment_plan_id != plan.deployment_plan_id:
-            raise ContractOpsAuthorizationError(
-                "DeploymentAuthorization is not bound to this DeploymentPlan"
-            )
-        if authorization.source_snapshot_id != plan.source_snapshot_id:
-            raise ContractOpsAuthorizationError(
-                "DeploymentAuthorization source does not match DeploymentPlan"
-            )
         if preview.deployment_plan_id != plan.deployment_plan_id:
             raise ValidationError(
                 "DeploymentPreview is not bound to this DeploymentPlan"
@@ -154,13 +145,35 @@ class DeploymentOrchestrator(DeploymentAdapter):
         if expected != preview:
             raise ValidationError(
                 "DeploymentPreview no longer equals the deterministic preview for "
-                "the authorized plan and runtime evidence"
+                "the plan and runtime evidence"
             )
 
         for operation in preview.operations:
             if operation.kind is NativeOperationKind.NO_OP:
                 continue
             self._executor.execute(operation)
+
+    def execute(
+        self,
+        plan: DeploymentPlan,
+        preview: DeploymentPreview,
+        authorization: DeploymentAuthorization,
+    ) -> None:
+        """Compatibility wrapper for legacy in-process DeploymentAuthorization."""
+        validate_deployment_authorization_identity(authorization)
+        if not authorization.allowed:
+            raise ContractOpsAuthorizationError(
+                "DeploymentAuthorization is not allowed"
+            )
+        if authorization.deployment_plan_id != plan.deployment_plan_id:
+            raise ContractOpsAuthorizationError(
+                "DeploymentAuthorization is not bound to this DeploymentPlan"
+            )
+        if authorization.source_snapshot_id != plan.source_snapshot_id:
+            raise ContractOpsAuthorizationError(
+                "DeploymentAuthorization source does not match DeploymentPlan"
+            )
+        self.apply(plan, preview)
 
     def _preview_from_observation(
         self,
