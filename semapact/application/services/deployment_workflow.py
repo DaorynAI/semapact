@@ -7,12 +7,13 @@ from datetime import date
 from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.application.models.deployment_workflow import (
-    DeploymentWorkflowAssessment,
+    DeploymentBundle,
+    build_deployment_bundle,
 )
 from semapact.application.services.deployment import DeploymentService
 from semapact.application.services.release_planning import ReleasePlanningService
+from semapact.contractops import build_release_snapshot
 from semapact.deployment import DeploymentAdapter, DeploymentTarget
-from semapact.exceptions import ValidationError
 
 
 class DeploymentWorkflowService:
@@ -38,8 +39,8 @@ class DeploymentWorkflowService:
         target: DeploymentTarget,
         adapter: DeploymentAdapter,
         authority_reference: str | None = None,
-    ) -> DeploymentWorkflowAssessment:
-        """Plan governed change and assess runtime without APPLY/DEPLOY authority."""
+    ) -> DeploymentBundle:
+        """Build the immutable CI handoff bundle without side-effect authorization."""
         release = self._release_planning.plan(
             base_contract,
             candidate_contract,
@@ -48,23 +49,22 @@ class DeploymentWorkflowService:
             candidate_revision_ref=candidate_revision_ref,
             authority_reference=authority_reference,
         )
-        deployment = self._deployment.assess(
+        snapshot = build_release_snapshot(
             candidate_contract,
             candidate_revision_ref=candidate_revision_ref,
-            target=target,
-            adapter=adapter,
+            decision=release.decision,
+            change_set=release.change_set,
+            release_plan=release.release_plan,
+            version_resolution=release.version_resolution,
         )
-
-        if deployment.contract_id != release.release_plan.contract_id:
-            raise ValidationError(
-                "Deployment assessment contract does not match release planning context"
-            )
-        if deployment.candidate_revision_ref != release.release_plan.release_revision_ref:
-            raise ValidationError(
-                "Deployment assessment revision does not match release planning context"
-            )
-
-        return DeploymentWorkflowAssessment(
-            release=release,
-            deployment=deployment,
+        plan = self._deployment.plan(snapshot, target)
+        preview = self._deployment.preview(plan, adapter=adapter)
+        return build_deployment_bundle(
+            decision=release.decision,
+            change_set=release.change_set,
+            release_plan=release.release_plan,
+            version_resolution=release.version_resolution,
+            release_snapshot=snapshot,
+            deployment_plan=plan,
+            review_preview=preview,
         )
