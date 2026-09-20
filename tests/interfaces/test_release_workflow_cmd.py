@@ -51,6 +51,7 @@ def test_release_finalize_materializes_selected_version_and_history(tmp_path) ->
     candidate = tmp_path / "contract.yaml"
     bundle = tmp_path / "release.bundle.json"
     released = tmp_path / "released.yaml"
+    release_artifact = tmp_path / "contract-release.json"
     dump_yaml(_contract(), base)
     dump_yaml(_contract(include_created_at=True), candidate)
 
@@ -80,6 +81,7 @@ def test_release_finalize_materializes_selected_version_and_history(tmp_path) ->
         SimpleNamespace(
             bundle=str(bundle),
             output_contract=str(released),
+            release_out=str(release_artifact),
             repository_root=str(tmp_path),
         )
     )
@@ -93,3 +95,5 @@ def test_release_finalize_materializes_selected_version_and_history(tmp_path) ->
     assert record.source_revision_ref == "git:candidate"
     assert result["sourceRevisionRef"] == "git:candidate"
     assert record.released_contract_json
+    assert release_artifact.is_file()
+    assert release_artifact.read_text(encoding="utf-8").strip()
