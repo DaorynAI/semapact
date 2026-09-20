@@ -11,31 +11,31 @@ from open_data_contract_standard.model import (
 from semapact.application.services.deployment_workflow import DeploymentWorkflowService
 from semapact.deployment import (
     DeploymentAdapter,
-    DeploymentAssessment,
+    DeploymentPreview,
     DeploymentTarget,
     NativeOperation,
     NativeOperationKind,
 )
-from semapact.deployment.models import compute_deployment_assessment_id
-from semapact.observation import (
-    ObservedPlatformState,
-    with_observed_state_fingerprint,
-)
+from semapact.deployment.models import compute_deployment_preview_id
+from semapact.observation import ObservedPlatformState, with_observed_state_fingerprint
 from semapact.reconciliation import ReconciliationResult
 
 
-class _AssessmentAdapter(DeploymentAdapter):
+class _PreviewAdapter(DeploymentAdapter):
     key = "fake"
 
     def __init__(self) -> None:
-        self.calls = 0
+        self.preview_calls = 0
 
-    def assess(self, contract, *, candidate_revision_ref, target):
-        self.calls += 1
+    def validate(self, plan) -> None:
+        pass
+
+    def preview(self, plan) -> DeploymentPreview:
+        self.preview_calls += 1
         observation = with_observed_state_fingerprint(
             ObservedPlatformState(
                 platform="fake",
-                source_identifier=target.source_reference,
+                source_identifier=plan.target.source_reference,
                 assets=(),
                 captured_at=datetime(2026, 9, 20, tzinfo=timezone.utc),
             )
@@ -48,37 +48,28 @@ class _AssessmentAdapter(DeploymentAdapter):
                 statement="CREATE orders",
             ),
         )
-        assessment_id = compute_deployment_assessment_id(
-            contract_id=str(contract.id),
-            candidate_revision_ref=candidate_revision_ref,
-            candidate_version=str(contract.version),
-            target=target,
+        return DeploymentPreview(
+            deployment_preview_id=compute_deployment_preview_id(
+                deployment_plan_id=plan.deployment_plan_id,
+                platform="fake",
+                runtime_target=plan.target.runtime_target,
+                source_identifier=observation.source_identifier,
+                observation_fingerprint=observation.fingerprint,
+                operations=operations,
+            ),
+            deployment_plan_id=plan.deployment_plan_id,
+            platform="fake",
+            runtime_target=plan.target.runtime_target,
             source_identifier=observation.source_identifier,
             observation_fingerprint=observation.fingerprint,
             operations=operations,
         )
-        return DeploymentAssessment(
-            deployment_assessment_id=assessment_id,
-            contract_id=str(contract.id),
-            candidate_revision_ref=candidate_revision_ref,
-            candidate_version=str(contract.version),
-            target=target,
-            source_identifier=observation.source_identifier,
-            observation_fingerprint=observation.fingerprint,
-            operations=operations,
-        )
 
-    def validate(self, plan):
-        raise AssertionError("assessment must not create or validate a DeploymentPlan")
-
-    def preview(self, plan):
-        raise AssertionError("assessment must not create a DeploymentPreview")
-
-    def execute(self, plan, preview, authorization):
-        raise AssertionError("assessment must not execute")
+    def execute(self, plan, preview, authorization) -> None:
+        raise AssertionError("CI bundle construction must not execute")
 
     def verify(self, plan) -> ReconciliationResult:
-        raise AssertionError("assessment must not verify a deployment")
+        raise AssertionError("CI bundle construction must not verify deployment")
 
 
 def _contract(*, name: str) -> OpenDataContractStandard:
@@ -105,15 +96,15 @@ def _contract(*, name: str) -> OpenDataContractStandard:
     )
 
 
-def test_workflow_assessment_composes_release_planning_and_runtime_assessment() -> None:
-    adapter = _AssessmentAdapter()
+def test_workflow_assessment_builds_content_addressed_ci_bundle() -> None:
+    adapter = _PreviewAdapter()
     target = DeploymentTarget(
         platform="fake",
         runtime_target="main.sales",
         source_reference="runtime:test",
     )
 
-    result = DeploymentWorkflowService().assess(
+    bundle = DeploymentWorkflowService().assess(
         _contract(name="Orders old"),
         _contract(name="Orders new"),
         effective_date="2026-09-20",
@@ -123,11 +114,46 @@ def test_workflow_assessment_composes_release_planning_and_runtime_assessment() 
         adapter=adapter,
     )
 
-    assert adapter.calls == 1
-    assert result.release.change_set.base_revision_ref == "git:base"
-    assert result.release.release_plan.release_revision_ref == "git:candidate"
-    assert result.deployment.candidate_revision_ref == "git:candidate"
-    assert result.deployment.contract_id == result.release.release_plan.contract_id
-    assert result.deployment.operations[0].kind is NativeOperationKind.CREATE
-    assert not hasattr(result.deployment, "applied_release_id")
-    assert not hasattr(result.deployment, "deployment_plan_id")
+    assert adapter.preview_calls == 1
+    assert bundle.change_set.base_revision_ref == "git:base"
+    assert bundle.release_plan.release_revision_ref == "git:candidate"
+    assert bundle.release_snapshot.release_revision_ref == "git:candidate"
+    assert (
+        bundle.deployment_plan.release_id
+        == bundle.release_snapshot.release_snapshot_id
+    )
+    assert bundle.deployment_plan.plan_version == "3"
+    assert bundle.review_preview.deployment_plan_id == bundle.deployment_plan.deployment_plan_id
+    assert bundle.review_preview.operations[0].kind is NativeOperationKind.CREATE
+    assert bundle.bundle_digest.startswith("sha256:")
+    assert not hasattr(bundle, "authorization")
+    assert not hasattr(bundle.release_snapshot, "authorization_id")
+
+
+def test_same_inputs_produce_same_bundle_digest() -> None:
+    target = DeploymentTarget(
+        platform="fake",
+        runtime_target="main.sales",
+        source_reference="runtime:test",
+    )
+    first = DeploymentWorkflowService().assess(
+        _contract(name="Orders old"),
+        _contract(name="Orders new"),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=target,
+        adapter=_PreviewAdapter(),
+    )
+    second = DeploymentWorkflowService().assess(
+        _contract(name="Orders old"),
+        _contract(name="Orders new"),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=target,
+        adapter=_PreviewAdapter(),
+    )
+
+    assert first.bundle_digest == second.bundle_digest
+    assert first == second
