@@ -4,30 +4,39 @@ ContractOps separates reasoning from side effects so CI, agents, APIs, and user 
 
 ## Canonical contract release flow
 
+Contract release is explicit and distinct from ordinary runtime deployment.
+
+Candidate deployment does not enter the version-resolution path:
+
+```text
+ANALYZE
+→ GovernanceDecision
+→ ChangeSet
+→ candidate DeploymentSourceSnapshot
+→ DeploymentPlan
+→ runtime deployment
+```
+
+A formal release enters ContractOps release planning exactly once:
+
 ```text
 ANALYZE
 → GovernanceDecision
 
-PLAN
+PLAN RELEASE
 → ChangeSet
 → ReleasePlan
 → VersionResolution
 → ReleaseSnapshot
 
-CI DEPLOYMENT PLANNING
-→ DeploymentPlan
-→ DeploymentPreview
-→ DeploymentBundle
+FORMAL RELEASE
+→ immutable ContractReleaseRecord
 
-AUTHORIZE
-→ operation-scoped authorization
-
-PUBLISH / DEPLOY
-→ external side effects
+DEPLOY
+→ one or more target-specific DeploymentPlan / deployment occurrences
 ```
 
-Each phase consumes artifacts from the previous phases. Later phases do not recalculate earlier decisions.
-
+The same formal contract version may be deployed to dev, test, and prod without another version bump. Runtime promotion is not a new contract release.
 ## The contract is the desired-state artifact
 
 SemaPact does not introduce a canonical BUILD phase that turns a contract into a separately authoritative DDL artifact.
@@ -156,7 +165,7 @@ Release snapshot construction is pure. It materializes the exact selected ODCS s
 - does not rerun governance or version authority;
 - produces a deterministic `ReleaseSnapshot` with no authorization ID.
 
-This pure snapshot is what CI uses to build a v3 `DeploymentPlan` and content-addressed `DeploymentBundle` before human approval.
+This pure snapshot is used only for formal `--release` bundles. Candidate deployment freezes the candidate directly in a non-release `DeploymentSourceSnapshot` and does not calculate a new semantic version.
 
 ## APPLY compatibility
 
@@ -186,16 +195,18 @@ Git, storage, and other release-artifact publication behavior belongs in adapter
 
 ## DEPLOY
 
-DEPLOY mutates a runtime toward the exact `DeploymentPlan` packaged by CI and is separate from release publication.
+DEPLOY mutates a runtime toward one exact target-specific `DeploymentPlan`. It is downstream of governance and may consume either:
 
-The canonical application workflow consumes the immutable `DeploymentBundle` directly. For REVIEW decisions, the supplied `ApprovalRecord` must be scoped to the exact `deploymentPlanId` and reference the exact `bundleDigest`. The workflow then re-observes runtime, derives a fresh preview, executes, and performs a separate fresh convergence verification.
+- a candidate deployment source (`release=false`), with no release version/approval/history; or
+- a formal release source (`release=true`), with exact release/version provenance and REVIEW approval when required.
 
-The current domain layer still uses `ContractOpsAuthorization(operation=DEPLOY)` and `DeploymentAuthorization` internally as a compatibility bridge. Those types are not part of the new Data Engineer / CI-CD happy path and callers do not need to assemble them manually.
+Candidate REVIEW deployments are allowed as non-release validation/test deployments without creating release approval evidence. `BLOCK` always fails closed.
 
-Platform-specific execution belongs behind a deployment adapter. The adapter must not recompute governance, version authority, release planning, or approval semantics.
+For formal release mode, the new `ContractReleaseRecord` is the durable Git governance fact. Runtime deployment history is operational telemetry and is not written to Git by default.
 
-See [`deployment_plans.md`](deployment_plans.md) for the deployment CLI, Databricks capability boundary, preview integrity checks, and convergence verification semantics.
+Provider-specific execution stays behind the deployment adapter. For Databricks, a formal release that reaches `IN_SYNC` also projects SemaPact-owned release/version provenance into Unity Catalog tags.
 
+See [`deployment_plans.md`](deployment_plans.md) for the complete candidate/release CLI flow, operational-history backends, Databricks tags, and convergence semantics.
 ## Failure semantics
 
 ContractOps distinguishes invalid context from denied authorization:
