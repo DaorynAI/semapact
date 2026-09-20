@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import yaml
+
 
 def test_release_manifest_example_is_valid_json_array():
     manifest_path = Path("examples/release/release-manifest.example.json")
@@ -70,3 +72,14 @@ def test_central_contract_repo_github_example_fans_out_and_commits_ledger_once()
     assert "commit-governance-ledger:" in workflow
     assert "merge-multiple: true" in workflow
     assert "--operational-history" not in workflow
+
+
+def test_bundle_driven_github_examples_are_valid_yaml() -> None:
+    for path in (
+        Path("examples/github/data-product-ci-cd.yml"),
+        Path("examples/github/central-contract-repo-ci-cd.yml"),
+    ):
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert isinstance(payload, dict)
+        assert isinstance(payload.get("jobs"), dict)
+        assert payload["jobs"]
