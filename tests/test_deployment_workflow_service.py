@@ -13,6 +13,7 @@ from open_data_contract_standard.model import (
 
 from semapact.approval import build_approval_record
 from semapact.application.models.deployment_workflow import DeploymentBundle
+from semapact.application.services.deployment_approval import DeploymentApprovalResolver
 from semapact.application.services.deployment_workflow import DeploymentWorkflowService
 from semapact.deployment import (
     DeploymentAdapter,
@@ -26,6 +27,7 @@ from semapact.deployment.models import compute_deployment_preview_id
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.governance import DecisionResult, GovernanceOperation
 from semapact.observation import ObservedPlatformState, with_observed_state_fingerprint
+from semapact.platforms.git import GitWorkingTreeHistoryRepository
 from semapact.reconciliation import ReconciliationResult, RuntimeDriftStatus
 
 
@@ -399,3 +401,66 @@ def test_review_deployment_rejects_approval_for_different_bundle_digest() -> Non
             adapter=_ExecutionAdapter(),
             approval=approval,
         )
+
+
+def test_deployment_approval_resolver_finds_exact_git_history_record(tmp_path) -> None:
+    target = DeploymentTarget(
+        platform="fake",
+        runtime_target="main.sales",
+        source_reference="runtime:test",
+    )
+    service = DeploymentWorkflowService()
+    bundle = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders", include_created_at=True),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=target,
+        adapter=_PreviewAdapter(),
+    )
+    approval = service.approve(
+        bundle,
+        actor_reference="github:user:reviewer",
+        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
+    )
+    repository = GitWorkingTreeHistoryRepository(tmp_path)
+    repository.put_approval_record(approval)
+
+    resolved = DeploymentApprovalResolver(repository).resolve(bundle)
+
+    assert resolved == approval
+
+
+def test_deployment_approval_resolver_ignores_non_exact_records(tmp_path) -> None:
+    target = DeploymentTarget(
+        platform="fake",
+        runtime_target="main.sales",
+        source_reference="runtime:test",
+    )
+    service = DeploymentWorkflowService()
+    bundle = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders", include_created_at=True),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=target,
+        adapter=_PreviewAdapter(),
+    )
+    repository = GitWorkingTreeHistoryRepository(tmp_path)
+    wrong_digest = build_approval_record(
+        decision_id=bundle.decision.decision_id,
+        change_set_id=bundle.change_set.change_set_id,
+        release_plan_id=bundle.release_plan.release_plan_id,
+        version_resolution_id=bundle.version_resolution.version_resolution_id,
+        operation=GovernanceOperation.DEPLOY,
+        action=ReviewEvidenceAction.APPROVE,
+        actor_reference="github:user:reviewer",
+        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
+        scope_reference=bundle.deployment_plan.deployment_plan_id,
+        evidence_references=("sha256:" + ("0" * 64),),
+    )
+    repository.put_approval_record(wrong_digest)
+
+    assert DeploymentApprovalResolver(repository).resolve(bundle) is None
