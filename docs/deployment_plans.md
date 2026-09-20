@@ -175,7 +175,7 @@ The previous candidate-specific `DeploymentAssessment` artifact is intentionally
 
 ## CLI workflow
 
-The deployment CLI supports both contract-first assessment and explicit canonical artifacts. Assessment, planning, and preview are read-only; `execute` is the runtime mutation boundary.
+The deployment CLI exposes a high-level bundle workflow plus low-level compatibility/debugging commands. `assess` is the canonical CI/manual planning surface; `deploy` is the canonical CD/manual execution surface.
 
 ### Assess
 
@@ -194,6 +194,40 @@ semapact deployment assess \
 When the candidate contract defines the selected server, its platform, catalog/schema target, and host are authoritative. For contracts without servers, provide `--platform`, `--runtime`, and `--source-reference`.
 
 The bundle file contains the canonical planning artifacts, `ReleaseSnapshot`, v3 `DeploymentPlan`, and CI-time `reviewPreview`, protected by `bundleDigest`. Use `--output json` to emit that same bundle on stdout instead. CI can publish the file using its normal pipeline-artifact mechanism; SemaPact does not couple this package to one CI vendor.
+
+### Deploy
+
+After CI publishes the exact bundle and any required human approval is recorded, CD consumes that bundle directly:
+
+```bash
+semapact deployment deploy \
+  --bundle ./artifacts/orders-prod.bundle.json \
+  --approval ./artifacts/orders-prod.approval.json \
+  --warehouse-id <databricks-sql-warehouse-id> \
+  --output json
+```
+
+`--approval` is required only when the bundle carries a `GovernanceDecision(REVIEW)`. The approval must be an exact `ApprovalRecord` for DEPLOY, scoped to the bundle's `deploymentPlanId`, and its evidence references must include the exact `bundleDigest`.
+
+The CD workflow deliberately ignores the CI-time review preview as execution input:
+
+```text
+load + validate exact DeploymentBundle
+→ validate approval / operation authorization
+→ fresh runtime observation
+→ fresh DeploymentPreview
+→ execute exact fresh preview
+→ fresh verification
+→ IN_SYNC / DRIFT / INDETERMINATE
+```
+
+If runtime changed between CI and CD, the fresh preview may differ. A CI-time ALTER can become NO_OP; a newly unsafe or conflicting transition fails closed. Provider execution success is not sufficient: the command returns reconciliation semantics after a separate fresh verify.
+
+For governance-ALLOW deployments, `--approval` may be omitted.
+
+### Low-level artifact commands
+
+The following commands remain available for compatibility, diagnostics, and explicit artifact workflows. They are not the recommended CI/CD happy path.
 
 ### Plan
 
@@ -218,7 +252,7 @@ semapact deployment preview \
 
 Preview observes the exact target scope and derives a canonical `DeploymentPreview`. It does not mutate runtime and does not require a Databricks SQL warehouse merely to inspect provider-native operations.
 
-### Execute
+### Execute (low-level compatibility)
 
 For a preview containing CREATE or ALTER operations, provide the SQL warehouse used for mutation:
 
@@ -287,9 +321,9 @@ The adapter is also not a general Databricks infrastructure engine. Workspace, c
 
 Runtime deployment is a separate protected operation from publishing a contract release artifact.
 
-A `ContractOpsAuthorization(operation=DEPLOY)` establishes release-context authorization. Before runtime mutation, it must be bound to the exact `DeploymentPlan` as a `DeploymentAuthorization`.
+At the canonical application boundary, callers provide an exact `DeploymentBundle` and, for REVIEW decisions, an `ApprovalRecord`. The approval must bind the exact `deploymentPlanId` and include the exact `bundleDigest` as evidence. This makes the CI artifact itself part of the approval scope rather than approving a mutable path or a SQL string.
 
-For review-required changes, structured review evidence may carry an opaque `scopeReference`. Deployment requires that scope to match the exact `deploymentPlanId`, so an approval for one exact platform/runtime/source target cannot be reused for another target.
+The current low-level domain implementation still bridges this into the historical `ContractOpsAuthorization → DeploymentAuthorization` types before calling the adapter. That bridge is compatibility machinery; Data Engineers and CI/CD callers do not construct those artifacts in the bundle workflow. A future cleanup can collapse the bridge without changing the public bundle contract.
 
 A PUBLISH authorization cannot authorize DEPLOY.
 
