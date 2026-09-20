@@ -7,14 +7,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from semapact.contractops import ChangeSet
+from semapact.contractops import ChangeSet, ContractRelease
 from semapact.deployment import (
     DeploymentPlan,
     DeploymentPreview,
     DeploymentSourceSnapshot,
 )
 from semapact.governance import GovernanceDecision
-from semapact.history.models import ContractReleaseRecord
 from semapact.reconciliation import ReconciliationResult, RuntimeDriftStatus
 from semapact.utils.deterministic import canonical_compact_json
 
@@ -46,7 +45,7 @@ class DeploymentBundle(BaseModel):
     review_preview: DeploymentPreview
     decision: GovernanceDecision | None = None
     change_set: ChangeSet | None = None
-    contract_release: ContractReleaseRecord | None = None
+    contract_release: ContractRelease | None = None
     bundle_version: Literal["3"] = "3"
 
     @model_validator(mode="after")
@@ -60,7 +59,7 @@ class DeploymentBundle(BaseModel):
         if self.release:
             if self.contract_release is None:
                 raise ValueError(
-                    "Release DeploymentBundle requires finalized ContractReleaseRecord"
+                    "Release DeploymentBundle requires finalized ContractRelease"
                 )
             if self.decision is not None or self.change_set is not None:
                 raise ValueError(
@@ -69,7 +68,7 @@ class DeploymentBundle(BaseModel):
             release = self.contract_release
             if source.release_id != release.contract_release_id:
                 raise ValueError(
-                    "DeploymentBundle source does not reference ContractReleaseRecord"
+                    "DeploymentBundle source does not reference ContractRelease"
                 )
             if source.contract_id != release.contract_id:
                 raise ValueError(
@@ -90,7 +89,7 @@ class DeploymentBundle(BaseModel):
                 )
             if self.contract_release is not None:
                 raise ValueError(
-                    "Candidate DeploymentBundle cannot contain ContractReleaseRecord"
+                    "Candidate DeploymentBundle cannot contain ContractRelease"
                 )
             if self.change_set.contract_id != self.decision.contract_id:
                 raise ValueError(
@@ -137,7 +136,7 @@ def build_deployment_bundle(
     review_preview: DeploymentPreview,
     decision: GovernanceDecision | None = None,
     change_set: ChangeSet | None = None,
-    contract_release: ContractReleaseRecord | None = None,
+    contract_release: ContractRelease | None = None,
 ) -> DeploymentBundle:
     """Package exact target-specific deployment material without release planning."""
     digest = compute_deployment_bundle_digest(
@@ -169,7 +168,7 @@ def compute_deployment_bundle_digest(
     review_preview: DeploymentPreview,
     decision: GovernanceDecision | None = None,
     change_set: ChangeSet | None = None,
-    contract_release: ContractReleaseRecord | None = None,
+    contract_release: ContractRelease | None = None,
     bundle_version: str = "3",
 ) -> str:
     """Return the immutable digest for one target-specific deployment bundle."""
