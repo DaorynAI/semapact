@@ -490,6 +490,29 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_effective_date_argument(deployment_assess_parser)
 
+    deployment_approve_parser = deployment_subparsers.add_parser(
+        "approve",
+        help="Create an exact DEPLOY ApprovalRecord from a REVIEW DeploymentBundle",
+    )
+    deployment_approve_parser.add_argument("--bundle", required=True)
+    deployment_approve_parser.add_argument("--actor-reference", required=True)
+    deployment_approve_parser.add_argument(
+        "--recorded-at",
+        required=True,
+        help="Approval timestamp as timezone-aware ISO-8601",
+    )
+    deployment_approve_parser.add_argument("--comment")
+    deployment_approve_parser.add_argument(
+        "--approval-out",
+        help="Write the exact ApprovalRecord JSON artifact to this path",
+    )
+    deployment_approve_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
     deployment_deploy_parser = deployment_subparsers.add_parser(
         "deploy",
         help="Consume an immutable DeploymentBundle, execute against fresh runtime, and verify",
@@ -668,6 +691,7 @@ def main() -> int:
 
         if args.command == "deployment":
             from semapact.interfaces.commands.deployment_cmd import (
+                run_deployment_approve,
                 run_deployment_assess,
                 run_deployment_deploy,
                 run_deployment_execute,
@@ -677,7 +701,9 @@ def main() -> int:
             )
             from semapact.interfaces.outcomes import exit_code_from_outcome
 
-            if args.deployment_command == "assess":
+            if args.deployment_command == "approve":
+                result = run_deployment_approve(args)
+            elif args.deployment_command == "assess":
                 result = run_deployment_assess(args)
             elif args.deployment_command == "deploy":
                 result = run_deployment_deploy(args)
