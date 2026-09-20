@@ -7,6 +7,7 @@ from semapact.deployment.adapters import (
 )
 from semapact.deployment.authorization import (
     authorize_candidate_deployment,
+    authorize_contract_release_deployment,
     authorize_deployment,
 )
 from semapact.deployment.compilers import TransitionCompiler
@@ -29,6 +30,7 @@ from semapact.deployment.planner import (
 from semapact.deployment.source import (
     DeploymentSourceSnapshot,
     build_candidate_deployment_source,
+    build_contract_release_deployment_source,
     build_release_deployment_source,
 )
 from semapact.deployment.providers import (
@@ -60,11 +62,13 @@ __all__ = [
     "TransitionCompiler",
     "SchemaTransitionPlanner",
     "authorize_candidate_deployment",
+    "authorize_contract_release_deployment",
     "authorize_deployment",
     "build_deployment_actions",
     "build_deployment_plan",
     "build_deployment_plan_from_source",
     "build_candidate_deployment_source",
+    "build_contract_release_deployment_source",
     "build_release_deployment_source",
     "DeploymentSourceSnapshot",
     "verify_deployment_convergence",
