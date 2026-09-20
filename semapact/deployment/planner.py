@@ -101,8 +101,6 @@ def build_deployment_plan_from_source(
         contract_id=source.contract_id,
         revision_ref=source.revision_ref,
         contract_version=source.contract_version,
-        release_id=source.release_id,
-        release_plan_id=source.release_plan_id if source.source_kind == "release_snapshot" else None,
         target=target,
         actions=ordered_actions,
         plan_version="5",
@@ -115,8 +113,6 @@ def build_deployment_plan_from_source(
         contract_version=source.contract_version,
         target=target,
         actions=ordered_actions,
-        release_id=source.release_id,
-        release_plan_id=source.release_plan_id if source.source_kind == "release_snapshot" else None,
         plan_version="5",
     )
 
