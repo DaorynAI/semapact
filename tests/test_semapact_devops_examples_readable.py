@@ -40,3 +40,33 @@ def test_azure_devops_examples_reference_release_commands():
     assert "release classify-repo" in pr_pipeline
     assert "release build-manifest" in release_pipeline
     assert "release create-prs" in release_pipeline
+
+
+def test_data_product_github_example_uses_bundle_driven_ci_cd() -> None:
+    workflow = Path("examples/github/data-product-ci-cd.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "deployment assess" in workflow
+    assert "--release" in workflow
+    assert "deployment deploy" in workflow
+    assert "approval record" in workflow
+    assert "environment: production" in workflow
+    assert "--operational-history" not in workflow
+    assert "contract.release.bundle" not in workflow
+
+
+def test_central_contract_repo_github_example_fans_out_and_commits_ledger_once() -> None:
+    workflow = Path("examples/github/central-contract-repo-ci-cd.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "release classify-repo" in workflow
+    assert "fromJSON(needs.detect-contracts.outputs.matrix)" in workflow
+    assert "deployment assess" in workflow
+    assert "--release" in workflow
+    assert "deployment deploy" in workflow
+    assert "approval record" in workflow
+    assert "commit-governance-ledger:" in workflow
+    assert "merge-multiple: true" in workflow
+    assert "--operational-history" not in workflow
