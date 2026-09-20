@@ -8,7 +8,7 @@ from typing import Literal
 from open_data_contract_standard.model import OpenDataContractStandard
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from semapact.contractops import ContractRelease, ReleaseSnapshot
+from semapact.contractops import ContractRelease
 from semapact.utils.deterministic import canonical_compact_json, deterministic_uuid5
 
 
@@ -16,11 +16,7 @@ SEMAPACT_DEPLOYMENT_SOURCE_NAMESPACE = uuid.UUID(
     "598e0c13-d9af-4cf9-a8a7-9fc7628e17c1"
 )
 
-DeploymentSourceKind = Literal[
-    "candidate",
-    "release_snapshot",
-    "contract_release",
-]
+DeploymentSourceKind = Literal["candidate", "contract_release"]
 
 
 class DeploymentSourceSnapshot(BaseModel):
@@ -40,7 +36,6 @@ class DeploymentSourceSnapshot(BaseModel):
     contract_version: str
     contract_json: str
     release_id: str | None = None
-    release_plan_id: str | None = None
 
     @field_validator(
         "source_snapshot_id",
@@ -65,24 +60,14 @@ class DeploymentSourceSnapshot(BaseModel):
             raise ValueError("DeploymentSourceSnapshot contract version mismatch")
 
         if self.source_kind == "candidate":
-            if self.release_id is not None or self.release_plan_id is not None:
+            if self.release_id is not None:
                 raise ValueError(
                     "Candidate deployment source cannot contain release provenance"
                 )
-        elif self.source_kind == "release_snapshot":
-            if self.release_id is None or self.release_plan_id is None:
-                raise ValueError(
-                    "Legacy ReleaseSnapshot source requires release provenance"
-                )
-        else:
-            if self.release_id is None:
-                raise ValueError(
-                    "ContractRelease source requires contract_release_id provenance"
-                )
-            if self.release_plan_id is not None:
-                raise ValueError(
-                    "Canonical ContractRelease source must not duplicate release_plan_id"
-                )
+        elif self.release_id is None:
+            raise ValueError(
+                "ContractRelease source requires contract_release_id provenance"
+            )
 
         expected = compute_deployment_source_id(
             source_kind=self.source_kind,
@@ -91,7 +76,6 @@ class DeploymentSourceSnapshot(BaseModel):
             contract_version=self.contract_version,
             contract_json=self.contract_json,
             release_id=self.release_id,
-            release_plan_id=self.release_plan_id,
         )
         if self.source_snapshot_id != expected:
             raise ValueError(
@@ -102,11 +86,6 @@ class DeploymentSourceSnapshot(BaseModel):
     @property
     def is_release(self) -> bool:
         return self.source_kind != "candidate"
-
-    @property
-    def release(self) -> bool:
-        """Compatibility accessor; canonical state lives in source_kind."""
-        return self.is_release
 
     def to_contract(self) -> OpenDataContractStandard:
         return OpenDataContractStandard.model_validate_json(self.contract_json)
@@ -140,7 +119,6 @@ def build_candidate_deployment_source(
         contract_version=contract_version,
         contract_json=contract_json,
         release_id=None,
-        release_plan_id=None,
     )
     return DeploymentSourceSnapshot(
         source_snapshot_id=source_id,
@@ -149,32 +127,6 @@ def build_candidate_deployment_source(
         revision_ref=revision,
         contract_version=contract_version,
         contract_json=contract_json,
-    )
-
-
-def build_release_deployment_source(
-    snapshot: ReleaseSnapshot,
-) -> DeploymentSourceSnapshot:
-    """Compatibility projection from a pre-finalization ReleaseSnapshot."""
-    contract_json = snapshot.released_contract_json
-    source_id = compute_deployment_source_id(
-        source_kind="release_snapshot",
-        contract_id=snapshot.contract_id,
-        revision_ref=snapshot.release_revision_ref,
-        contract_version=snapshot.selected_version,
-        contract_json=contract_json,
-        release_id=snapshot.release_snapshot_id,
-        release_plan_id=snapshot.release_plan_id,
-    )
-    return DeploymentSourceSnapshot(
-        source_snapshot_id=source_id,
-        source_kind="release_snapshot",
-        contract_id=snapshot.contract_id,
-        revision_ref=snapshot.release_revision_ref,
-        contract_version=snapshot.selected_version,
-        contract_json=contract_json,
-        release_id=snapshot.release_snapshot_id,
-        release_plan_id=snapshot.release_plan_id,
     )
 
 
@@ -195,7 +147,6 @@ def build_contract_release_deployment_source(
         contract_version=release.contract_version,
         contract_json=contract_json,
         release_id=release.contract_release_id,
-        release_plan_id=None,
     )
     return DeploymentSourceSnapshot(
         source_snapshot_id=source_id,
@@ -205,7 +156,6 @@ def build_contract_release_deployment_source(
         contract_version=release.contract_version,
         contract_json=contract_json,
         release_id=release.contract_release_id,
-        release_plan_id=None,
     )
 
 
@@ -217,7 +167,6 @@ def compute_deployment_source_id(
     contract_version: str,
     contract_json: str,
     release_id: str | None,
-    release_plan_id: str | None,
 ) -> str:
     return deterministic_uuid5(
         SEMAPACT_DEPLOYMENT_SOURCE_NAMESPACE,
@@ -228,6 +177,5 @@ def compute_deployment_source_id(
             "contract_version": contract_version,
             "contract_json": contract_json,
             "release_id": release_id,
-            "release_plan_id": release_plan_id,
         },
     )
