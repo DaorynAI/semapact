@@ -58,11 +58,20 @@ class DeploymentAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def apply(
+        self,
+        plan: DeploymentPlan,
+        preview: DeploymentPreview,
+    ) -> None:
+        """Apply one exact preview after the application boundary authorizes execution."""
+        raise NotImplementedError
+
+    @abstractmethod
     def execute(
         self,
         plan: DeploymentPlan,
         preview: DeploymentPreview,
         authorization: DeploymentAuthorization,
     ) -> None:
-        """Execute only the exact authorized preview."""
+        """Compatibility entrypoint for legacy in-process authorization artifacts."""
         raise NotImplementedError
