@@ -12,6 +12,7 @@ from semapact.application.models.deployment_workflow import (
     build_deployment_bundle,
 )
 from semapact.application.services.deployment import DeploymentService
+from semapact.application.services.governance import GovernanceService
 from semapact.application.services.release_planning import ReleasePlanningService
 from semapact.approval import (
     ApprovalRecord,
@@ -26,7 +27,10 @@ from semapact.contractops import (
 from semapact.deployment import (
     DeploymentAdapter,
     DeploymentTarget,
+    authorize_candidate_deployment,
     authorize_deployment,
+    build_candidate_deployment_source,
+    build_release_deployment_source,
 )
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.governance import DecisionResult, GovernanceOperation
@@ -40,9 +44,11 @@ class DeploymentWorkflowService:
         self,
         *,
         release_planning_service: ReleasePlanningService | None = None,
+        governance_service: GovernanceService | None = None,
         deployment_service: DeploymentService | None = None,
     ) -> None:
         self._release_planning = release_planning_service or ReleasePlanningService()
+        self._governance = governance_service or GovernanceService()
         self._deployment = deployment_service or DeploymentService()
 
     def assess(
@@ -55,35 +61,62 @@ class DeploymentWorkflowService:
         candidate_revision_ref: str,
         target: DeploymentTarget,
         adapter: DeploymentAdapter,
+        release: bool = False,
         authority_reference: str | None = None,
     ) -> DeploymentBundle:
-        """Build the immutable CI handoff bundle without side-effect authorization."""
-        release = self._release_planning.plan(
-            base_contract,
-            candidate_contract,
-            effective_date=effective_date,
-            base_revision_ref=base_revision_ref,
-            candidate_revision_ref=candidate_revision_ref,
-            authority_reference=authority_reference,
-        )
-        snapshot = build_release_snapshot(
-            candidate_contract,
-            candidate_revision_ref=candidate_revision_ref,
-            decision=release.decision,
-            change_set=release.change_set,
-            release_plan=release.release_plan,
-            version_resolution=release.version_resolution,
-        )
-        plan = self._deployment.plan(snapshot, target)
+        """Build an immutable candidate or formal-release CI handoff bundle."""
+        if release:
+            planned = self._release_planning.plan(
+                base_contract,
+                candidate_contract,
+                effective_date=effective_date,
+                base_revision_ref=base_revision_ref,
+                candidate_revision_ref=candidate_revision_ref,
+                authority_reference=authority_reference,
+            )
+            snapshot = build_release_snapshot(
+                candidate_contract,
+                candidate_revision_ref=candidate_revision_ref,
+                decision=planned.decision,
+                change_set=planned.change_set,
+                release_plan=planned.release_plan,
+                version_resolution=planned.version_resolution,
+            )
+            source = build_release_deployment_source(snapshot)
+            decision = planned.decision
+            change_set = planned.change_set
+            release_plan = planned.release_plan
+            version_resolution = planned.version_resolution
+        else:
+            proposal = self._governance.evaluate_proposal(
+                base_contract,
+                candidate_contract,
+                effective_date=effective_date,
+                base_revision_ref=base_revision_ref,
+                candidate_revision_ref=candidate_revision_ref,
+            )
+            source = build_candidate_deployment_source(
+                candidate_contract,
+                revision_ref=candidate_revision_ref,
+            )
+            decision = proposal.decision
+            change_set = proposal.change_set
+            release_plan = None
+            version_resolution = None
+            snapshot = None
+
+        plan = self._deployment.plan(source, target)
         preview = self._deployment.preview(plan, adapter=adapter)
         return build_deployment_bundle(
-            decision=release.decision,
-            change_set=release.change_set,
-            release_plan=release.release_plan,
-            version_resolution=release.version_resolution,
-            release_snapshot=snapshot,
+            release=release,
+            decision=decision,
+            change_set=change_set,
+            deployment_source=source,
             deployment_plan=plan,
             review_preview=preview,
+            release_plan=release_plan,
+            version_resolution=version_resolution,
+            release_snapshot=snapshot,
         )
 
     def approve(
@@ -95,9 +128,13 @@ class DeploymentWorkflowService:
         comment: str | None = None,
     ) -> ApprovalRecord:
         """Record an explicit human DEPLOY approval for one exact bundle."""
+        if not bundle.release:
+            raise ValidationError(
+                "Non-release deployment does not create approval records"
+            )
         if bundle.decision.decision is not DecisionResult.REVIEW:
             raise ValidationError(
-                "Explicit deployment approval is only required for REVIEW decisions"
+                "Explicit deployment approval is only required for REVIEW releases"
             )
         return build_approval_record(
             decision_id=bundle.decision.decision_id,
@@ -126,37 +163,60 @@ class DeploymentWorkflowService:
                 f"bundle must be DeploymentBundle, got {type(bundle).__name__}"
             )
 
-        evidence = None
-        if bundle.decision.decision is DecisionResult.REVIEW:
-            if approval is None:
-                raise ContractOpsAuthorizationError(
-                    "Deployment requires approval for a REVIEW governance decision"
-                )
-            if bundle.bundle_digest not in approval.evidence_references:
+        contract_authorization = None
+        if bundle.release:
+            if (
+                bundle.release_plan is None
+                or bundle.version_resolution is None
+                or bundle.release_snapshot is None
+            ):
                 raise ValidationError(
-                    "ApprovalRecord does not reference the exact DeploymentBundle digest"
+                    "Release deployment bundle is missing release artifacts"
                 )
-            evidence = project_review_authorization_evidence(approval)
+            evidence = None
+            if bundle.decision.decision is DecisionResult.REVIEW:
+                if approval is None:
+                    raise ContractOpsAuthorizationError(
+                        "Release deployment requires approval for REVIEW"
+                    )
+                if bundle.bundle_digest not in approval.evidence_references:
+                    raise ValidationError(
+                        "ApprovalRecord does not reference the exact DeploymentBundle digest"
+                    )
+                evidence = project_review_authorization_evidence(approval)
 
-        contract_authorization = authorize_contract_operation(
-            bundle.decision,
-            bundle.change_set,
-            bundle.release_plan,
-            bundle.version_resolution,
-            GovernanceOperation.DEPLOY,
-            evidence=evidence,
-        )
-        if not contract_authorization.allowed:
-            raise ContractOpsAuthorizationError(
-                "Deployment is not authorized: "
-                f"{contract_authorization.reason.value}"
+            contract_authorization = authorize_contract_operation(
+                bundle.decision,
+                bundle.change_set,
+                bundle.release_plan,
+                bundle.version_resolution,
+                GovernanceOperation.DEPLOY,
+                evidence=evidence,
             )
-
-        deployment_authorization = authorize_deployment(
-            bundle.deployment_plan,
-            bundle.release_snapshot,
-            contract_authorization,
-        )
+            if not contract_authorization.allowed:
+                raise ContractOpsAuthorizationError(
+                    "Deployment is not authorized: "
+                    f"{contract_authorization.reason.value}"
+                )
+            deployment_authorization = authorize_deployment(
+                bundle.deployment_plan,
+                bundle.release_snapshot,
+                contract_authorization,
+            )
+        else:
+            if approval is not None:
+                raise ValidationError(
+                    "Non-release deployment must not consume an ApprovalRecord"
+                )
+            deployment_authorization = authorize_candidate_deployment(
+                bundle.deployment_plan,
+                bundle.deployment_source,
+                bundle.decision,
+            )
+            if not deployment_authorization.allowed:
+                raise ContractOpsAuthorizationError(
+                    "Candidate deployment is blocked by governance"
+                )
 
         # CI-time review preview is evidence only. CD always derives a fresh preview.
         fresh_preview = self._deployment.preview(
@@ -178,7 +238,7 @@ class DeploymentWorkflowService:
         return DeploymentExecutionResult(
             bundle_digest=bundle.bundle_digest,
             deployment_plan_id=bundle.deployment_plan.deployment_plan_id,
-            authorization_id=contract_authorization.authorization_id,
+            authorization_id=deployment_authorization.deployment_authorization_id,
             fresh_preview=fresh_preview,
             reconciliation=reconciliation,
             status=status,
