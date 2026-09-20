@@ -30,7 +30,7 @@ PLAN RELEASE
 → ReleaseSnapshot
 
 FORMAL RELEASE
-→ immutable ContractReleaseRecord
+→ immutable ContractRelease
 
 DEPLOY
 → one or more target-specific DeploymentPlan / deployment occurrences
@@ -202,7 +202,7 @@ DEPLOY mutates a runtime toward one exact target-specific `DeploymentPlan`. It i
 
 Candidate REVIEW deployments are allowed as non-release validation/test deployments without creating release approval evidence. `BLOCK` always fails closed.
 
-For formal release mode, the new `ContractReleaseRecord` is the durable Git governance fact. Runtime deployment history is operational telemetry and is not written to Git by default.
+For formal release mode, the new `ContractRelease` is the durable Git governance fact. Runtime deployment history is operational telemetry and is not written to Git by default.
 
 Provider-specific execution stays behind the deployment adapter. For Databricks, a formal release that reaches `IN_SYNC` also projects SemaPact-owned release/version provenance into Unity Catalog tags.
 
