@@ -24,8 +24,8 @@ from semapact.deployment import (
     build_contract_release_deployment_source,
 )
 from semapact.exceptions import ContractOpsAuthorizationError
+from semapact.contractops import ContractRelease
 from semapact.history import (
-    ContractReleaseRecord,
     OperationalHistorySink,
     build_operational_deployment_event,
 )
@@ -80,7 +80,7 @@ class DeploymentWorkflowService:
 
     def assess_release(
         self,
-        release: ContractReleaseRecord,
+        release: ContractRelease,
         *,
         target: DeploymentTarget,
         adapter: DeploymentAdapter,
