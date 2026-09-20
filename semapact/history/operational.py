@@ -30,7 +30,7 @@ class OperationalDeploymentEvent(BaseModel):
     event_id: str
     bundle_digest: str
     release: bool
-    release_record_id: str | None = None
+    contract_release_id: str | None = None
     contract_id: str
     contract_version: str
     revision_ref: str
@@ -65,7 +65,7 @@ class OperationalDeploymentEvent(BaseModel):
         return cleaned
 
     @field_validator(
-        "release_record_id",
+        "contract_release_id",
         "deployment_preview_id",
         "deployment_authorization_id",
         "error_message",
@@ -100,7 +100,7 @@ class OperationalDeploymentEvent(BaseModel):
         expected = compute_operational_deployment_event_id(
             bundle_digest=self.bundle_digest,
             release=self.release,
-            release_record_id=self.release_record_id,
+            contract_release_id=self.contract_release_id,
             contract_id=self.contract_id,
             contract_version=self.contract_version,
             revision_ref=self.revision_ref,
@@ -137,7 +137,7 @@ def build_operational_deployment_event(
     *,
     bundle_digest: str,
     release: bool,
-    release_record_id: str | None,
+    contract_release_id: str | None,
     contract_id: str,
     contract_version: str,
     revision_ref: str,
@@ -157,7 +157,7 @@ def build_operational_deployment_event(
     event_id = compute_operational_deployment_event_id(
         bundle_digest=bundle_digest,
         release=release,
-        release_record_id=release_record_id,
+        contract_release_id=contract_release_id,
         contract_id=contract_id,
         contract_version=contract_version,
         revision_ref=revision_ref,
@@ -179,7 +179,7 @@ def build_operational_deployment_event(
         event_id=event_id,
         bundle_digest=bundle_digest,
         release=release,
-        release_record_id=release_record_id,
+        contract_release_id=contract_release_id,
         contract_id=contract_id,
         contract_version=contract_version,
         revision_ref=revision_ref,
