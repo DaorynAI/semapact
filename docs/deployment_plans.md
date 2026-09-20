@@ -243,6 +243,26 @@ The corresponding CD job downloads that exact artifact and passes it unchanged t
 
 Do not regenerate the bundle in CD. Rebuilding would create a new CI boundary and could make approval refer to material different from what CD consumes. CD is allowed—and required—to re-observe runtime, but not to replace the approved desired-state bundle.
 
+### Review evidence intake
+
+The normal CI/CD path does **not** require `semapact deployment approve`.
+
+The review happens in the external workflow provider. A trusted integration records that provider event into SemaPact approval history, for example through the generic `semapact approval record` intake surface. That history record carries the exact DEPLOY context, `deploymentPlanId`, and `bundleDigest` evidence.
+
+```text
+GitHub / Azure DevOps / GitLab review
+        ↓
+trusted workflow integration
+        ↓
+ApprovalRecord in .semapact/history
+        ↓
+CD: semapact deployment deploy --bundle ...
+        ↓
+automatic exact approval resolution
+```
+
+`semapact deployment approve --bundle ...` remains a convenience for manual/custom workflows that want to construct an explicit approval artifact directly. It is not a required stage in standard CI/CD.
+
 ### Deploy
 
 After CI publishes the exact bundle and any required human approval is recorded, CD consumes that bundle directly:
