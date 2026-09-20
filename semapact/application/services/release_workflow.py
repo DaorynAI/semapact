@@ -8,9 +8,10 @@ from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.approval import ApprovalRecord, build_approval_record
 from semapact.approval.evidence import project_review_authorization_evidence
-from semapact.application.models.release import ReleaseBundle, build_release_bundle
-from semapact.application.services.contract_release_history import (
-    ContractReleaseHistoryService,
+from semapact.application.models.release import (
+    ReleaseBundle,
+    build_contract_release,
+    build_release_bundle,
 )
 from semapact.application.services.release_planning import ReleasePlanningService
 from semapact.contractops import (
@@ -20,7 +21,8 @@ from semapact.contractops import (
 )
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.governance import DecisionResult, GovernanceOperation
-from semapact.history import ContractReleaseRecord
+from semapact.contractops import ContractRelease
+from semapact.history import ContractReleaseHistoryRepository
 
 
 class ReleaseWorkflowService:
@@ -99,9 +101,9 @@ class ReleaseWorkflowService:
         self,
         bundle: ReleaseBundle,
         *,
-        release_history: ContractReleaseHistoryService,
+        release_history: ContractReleaseHistoryRepository,
         approval: ApprovalRecord | None = None,
-    ) -> ContractReleaseRecord:
+    ) -> ContractRelease:
         """Authorize and persist one formal release exactly once."""
         evidence = None
         if bundle.decision.decision is DecisionResult.REVIEW:
@@ -134,4 +136,6 @@ class ReleaseWorkflowService:
                 "Formal release is not authorized: "
                 f"{authorization.reason.value}"
             )
-        return release_history.record_release(bundle, approval=approval)
+        release = build_contract_release(bundle)
+        release_history.put_contract_release(release)
+        return release
