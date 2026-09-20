@@ -74,8 +74,9 @@ def run_release_finalize(args: argparse.Namespace) -> dict[str, Any]:
         approval=approval,
     )
     output_path = dump_yaml(bundle.release_snapshot.to_contract(), args.output_contract)
-    if args.release_out:
-        _write_model_artifact(args.release_out, record)
+    release_out = getattr(args, "release_out", None)
+    if release_out:
+        _write_model_artifact(release_out, record)
     return {
         "contractReleaseId": record.contract_release_id,
         "contractId": record.contract_id,
@@ -83,7 +84,7 @@ def run_release_finalize(args: argparse.Namespace) -> dict[str, Any]:
         "sourceRevisionRef": record.source_revision_ref,
         "releaseBundleDigest": bundle.bundle_digest,
         "outputContract": str(output_path),
-        "releaseArtifact": args.release_out,
+        "releaseArtifact": release_out,
     }
 
 
