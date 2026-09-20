@@ -189,9 +189,11 @@ Git, storage, and other release-artifact publication behavior belongs in adapter
 
 ## DEPLOY
 
-DEPLOY mutates a runtime toward a provider-neutral `DeploymentPlan` and is separate from release publication.
+DEPLOY mutates a runtime toward the exact `DeploymentPlan` packaged by CI and is separate from release publication.
 
-A release-context `ContractOpsAuthorization(operation=DEPLOY)` is not enough on its own. Runtime execution also requires a `DeploymentAuthorization` bound to the exact deployment plan, including its target. A review approval scoped to one deployment plan therefore cannot be rebound to another target.
+The canonical application workflow consumes the immutable `DeploymentBundle` directly. For REVIEW decisions, the supplied `ApprovalRecord` must be scoped to the exact `deploymentPlanId` and reference the exact `bundleDigest`. The workflow then re-observes runtime, derives a fresh preview, executes, and performs a separate fresh convergence verification.
+
+The current domain layer still uses `ContractOpsAuthorization(operation=DEPLOY)` and `DeploymentAuthorization` internally as a compatibility bridge. Those types are not part of the new Data Engineer / CI-CD happy path and callers do not need to assemble them manually.
 
 Platform-specific execution belongs behind a deployment adapter. The adapter must not recompute governance, version authority, release planning, or approval semantics.
 
