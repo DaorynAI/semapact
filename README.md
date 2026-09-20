@@ -239,7 +239,7 @@ For Databricks, once deployment of a finalized formal release verifies `IN_SYNC`
 semapact_contract_id
 semapact_contract_version
 semapact_release_id
-semapact_revision
+semapact_source_revision
 ```
 
 Candidate deployments do not publish formal version/release tags. Business classifications or ABAC tags are not automatically mapped.
@@ -408,7 +408,7 @@ semapact release finalize \
   --output-contract ./contracts/orders.yaml
 ```
 
-Finalization writes the selected semantic version back to the ODCS contract and records the immutable `ContractReleaseRecord` in the Git governance ledger.
+Finalization writes the selected semantic version back to the ODCS contract and records the immutable `ContractReleaseRecord` in the Git governance ledger. The release records the source revision from which it was derived; the finalized release identity is the immutable released-contract snapshot, not a claim that the source revision already contained the materialized version bump.
 
 Deployment then consumes that finalized release identity:
 
