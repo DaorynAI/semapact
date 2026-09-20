@@ -56,6 +56,23 @@ OperationalHistoryConfig = Annotated[
     Field(discriminator="backend"),
 ]
 
+
+
+class HistoryConfig(BaseModel):
+    """Typed history configuration while unrelated legacy config remains extensible."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    operational: OperationalHistoryConfig | None = None
+
+
+class SemaPactConfigSchema(BaseModel):
+    """Incremental root schema for project/global SemaPact configuration."""
+
+    model_config = ConfigDict(extra="allow")
+
+    history: HistoryConfig | None = None
+
 _OPERATIONAL_HISTORY_ADAPTER = TypeAdapter(OperationalHistoryConfig)
 
 
