@@ -175,7 +175,7 @@ The previous candidate-specific `DeploymentAssessment` artifact is intentionally
 
 ## CLI workflow
 
-The deployment CLI exposes one bundle workflow: `assess` for CI/manual planning, `approve` for explicit REVIEW approval, and `deploy` for CD/manual execution.
+The deployment CLI exposes one bundle workflow: `assess` for CI/manual planning and `deploy` for CD/manual execution. `approve` remains an optional hook for custom/manual workflows that want to supply an explicit ApprovalRecord.
 
 ### Assess
 
@@ -250,12 +250,22 @@ After CI publishes the exact bundle and any required human approval is recorded,
 ```bash
 semapact deployment deploy \
   --bundle ./artifacts/orders-prod.bundle.json \
-  --approval ./artifacts/orders-prod.approval.json \
   --warehouse-id <databricks-sql-warehouse-id> \
   --output json
 ```
 
-`--approval` is required only when the bundle carries a `GovernanceDecision(REVIEW)`. The approval must be an exact `ApprovalRecord` for DEPLOY, scoped to the bundle's `deploymentPlanId`, and its evidence references must include the exact `bundleDigest`.
+For `GovernanceDecision(REVIEW)`, `deploy` first looks for an exact matching DEPLOY approval in Git-backed history under `.semapact/history` (or `--repository-root`). The record must match the exact decision/change-set/release/version context, exact `deploymentPlanId`, and exact `bundleDigest`. Conflicting exact review actions fail closed.
+
+Custom workflows may inject an approval artifact explicitly:
+
+```bash
+semapact deployment deploy \
+  --bundle ./artifacts/orders-prod.bundle.json \
+  --approval ./artifacts/orders-prod.approval.json \
+  --warehouse-id <databricks-sql-warehouse-id>
+```
+
+An explicit `--approval` takes precedence over Git-history resolution. For governance-ALLOW deployments, no human approval is required.
 
 The CD workflow deliberately ignores the CI-time review preview as execution input:
 
@@ -304,7 +314,7 @@ The adapter is also not a general Databricks infrastructure engine. Workspace, c
 
 Runtime deployment is a separate protected operation from publishing a contract release artifact.
 
-At the canonical application boundary, callers provide an exact `DeploymentBundle` and, for REVIEW decisions, an `ApprovalRecord`. The approval must bind the exact `deploymentPlanId` and include the exact `bundleDigest` as evidence. This makes the CI artifact itself part of the approval scope rather than approving a mutable path or a SQL string.
+At the canonical application boundary, REVIEW deployments require exact approval evidence bound to the `deploymentPlanId` and `bundleDigest`. The CLI can resolve that evidence from Git-backed approval history automatically, or callers can provide an explicit `ApprovalRecord` for custom workflows. This makes the CI artifact itself part of the approval scope rather than approving a mutable path or SQL string.
 
 The current low-level domain implementation still bridges this into the historical `ContractOpsAuthorization → DeploymentAuthorization` types before calling the adapter. That bridge is compatibility machinery; Data Engineers and CI/CD callers do not construct those artifacts in the bundle workflow. A future cleanup can collapse the bridge without changing the public bundle contract.
 
