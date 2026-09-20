@@ -97,6 +97,7 @@ def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
         outcome=outcome_from_gate_result(gate),
     )
 
+
 def run_deployment_approve(args: argparse.Namespace) -> DeploymentCommandResult:
     """Create one exact DEPLOY ApprovalRecord from a REVIEW DeploymentBundle."""
     from semapact.application.services.deployment_workflow import (
