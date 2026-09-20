@@ -443,7 +443,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     deployment_parser = subparsers.add_parser(
         "deployment",
-        help="Plan, preview, execute, and verify governed runtime deployment",
+        help="Assess, approve, and deploy immutable governed runtime bundles",
     )
     deployment_subparsers = deployment_parser.add_subparsers(
         dest="deployment_command", required=True
@@ -533,45 +533,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format (default: text)",
     )
 
-    deployment_plan_parser = deployment_subparsers.add_parser(
-        "plan", help="Build a DeploymentPlan from an exact ReleaseSnapshot or legacy applied release"
-    )
-    deployment_plan_parser.add_argument("--release", required=True)
-    deployment_plan_parser.add_argument("--platform", required=True)
-    deployment_plan_parser.add_argument("--runtime", required=True)
-    deployment_plan_parser.add_argument(
-        "--source-reference",
-        required=True,
-        help="Stable runtime source identity (for Databricks, the workspace host; never credentials)",
-    )
-    deployment_plan_parser.add_argument("--server")
-
-    deployment_preview_parser = deployment_subparsers.add_parser(
-        "preview", help="Observe runtime and derive provider-native deployment operations"
-    )
-    deployment_preview_parser.add_argument("--plan", required=True)
-
-    deployment_execute_parser = deployment_subparsers.add_parser(
-        "execute", help="Execute an exact authorized DeploymentPreview"
-    )
-    deployment_execute_parser.add_argument("--plan", required=True)
-    deployment_execute_parser.add_argument("--preview", required=True)
-    deployment_execute_parser.add_argument("--authorization", required=True)
-    deployment_execute_parser.add_argument(
-        "--warehouse-id",
-        help="Databricks SQL warehouse required only when preview contains mutation operations",
-    )
-
-    deployment_verify_parser = deployment_subparsers.add_parser(
-        "verify", help="Verify DeploymentPlan convergence through M1 reconciliation"
-    )
-    deployment_verify_parser.add_argument("--plan", required=True)
-    deployment_verify_parser.add_argument(
-        "--output",
-        choices=["text", "json"],
-        default="text",
-        help="Output format (default: text)",
-    )
 
     return parser
 
@@ -694,10 +655,6 @@ def main() -> int:
                 run_deployment_approve,
                 run_deployment_assess,
                 run_deployment_deploy,
-                run_deployment_execute,
-                run_deployment_plan,
-                run_deployment_preview,
-                run_deployment_verify,
             )
             from semapact.interfaces.outcomes import exit_code_from_outcome
 
@@ -707,14 +664,6 @@ def main() -> int:
                 result = run_deployment_assess(args)
             elif args.deployment_command == "deploy":
                 result = run_deployment_deploy(args)
-            elif args.deployment_command == "plan":
-                result = run_deployment_plan(args)
-            elif args.deployment_command == "preview":
-                result = run_deployment_preview(args)
-            elif args.deployment_command == "execute":
-                result = run_deployment_execute(args)
-            elif args.deployment_command == "verify":
-                result = run_deployment_verify(args)
             else:
                 parser.error(f"Unknown deployment command: {args.deployment_command}")
             print(result.output)
