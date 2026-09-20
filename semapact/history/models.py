@@ -11,6 +11,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from semapact.contractops.execution_models import ContractRelease
 from semapact.contractops.models import ReviewEvidenceAction, VersionAuthority
 from semapact.observation import ObservedPlatformState
 from semapact.reconciliation import (
@@ -140,52 +141,8 @@ class ReleaseRecord(HistoryModel):
         return self
 
 
-class ContractReleaseRecord(HistoryModel):
-    """Formal immutable contract release fact stored in the governance ledger."""
-
-    contract_release_id: str
-    contract_id: str
-    contract_version: str
-    decision_id: str
-    change_set_id: str
-    release_plan_id: str
-    version_resolution_id: str
-    release_snapshot_id: str
-    revision_ref: str
-    released_contract_json: str
-
-    @field_validator(
-        "contract_release_id",
-        "contract_id",
-        "contract_version",
-        "decision_id",
-        "change_set_id",
-        "release_plan_id",
-        "version_resolution_id",
-        "release_snapshot_id",
-        "revision_ref",
-        "released_contract_json",
-    )
-    @classmethod
-    def _require_contract_release_text(cls, value: str) -> str:
-        return _required_text(value)
-
-    @model_validator(mode="after")
-    def _validate_contract_release_snapshot(self) -> "ContractReleaseRecord":
-        from open_data_contract_standard.model import OpenDataContractStandard
-
-        contract = OpenDataContractStandard.model_validate_json(
-            self.released_contract_json
-        )
-        if str(contract.id or "").strip() != self.contract_id:
-            raise ValueError("released contract ID does not match ContractReleaseRecord")
-        if str(contract.version or "").strip() != self.contract_version:
-            raise ValueError(
-                "released contract version does not match ContractReleaseRecord"
-            )
-        return self
-
-
+# Backward-compatible persistence name. Canonical ownership lives in ContractOps.
+ContractReleaseRecord = ContractRelease
 class DeploymentStatus(str, Enum):
     """Terminal provider-execution outcome for one deployment occurrence."""
 
