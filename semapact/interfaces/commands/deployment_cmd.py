@@ -91,7 +91,7 @@ def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
 
     gate = evaluate_governance_gate(
         bundle.decision,
-        GovernanceOperation.DEPLOY,
+        GovernanceOperation.PROPOSE,
     )
     rendered = (
         _model_json(bundle)
