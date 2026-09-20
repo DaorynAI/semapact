@@ -29,9 +29,6 @@ SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE = uuid.UUID(
 SEMAPACT_DEPLOYMENT_PREVIEW_NAMESPACE = uuid.UUID(
     "0ee613b9-a9ef-4a95-ac87-25d6c706b16c"
 )
-SEMAPACT_DEPLOYMENT_ASSESSMENT_NAMESPACE = uuid.UUID(
-    "7dfe1ca4-bd3e-4a8c-b89f-52217c326f52"
-)
 
 
 class DeploymentModel(BaseModel):
@@ -233,48 +230,6 @@ class DeploymentPreview(DeploymentModel):
         return self
 
 
-class DeploymentAssessment(DeploymentModel):
-    """Read-only runtime assessment for one candidate contract revision.
-
-    This artifact intentionally carries no AppliedContractRelease, DeploymentPlan,
-    or authorization identity and therefore cannot be used as execution authority.
-    """
-
-    deployment_assessment_id: str
-    contract_id: str
-    candidate_revision_ref: str
-    candidate_version: str
-    target: DeploymentTarget
-    source_identifier: str
-    observation_fingerprint: str
-    operations: tuple[NativeOperation, ...]
-    assessment_version: Literal["1"] = "1"
-
-    @field_validator(
-        "deployment_assessment_id",
-        "contract_id",
-        "candidate_revision_ref",
-        "candidate_version",
-        "source_identifier",
-        "observation_fingerprint",
-    )
-    @classmethod
-    def _require_assessment_text(cls, value: str) -> str:
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError("assessment fields must not be empty")
-        return cleaned
-
-    @model_validator(mode="after")
-    def _validate_identity(self) -> "DeploymentAssessment":
-        if self.source_identifier != self.target.source_reference:
-            raise ValueError(
-                "DeploymentAssessment source identifier must match target source reference"
-            )
-        validate_deployment_assessment_identity(self)
-        return self
-
-
 class DeploymentAuthorization(DeploymentModel):
     """Authorization bound to one exact DeploymentPlan and applied release."""
 
@@ -337,32 +292,6 @@ def compute_deployment_plan_id(
         },
     )
 
-
-
-def compute_deployment_assessment_id(
-    *,
-    contract_id: str,
-    candidate_revision_ref: str,
-    candidate_version: str,
-    target: DeploymentTarget,
-    source_identifier: str,
-    observation_fingerprint: str,
-    operations: Sequence[NativeOperation],
-    assessment_version: str = "1",
-) -> str:
-    return deterministic_uuid5(
-        SEMAPACT_DEPLOYMENT_ASSESSMENT_NAMESPACE,
-        {
-            "contract_id": contract_id,
-            "candidate_revision_ref": candidate_revision_ref,
-            "candidate_version": candidate_version,
-            "target": target.model_dump(mode="json"),
-            "source_identifier": source_identifier,
-            "observation_fingerprint": observation_fingerprint,
-            "operations": [operation.model_dump(mode="json") for operation in operations],
-            "assessment_version": assessment_version,
-        },
-    )
 
 
 def compute_deployment_authorization_id(
@@ -437,25 +366,6 @@ def validate_deployment_plan_identity(plan: DeploymentPlan) -> None:
     )
     if expected != plan.deployment_plan_id:
         raise ValueError("DeploymentPlan deterministic identity does not match content")
-
-
-def validate_deployment_assessment_identity(
-    assessment: DeploymentAssessment,
-) -> None:
-    expected = compute_deployment_assessment_id(
-        contract_id=assessment.contract_id,
-        candidate_revision_ref=assessment.candidate_revision_ref,
-        candidate_version=assessment.candidate_version,
-        target=assessment.target,
-        source_identifier=assessment.source_identifier,
-        observation_fingerprint=assessment.observation_fingerprint,
-        operations=assessment.operations,
-        assessment_version=assessment.assessment_version,
-    )
-    if expected != assessment.deployment_assessment_id:
-        raise ValueError(
-            "DeploymentAssessment deterministic identity does not match content"
-        )
 
 
 def validate_deployment_authorization_identity(
