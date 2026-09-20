@@ -215,36 +215,6 @@ def validate_contract_release_deployment_context(
         )
 
 
-def authorize_contract_release_deployment(
-    plan: DeploymentPlan,
-    source: DeploymentSourceSnapshot,
-    release: ContractRelease,
-) -> DeploymentAuthorization:
-    """Compatibility adapter for callers that still require an authorization artifact.
-
-    Canonical CI/CD validates the release context and treats the protected execution
-    boundary as deployment authority; it does not interpret ContractRelease itself as
-    authorization.
-    """
-    validate_contract_release_deployment_context(plan, source, release)
-    authorization_id = compute_deployment_authorization_id(
-        deployment_plan_id=plan.deployment_plan_id,
-        source_snapshot_id=source.source_snapshot_id,
-        authorization_kind="contract_release",
-        authorization_reference=release.contract_release_id,
-        allowed=True,
-        authorization_version="2",
-    )
-    return DeploymentAuthorization(
-        deployment_authorization_id=authorization_id,
-        deployment_plan_id=plan.deployment_plan_id,
-        source_snapshot_id=source.source_snapshot_id,
-        allowed=True,
-        authorization_kind="contract_release",
-        authorization_reference=release.contract_release_id,
-        authorization_version="2",
-    )
-
 
 def _validate_plan_release_context(
     plan: DeploymentPlan,
