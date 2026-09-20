@@ -64,7 +64,7 @@ class ContractRelease(ContractOpsModel):
     release_plan_id: str
     version_resolution_id: str
     release_snapshot_id: str
-    revision_ref: str
+    source_revision_ref: str
     released_contract_json: str
 
     @field_validator(
@@ -76,7 +76,7 @@ class ContractRelease(ContractOpsModel):
         "release_plan_id",
         "version_resolution_id",
         "release_snapshot_id",
-        "revision_ref",
+        "source_revision_ref",
         "released_contract_json",
     )
     @classmethod
