@@ -78,7 +78,7 @@ class DeploymentBundle(BaseModel):
                 raise ValueError(
                     "DeploymentBundle source/release version mismatch"
                 )
-            if source.revision_ref != release.revision_ref:
+            if source.revision_ref != release.source_revision_ref:
                 raise ValueError(
                     "DeploymentBundle source/release revision mismatch"
                 )
