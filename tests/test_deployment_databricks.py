@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 from open_data_contract_standard.model import SchemaObject, SchemaProperty
 
+from semapact.deployment import RuntimeReleaseMetadata
 from semapact.deployment.models import (
     DeploymentAction,
     DeploymentActionKind,
@@ -310,7 +311,7 @@ def test_execute_rejects_tampered_plan_and_forged_native_command() -> None:
     adapter, _, client = _adapter(current)
     preview = adapter.preview(plan)
 
-    tampered = plan.model_copy(update={"selected_version": "9.9.9"})
+    tampered = plan.model_copy(update={"contract_version": "9.9.9"})
     with pytest.raises(ValueError, match="DeploymentPlan deterministic identity"):
         adapter.execute(tampered, preview, _authorization(plan))
 
@@ -351,6 +352,47 @@ def test_execute_runs_exact_preview_statement() -> None:
     assert client.statement_execution.calls == [
         "ALTER TABLE `main`.`silver`.`orders` ADD COLUMNS (`note` STRING)"
     ]
+
+
+def test_release_metadata_projects_version_and_provenance_as_uc_tags() -> None:
+    plan = _plan(_property("id", "BIGINT", required=True))
+    current = _state(("id", "bigint", False))
+    adapter, _, client = _adapter(current)
+
+    adapter.project_release_metadata(
+        plan,
+        RuntimeReleaseMetadata(
+            contract_id="orders-product",
+            contract_version="1.2.0",
+            contract_release_id="release-record-1",
+            revision_ref="rev:released",
+        ),
+    )
+
+    assert client.statement_execution.calls == [
+        "ALTER TABLE `main`.`silver`.`orders` SET TAGS "
+        "('semapact_contract_id' = 'orders-product', "
+        "'semapact_contract_version' = '1.2.0', "
+        "'semapact_release_id' = 'release-record-1', "
+        "'semapact_revision' = 'rev:released')"
+    ]
+
+
+def test_release_metadata_projection_requires_warehouse() -> None:
+    plan = _plan(_property("id", "BIGINT", required=True))
+    current = _state(("id", "bigint", False))
+    adapter, _, _ = _adapter(current, warehouse_id=None)
+
+    with pytest.raises(ValidationError, match="warehouse_id"):
+        adapter.project_release_metadata(
+            plan,
+            RuntimeReleaseMetadata(
+                contract_id="orders-product",
+                contract_version="1.2.0",
+                contract_release_id="release-record-1",
+                revision_ref="rev:released",
+            ),
+        )
 
 
 def test_no_op_execute_does_not_require_warehouse() -> None:
