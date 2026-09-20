@@ -349,21 +349,39 @@ deployment execute + verify
 → no operational history persistence
 ```
 
-To persist operational telemetry explicitly:
+Configure operational telemetry once in `.semapact.yaml`:
 
-```bash
-# local / lightweight
-semapact deployment deploy \
-  --bundle ./artifacts/orders-dev.bundle.json \
-  --operational-history sqlite:///./.semapact/operational.db
-
-# shared / higher-volume
-semapact deployment deploy \
-  --bundle ./artifacts/orders-prod.bundle.json \
-  --operational-history delta:///path/to/semapact_operational_history
+```yaml
+history:
+  operational:
+    backend: sqlite
+    path: .semapact/operational.db
 ```
 
-Supported operational history backends in this slice are SQLite and Delta. The Delta backend is lazy and requires the `delta` optional extra.
+For a shared/higher-volume Delta sink:
+
+```yaml
+history:
+  operational:
+    backend: delta
+    table_uri: s3://governance/semapact/operational-history
+```
+
+The `history.operational` subsection is validated fail-closed by the typed `SemaPactConfigSchema`. Unknown backends, missing backend-specific fields, or extra fields are rejected.
+
+Resolution precedence is:
+
+```text
+--operational-history CLI override
+        ↓
+history.operational project/global config
+        ↓
+disabled
+```
+
+The CLI URI remains available for one-off/custom pipeline overrides, but ordinary CI/CD does not repeat the history destination on every deployment.
+
+Supported operational history backends in this slice are SQLite and Delta. The Delta backend is lazy and requires the `delta` optional extra. Operational event payloads carry an explicit schema version so the telemetry contract can evolve independently of governance-history models.
 
 Legacy Git-backed deployment/runtime history artifacts remain readable for compatibility, but the canonical bundle workflow does not create new operational records in Git.
 
