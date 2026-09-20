@@ -181,7 +181,7 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
             "semapact_contract_id": metadata.contract_id,
             "semapact_contract_version": metadata.contract_version,
             "semapact_release_id": metadata.contract_release_id,
-            "semapact_revision": metadata.revision_ref,
+            "semapact_source_revision": metadata.source_revision_ref,
         }
         rendered_tags = ", ".join(
             f"{_sql_string(key)} = {_sql_string(value)}"
