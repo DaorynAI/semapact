@@ -7,7 +7,6 @@ from semapact.deployment.adapters import (
 )
 from semapact.deployment.authorization import (
     authorize_candidate_deployment,
-    authorize_contract_release_deployment,
     authorize_deployment,
     validate_candidate_deployment_context,
     validate_contract_release_deployment_context,
@@ -64,7 +63,6 @@ __all__ = [
     "TransitionCompiler",
     "SchemaTransitionPlanner",
     "authorize_candidate_deployment",
-    "authorize_contract_release_deployment",
     "authorize_deployment",
     "validate_candidate_deployment_context",
     "validate_contract_release_deployment_context",
