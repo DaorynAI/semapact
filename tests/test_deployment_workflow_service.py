@@ -11,7 +11,7 @@ from open_data_contract_standard.model import (
 from pydantic import ValidationError as PydanticValidationError
 
 from semapact.application.services.deployment_workflow import DeploymentWorkflowService
-from semapact.application.services.release_workflow import ReleaseWorkflowService
+from semapact.application.services.release_workflow import ReleaseFinalizer, ReleaseWorkflowService
 from semapact.deployment import (
     DeploymentAdapter,
     DeploymentPreview,
@@ -22,7 +22,6 @@ from semapact.deployment import (
 from semapact.deployment.models import compute_deployment_preview_id
 from semapact.governance import DecisionResult
 from semapact.observation import ObservedPlatformState, with_observed_state_fingerprint
-from semapact.platforms.git import GitWorkingTreeHistoryRepository
 from semapact.reconciliation import ReconciliationResult, RuntimeDriftStatus
 
 
@@ -203,7 +202,7 @@ def _target(name: str = "sales") -> DeploymentTarget:
     )
 
 
-def _finalized_release(tmp_path):
+def _finalized_release():
     workflow = ReleaseWorkflowService()
     bundle = workflow.assess(
         _contract(name="Orders"),
@@ -217,11 +216,8 @@ def _finalized_release(tmp_path):
         actor_reference="human:reviewer",
         recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
     )
-    repository = GitWorkingTreeHistoryRepository(tmp_path)
-    repository.put_approval_record(approval)
-    return workflow.finalize(
+    return ReleaseFinalizer().finalize(
         bundle,
-        release_history=repository,
         approval=approval,
     )
 
@@ -248,7 +244,7 @@ def test_candidate_assessment_does_not_calculate_release_version() -> None:
 
 
 def test_finalized_release_assessment_binds_exact_release_record(tmp_path) -> None:
-    release = _finalized_release(tmp_path)
+    release = _finalized_release()
     bundle = DeploymentWorkflowService().assess_release(
         release,
         target=_target(),
@@ -377,7 +373,7 @@ def test_configured_operational_history_records_failed_candidate_deployment() ->
 
 
 def test_one_finalized_release_fans_out_to_multiple_targets(tmp_path) -> None:
-    release = _finalized_release(tmp_path)
+    release = _finalized_release()
     service = DeploymentWorkflowService()
 
     dev = service.assess_release(
@@ -398,7 +394,7 @@ def test_one_finalized_release_fans_out_to_multiple_targets(tmp_path) -> None:
 
 
 def test_release_deployment_projects_finalized_version_after_in_sync(tmp_path) -> None:
-    release = _finalized_release(tmp_path)
+    release = _finalized_release()
     bundle = DeploymentWorkflowService().assess_release(
         release,
         target=_target(),
