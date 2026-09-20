@@ -23,6 +23,7 @@ from semapact.deployment import (
     DeploymentTarget,
 )
 from semapact.exceptions import ValidationError
+from semapact.interfaces.parsing import parse_iso_timestamp
 from semapact.interfaces.outcomes import (
     ProcessOutcome,
     outcome_from_gate_result,
@@ -103,6 +104,33 @@ def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
         output=rendered,
         outcome=outcome_from_gate_result(gate),
     )
+
+def run_deployment_approve(args: argparse.Namespace) -> DeploymentCommandResult:
+    """Create one exact DEPLOY ApprovalRecord from a REVIEW DeploymentBundle."""
+    from semapact.application.services.deployment_workflow import (
+        DeploymentWorkflowService,
+    )
+
+    bundle = _load_model(args.bundle, DeploymentBundle)
+    approval = DeploymentWorkflowService().approve(
+        bundle,
+        actor_reference=args.actor_reference,
+        recorded_at=parse_iso_timestamp(args.recorded_at),
+        comment=args.comment,
+    )
+    if args.approval_out:
+        _write_model_artifact(args.approval_out, approval)
+
+    rendered = (
+        _model_json(approval)
+        if args.output == "json"
+        else _approval_text(approval, artifact_path=args.approval_out)
+    )
+    return DeploymentCommandResult(
+        output=rendered,
+        outcome=ProcessOutcome.SUCCESS,
+    )
+
 
 def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
     """Consume one exact DeploymentBundle and run the canonical CD workflow."""
@@ -427,4 +455,26 @@ def _deployment_result_text(result) -> str:
         lines.append(detail)
     if not result.fresh_preview.operations:
         lines.append("  - none")
+    return "\n".join(lines)
+
+
+
+def _approval_text(
+    approval: ApprovalRecord,
+    *,
+    artifact_path: str | None,
+) -> str:
+    lines = [
+        f"Approval: {approval.approval_id}",
+        f"Actor: {approval.actor_reference}",
+        f"Operation: {approval.operation.value}",
+        f"Action: {approval.action.value}",
+        f"Deployment plan: {approval.scope_reference}",
+    ]
+    if approval.evidence_references:
+        lines.append(
+            "Evidence: " + ", ".join(approval.evidence_references)
+        )
+    if artifact_path:
+        lines.append(f"Approval artifact: {artifact_path}")
     return "\n".join(lines)
