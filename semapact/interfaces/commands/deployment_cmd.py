@@ -12,8 +12,9 @@ from typing import TypeVar
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
+from semapact.application.models.deployment_workflow import DeploymentBundle
 from semapact.application.services.deployment import DeploymentService
-from semapact.contractops import AppliedContractRelease
+from semapact.contractops import AppliedContractRelease, ReleaseSnapshot
 from semapact.deployment import (
     DeploymentAuthorization,
     DeploymentPlan,
@@ -41,7 +42,7 @@ class DeploymentCommandResult:
 
 
 def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
-    """Assess one candidate contract against fresh runtime without execution authority."""
+    """Build one immutable CI/manual deployment bundle without runtime mutation."""
     from semapact.application.services.deployment_workflow import (
         DeploymentWorkflowService,
     )
@@ -75,7 +76,7 @@ def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
         location.platform,
         contract_server=location.contract_server,
     )
-    result = DeploymentWorkflowService().assess(
+    bundle = DeploymentWorkflowService().assess(
         base_contract,
         candidate_contract,
         effective_date=args.effective_date,
@@ -85,32 +86,26 @@ def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
         target=target,
         adapter=adapter,
     )
+    if args.bundle_out:
+        _write_model_artifact(args.bundle_out, bundle)
+
     gate = evaluate_governance_gate(
-        result.release.decision,
+        bundle.decision,
         GovernanceOperation.DEPLOY,
     )
-    payload = {
-        "executable": False,
-        "governanceDecision": result.release.decision.model_dump(mode="json"),
-        "changeSet": result.release.change_set.model_dump(mode="json"),
-        "releasePlan": result.release.release_plan.model_dump(mode="json"),
-        "versionResolution": result.release.version_resolution.model_dump(mode="json"),
-        "deploymentAssessment": result.deployment.model_dump(mode="json"),
-    }
     rendered = (
-        json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True)
+        _model_json(bundle)
         if args.output == "json"
-        else _assessment_text(result)
+        else _bundle_text(bundle, artifact_path=args.bundle_out)
     )
     return DeploymentCommandResult(
         output=rendered,
         outcome=outcome_from_gate_result(gate),
     )
 
-
 def run_deployment_plan(args: argparse.Namespace) -> DeploymentCommandResult:
-    """Build one provider-neutral DeploymentPlan from an exact applied release."""
-    release = _load_model(args.release, AppliedContractRelease)
+    """Build one provider-neutral DeploymentPlan from an exact release artifact."""
+    release = _load_release_artifact(args.release)
     target = DeploymentTarget(
         platform=args.platform,
         runtime_target=args.runtime,
@@ -223,6 +218,33 @@ def _load_model(path: str, model_type: type[_ModelT]) -> _ModelT:
         ) from exc
 
 
+def _load_release_artifact(path: str) -> ReleaseSnapshot | AppliedContractRelease:
+    try:
+        raw = (
+            sys.stdin.read()
+            if path == "-"
+            else Path(path).read_text(encoding="utf-8")
+        )
+    except OSError as exc:
+        raise ValidationError(f"Invalid release artifact '{path}': {exc}") from exc
+
+    errors: list[str] = []
+    for model_type in (ReleaseSnapshot, AppliedContractRelease):
+        try:
+            return model_type.model_validate_json(raw)
+        except PydanticValidationError as exc:
+            errors.append(f"{model_type.__name__}: {exc}")
+    raise ValidationError(
+        f"Invalid release artifact '{path}': " + " | ".join(errors)
+    )
+
+
+def _write_model_artifact(path: str, model: BaseModel) -> None:
+    artifact_path = Path(path)
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(_model_json(model) + "\n", encoding="utf-8")
+
+
 def _model_json(model: BaseModel) -> str:
     return json.dumps(
         model.model_dump(mode="json"),
@@ -299,32 +321,37 @@ def _assessment_source_reference(contract_server, cli_source_reference: str | No
     return host
 
 
-def _assessment_text(result) -> str:
-    release = result.release
-    assessment = result.deployment
+def _bundle_text(
+    bundle: DeploymentBundle,
+    *,
+    artifact_path: str | None,
+) -> str:
+    plan = bundle.deployment_plan
+    preview = bundle.review_preview
     lines = [
-        f"Contract: {assessment.contract_id}@{assessment.candidate_version}",
-        f"Governance: {release.decision.decision.value}",
-        f"Required bump: {release.decision.required_version_bump}",
-        (
-            f"Target: {assessment.target.platform}/"
-            f"{assessment.target.runtime_target}"
-        ),
-        "Executable: no (read-only assessment)",
-        "Operations:",
+        f"Contract: {bundle.release_snapshot.contract_id}@"
+        f"{bundle.release_snapshot.selected_version}",
+        f"Governance: {bundle.decision.decision.value}",
+        f"Required bump: {bundle.decision.required_version_bump}",
+        f"Target: {plan.target.platform}/{plan.target.runtime_target}",
+        f"Deployment plan: {plan.deployment_plan_id}",
+        f"Bundle digest: {bundle.bundle_digest}",
+        "Execution authority: none (CI/read-only bundle)",
+        "Review operations:",
     ]
-    for operation in assessment.operations:
+    for operation in preview.operations:
         detail = f"  - {operation.kind.value} {operation.governed_asset}"
         if operation.statement is not None:
             detail += f": {operation.statement}"
         lines.append(detail)
-    if not assessment.operations:
+    if not preview.operations:
         lines.append("  - none")
     lines.extend(
         [
-            f"Observation source: {assessment.source_identifier}",
-            f"Observation fingerprint: {assessment.observation_fingerprint}",
-            f"Assessment id: {assessment.deployment_assessment_id}",
+            f"Observation source: {preview.source_identifier}",
+            f"Observation fingerprint: {preview.observation_fingerprint}",
         ]
     )
+    if artifact_path:
+        lines.append(f"Bundle artifact: {artifact_path}")
     return "\n".join(lines)
