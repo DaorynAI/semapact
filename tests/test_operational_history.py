@@ -16,14 +16,12 @@ from semapact.reconciliation import RuntimeDriftStatus
 def _event():
     return build_operational_deployment_event(
         bundle_digest="sha256:" + ("a" * 64),
-        release=False,
         contract_release_id=None,
         contract_id="orders-product",
         contract_version="1.2.3",
         revision_ref="git:abc123",
         deployment_plan_id="plan-1",
         deployment_preview_id="preview-1",
-        deployment_authorization_id="auth-1",
         platform="databricks",
         runtime_target="main.sales",
         source_reference="https://workspace.example",
@@ -46,7 +44,7 @@ def test_sqlite_operational_history_is_idempotent(tmp_path) -> None:
 
     assert isinstance(sink, SQLiteOperationalHistorySink)
     event = _event()
-    assert event.event_version == "1"
+    assert event.event_version == "2"
     sink.record_deployment(event)
     sink.record_deployment(event)
 
