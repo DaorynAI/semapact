@@ -79,6 +79,7 @@ def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
         authority_reference=args.authority_reference,
         target=target,
         adapter=adapter,
+        release=args.release,
     )
     if args.bundle_out:
         _write_model_artifact(args.bundle_out, bundle)
@@ -157,10 +158,37 @@ def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
         bundle.deployment_plan.target.platform,
         execution_config=execution_config,
     )
+
+    from semapact.application.services.contract_release_history import (
+        ContractReleaseHistoryService,
+    )
+    from semapact.deployment import RuntimeReleaseMetadataProjector
+    from semapact.history import create_operational_history_sink
+    from semapact.platforms.git import GitWorkingTreeHistoryRepository
+
+    release_history = (
+        ContractReleaseHistoryService(
+            GitWorkingTreeHistoryRepository(args.repository_root)
+        )
+        if bundle.release
+        else None
+    )
+    operational_history = create_operational_history_sink(
+        args.operational_history
+    )
+    metadata_projector = (
+        adapter
+        if isinstance(adapter, RuntimeReleaseMetadataProjector)
+        else None
+    )
+
     result = DeploymentWorkflowService().deploy(
         bundle,
         adapter=adapter,
         approval=approval,
+        release_history=release_history,
+        operational_history=operational_history,
+        metadata_projector=metadata_projector,
     )
     rendered = (
         _model_json(result)
@@ -188,7 +216,7 @@ def _resolve_deployment_approval(
     from semapact.governance import DecisionResult
     from semapact.platforms.git import GitWorkingTreeHistoryRepository
 
-    if bundle.decision.decision is not DecisionResult.REVIEW:
+    if not bundle.release or bundle.decision.decision is not DecisionResult.REVIEW:
         return None
 
     return DeploymentApprovalResolver(
@@ -256,6 +284,7 @@ def _bundle_text(
     lines = [
         f"Contract: {bundle.release_snapshot.contract_id}@"
         f"{bundle.release_snapshot.selected_version}",
+        f"Mode: {'release' if bundle.release else 'candidate'}",
         f"Governance: {bundle.decision.decision.value}",
         f"Required bump: {bundle.decision.required_version_bump}",
         f"Target: {plan.target.platform}/{plan.target.runtime_target}",
