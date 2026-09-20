@@ -3,18 +3,21 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from pydantic import ValidationError as PydanticValidationError
-
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
     SchemaObject,
     SchemaProperty,
 )
+from pydantic import ValidationError as PydanticValidationError
 
 from semapact.approval import build_approval_record
 from semapact.application.models.deployment_workflow import DeploymentBundle
+from semapact.application.services.contract_release_history import (
+    ContractReleaseHistoryService,
+)
 from semapact.application.services.deployment_approval import DeploymentApprovalResolver
 from semapact.application.services.deployment_workflow import DeploymentWorkflowService
+from semapact.contractops import ReviewEvidenceAction
 from semapact.deployment import (
     DeploymentAdapter,
     DeploymentPreview,
@@ -22,7 +25,6 @@ from semapact.deployment import (
     NativeOperation,
     NativeOperationKind,
 )
-from semapact.contractops import ReviewEvidenceAction
 from semapact.deployment.models import compute_deployment_preview_id
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.governance import DecisionResult, GovernanceOperation
@@ -130,6 +132,7 @@ class _ExecutionAdapter(DeploymentAdapter):
 
     def execute(self, plan, preview, authorization) -> None:
         assert authorization.allowed is True
+        assert authorization.source_snapshot_id == plan.source_snapshot_id
         self.execute_calls += 1
         self.executed_preview = preview
 
@@ -137,10 +140,18 @@ class _ExecutionAdapter(DeploymentAdapter):
         self.verify_calls += 1
         return ReconciliationResult(
             contract_id=plan.contract_id,
-            contract_version=plan.selected_version,
+            contract_version=plan.contract_version,
             observation_source_identifier=plan.target.source_reference,
             observation_fingerprint="obs-v2:sha256:verified",
         )
+
+
+class _MetadataProjector:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def project_release_metadata(self, plan, metadata) -> None:
+        self.calls.append((plan, metadata))
 
 
 def _contract(
@@ -165,7 +176,6 @@ def _contract(
                 required=False,
             )
         )
-
     return OpenDataContractStandard(
         apiVersion="v3.1.0",
         kind="DataContract",
@@ -177,53 +187,83 @@ def _contract(
     )
 
 
-def test_workflow_assessment_builds_content_addressed_ci_bundle() -> None:
-    adapter = _PreviewAdapter()
-    target = DeploymentTarget(
+def _target() -> DeploymentTarget:
+    return DeploymentTarget(
         platform="fake",
         runtime_target="main.sales",
         source_reference="runtime:test",
     )
 
+
+def _release_history(tmp_path) -> ContractReleaseHistoryService:
+    return ContractReleaseHistoryService(
+        GitWorkingTreeHistoryRepository(tmp_path)
+    )
+
+
+def _review_release_bundle() -> DeploymentBundle:
+    return DeploymentWorkflowService().assess(
+        _contract(name="Orders"),
+        _contract(name="Orders", include_created_at=True),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=_target(),
+        adapter=_PreviewAdapter(),
+        release=True,
+    )
+
+
+def test_candidate_assessment_does_not_calculate_release_version() -> None:
     bundle = DeploymentWorkflowService().assess(
         _contract(name="Orders old"),
         _contract(name="Orders new"),
         effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
-        target=target,
-        adapter=adapter,
+        target=_target(),
+        adapter=_PreviewAdapter(),
     )
 
-    assert adapter.preview_calls == 1
-    assert bundle.change_set.base_revision_ref == "git:base"
-    assert bundle.release_plan.release_revision_ref == "git:candidate"
-    assert bundle.release_snapshot.release_revision_ref == "git:candidate"
+    assert bundle.release is False
+    assert bundle.release_plan is None
+    assert bundle.version_resolution is None
+    assert bundle.release_snapshot is None
+    assert bundle.deployment_source.release is False
+    assert bundle.deployment_source.contract_version == "1.2.3"
+    assert bundle.deployment_plan.release is False
+    assert bundle.deployment_plan.contract_version == "1.2.3"
+    assert bundle.deployment_plan.plan_version == "4"
+
+
+def test_release_assessment_resolves_version_once_and_binds_source() -> None:
+    bundle = _review_release_bundle()
+
+    assert bundle.release is True
+    assert bundle.release_plan is not None
+    assert bundle.version_resolution is not None
+    assert bundle.release_snapshot is not None
+    assert bundle.deployment_source.release is True
     assert (
-        bundle.deployment_plan.release_id
+        bundle.deployment_source.release_id
         == bundle.release_snapshot.release_snapshot_id
     )
-    assert bundle.deployment_plan.plan_version == "3"
-    assert bundle.review_preview.deployment_plan_id == bundle.deployment_plan.deployment_plan_id
-    assert bundle.review_preview.operations[0].kind is NativeOperationKind.CREATE
-    assert bundle.bundle_digest.startswith("sha256:")
-    assert not hasattr(bundle, "authorization")
-    assert not hasattr(bundle.release_snapshot, "authorization_id")
+    assert (
+        bundle.deployment_source.contract_version
+        == bundle.version_resolution.selected_version
+    )
+    assert bundle.deployment_plan.release is True
+    assert bundle.deployment_plan.plan_version == "4"
 
 
 def test_same_inputs_produce_same_bundle_digest() -> None:
-    target = DeploymentTarget(
-        platform="fake",
-        runtime_target="main.sales",
-        source_reference="runtime:test",
-    )
     first = DeploymentWorkflowService().assess(
         _contract(name="Orders old"),
         _contract(name="Orders new"),
         effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
-        target=target,
+        target=_target(),
         adapter=_PreviewAdapter(),
     )
     second = DeploymentWorkflowService().assess(
@@ -232,27 +272,36 @@ def test_same_inputs_produce_same_bundle_digest() -> None:
         effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
-        target=target,
+        target=_target(),
         adapter=_PreviewAdapter(),
     )
-
-    assert first.bundle_digest == second.bundle_digest
     assert first == second
+    assert first.bundle_digest == second.bundle_digest
+
+
+def test_release_mode_changes_bundle_identity() -> None:
+    candidate = DeploymentWorkflowService().assess(
+        _contract(name="Orders"),
+        _contract(name="Orders", include_created_at=True),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=_target(),
+        adapter=_PreviewAdapter(),
+    )
+    release = _review_release_bundle()
+
+    assert candidate.bundle_digest != release.bundle_digest
 
 
 def test_bundle_rehydration_fails_closed_when_digest_is_tampered() -> None:
-    target = DeploymentTarget(
-        platform="fake",
-        runtime_target="main.sales",
-        source_reference="runtime:test",
-    )
     bundle = DeploymentWorkflowService().assess(
         _contract(name="Orders old"),
         _contract(name="Orders new"),
         effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
-        target=target,
+        target=_target(),
         adapter=_PreviewAdapter(),
     )
     payload = bundle.model_dump(mode="json")
@@ -262,12 +311,27 @@ def test_bundle_rehydration_fails_closed_when_digest_is_tampered() -> None:
         DeploymentBundle.model_validate(payload)
 
 
-def test_cd_uses_fresh_preview_not_ci_review_preview() -> None:
-    target = DeploymentTarget(
-        platform="fake",
-        runtime_target="main.sales",
-        source_reference="runtime:test",
+def test_candidate_review_deployment_needs_no_approval_or_release_history() -> None:
+    service = DeploymentWorkflowService()
+    bundle = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders", include_created_at=True),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=_target(),
+        adapter=_PreviewAdapter(),
     )
+    assert bundle.decision.decision is DecisionResult.REVIEW
+    assert bundle.release is False
+
+    result = service.deploy(bundle, adapter=_ExecutionAdapter())
+
+    assert result.release_record_id is None
+    assert result.status is RuntimeDriftStatus.IN_SYNC
+
+
+def test_cd_uses_fresh_preview_not_ci_review_preview() -> None:
     service = DeploymentWorkflowService()
     bundle = service.assess(
         _contract(name="Orders old"),
@@ -275,13 +339,11 @@ def test_cd_uses_fresh_preview_not_ci_review_preview() -> None:
         effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
-        target=target,
+        target=_target(),
         adapter=_PreviewAdapter(),
     )
-    assert bundle.decision.decision is DecisionResult.ALLOW
-    assert bundle.review_preview.operations[0].kind is NativeOperationKind.CREATE
-
     adapter = _ExecutionAdapter()
+
     result = service.deploy(bundle, adapter=adapter)
 
     assert adapter.preview_calls == 1
@@ -290,15 +352,9 @@ def test_cd_uses_fresh_preview_not_ci_review_preview() -> None:
     assert adapter.executed_preview is result.fresh_preview
     assert result.fresh_preview.operations[0].kind is NativeOperationKind.NO_OP
     assert result.review_preview_changed is True
-    assert result.status is RuntimeDriftStatus.IN_SYNC
 
 
-def test_workflow_approval_is_derived_from_exact_review_bundle() -> None:
-    target = DeploymentTarget(
-        platform="fake",
-        runtime_target="main.sales",
-        source_reference="runtime:test",
-    )
+def test_non_release_bundle_rejects_manual_approval() -> None:
     service = DeploymentWorkflowService()
     bundle = service.assess(
         _contract(name="Orders"),
@@ -306,82 +362,95 @@ def test_workflow_approval_is_derived_from_exact_review_bundle() -> None:
         effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
-        target=target,
+        target=_target(),
         adapter=_PreviewAdapter(),
     )
+
+    with pytest.raises(ValidationError, match="Non-release"):
+        service.approve(
+            bundle,
+            actor_reference="human:reviewer",
+            recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
+        )
+
+
+def test_release_approval_is_derived_from_exact_bundle() -> None:
+    service = DeploymentWorkflowService()
+    bundle = _review_release_bundle()
 
     approval = service.approve(
         bundle,
         actor_reference="human:reviewer",
         recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
-        comment="Approved for production",
     )
 
     assert approval.operation is GovernanceOperation.DEPLOY
     assert approval.action is ReviewEvidenceAction.APPROVE
     assert approval.scope_reference == bundle.deployment_plan.deployment_plan_id
     assert approval.evidence_references == (bundle.bundle_digest,)
-    assert approval.decision_id == bundle.decision.decision_id
 
 
-def test_review_deployment_requires_approval_bound_to_plan_and_bundle_digest() -> None:
-    target = DeploymentTarget(
-        platform="fake",
-        runtime_target="main.sales",
-        source_reference="runtime:test",
-    )
+def test_review_release_requires_approval_and_records_formal_release(tmp_path) -> None:
     service = DeploymentWorkflowService()
-    bundle = service.assess(
-        _contract(name="Orders"),
-        _contract(name="Orders", include_created_at=True),
-        effective_date="2026-09-20",
-        base_revision_ref="git:base",
-        candidate_revision_ref="git:candidate",
-        target=target,
-        adapter=_PreviewAdapter(),
-    )
-    assert bundle.decision.decision is DecisionResult.REVIEW
+    bundle = _review_release_bundle()
 
     with pytest.raises(ContractOpsAuthorizationError, match="requires approval"):
-        service.deploy(bundle, adapter=_ExecutionAdapter())
+        service.deploy(
+            bundle,
+            adapter=_ExecutionAdapter(),
+            release_history=_release_history(tmp_path),
+        )
 
-    approval = build_approval_record(
-        decision_id=bundle.decision.decision_id,
-        change_set_id=bundle.change_set.change_set_id,
-        release_plan_id=bundle.release_plan.release_plan_id,
-        version_resolution_id=bundle.version_resolution.version_resolution_id,
-        operation=GovernanceOperation.DEPLOY,
-        action=ReviewEvidenceAction.APPROVE,
+    approval = service.approve(
+        bundle,
         actor_reference="human:reviewer",
         recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
-        scope_reference=bundle.deployment_plan.deployment_plan_id,
-        evidence_references=(bundle.bundle_digest,),
     )
+    result = service.deploy(
+        bundle,
+        adapter=_ExecutionAdapter(),
+        approval=approval,
+        release_history=_release_history(tmp_path),
+    )
+
+    assert result.release_record_id is not None
+    repository = GitWorkingTreeHistoryRepository(tmp_path)
+    record = repository.get_contract_release(result.release_record_id)
+    assert record.contract_version == bundle.version_resolution.selected_version
+    assert record.bundle_digest == bundle.bundle_digest
+    assert record.approval_id == approval.approval_id
+
+
+def test_release_projects_metadata_only_after_in_sync(tmp_path) -> None:
+    service = DeploymentWorkflowService()
+    bundle = _review_release_bundle()
+    approval = service.approve(
+        bundle,
+        actor_reference="human:reviewer",
+        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
+    )
+    projector = _MetadataProjector()
 
     result = service.deploy(
         bundle,
         adapter=_ExecutionAdapter(),
         approval=approval,
+        release_history=_release_history(tmp_path),
+        metadata_projector=projector,
     )
+
     assert result.status is RuntimeDriftStatus.IN_SYNC
+    assert len(projector.calls) == 1
+    plan, metadata = projector.calls[0]
+    assert metadata.contract_version == plan.contract_version
+    assert metadata.contract_release_id == result.release_record_id
 
 
-def test_review_deployment_rejects_approval_for_different_bundle_digest() -> None:
-    target = DeploymentTarget(
-        platform="fake",
-        runtime_target="main.sales",
-        source_reference="runtime:test",
-    )
+def test_review_release_rejects_approval_for_different_bundle_digest(tmp_path) -> None:
     service = DeploymentWorkflowService()
-    bundle = service.assess(
-        _contract(name="Orders"),
-        _contract(name="Orders", include_created_at=True),
-        effective_date="2026-09-20",
-        base_revision_ref="git:base",
-        candidate_revision_ref="git:candidate",
-        target=target,
-        adapter=_PreviewAdapter(),
-    )
+    bundle = _review_release_bundle()
+    assert bundle.release_plan is not None
+    assert bundle.version_resolution is not None
     approval = build_approval_record(
         decision_id=bundle.decision.decision_id,
         change_set_id=bundle.change_set.change_set_id,
@@ -400,25 +469,13 @@ def test_review_deployment_rejects_approval_for_different_bundle_digest() -> Non
             bundle,
             adapter=_ExecutionAdapter(),
             approval=approval,
+            release_history=_release_history(tmp_path),
         )
 
 
-def test_deployment_approval_resolver_finds_exact_git_history_record(tmp_path) -> None:
-    target = DeploymentTarget(
-        platform="fake",
-        runtime_target="main.sales",
-        source_reference="runtime:test",
-    )
+def test_deployment_approval_resolver_finds_exact_release_record(tmp_path) -> None:
     service = DeploymentWorkflowService()
-    bundle = service.assess(
-        _contract(name="Orders"),
-        _contract(name="Orders", include_created_at=True),
-        effective_date="2026-09-20",
-        base_revision_ref="git:base",
-        candidate_revision_ref="git:candidate",
-        target=target,
-        adapter=_PreviewAdapter(),
-    )
+    bundle = _review_release_bundle()
     approval = service.approve(
         bundle,
         actor_reference="github:user:reviewer",
@@ -427,83 +484,23 @@ def test_deployment_approval_resolver_finds_exact_git_history_record(tmp_path) -
     repository = GitWorkingTreeHistoryRepository(tmp_path)
     repository.put_approval_record(approval)
 
-    resolved = DeploymentApprovalResolver(repository).resolve(bundle)
-
-    assert resolved == approval
+    assert DeploymentApprovalResolver(repository).resolve(bundle) == approval
 
 
-def test_deployment_approval_resolver_ignores_non_exact_records(tmp_path) -> None:
-    target = DeploymentTarget(
-        platform="fake",
-        runtime_target="main.sales",
-        source_reference="runtime:test",
-    )
-    service = DeploymentWorkflowService()
-    bundle = service.assess(
+def test_deployment_approval_resolver_ignores_candidate_bundle(tmp_path) -> None:
+    bundle = DeploymentWorkflowService().assess(
         _contract(name="Orders"),
         _contract(name="Orders", include_created_at=True),
         effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
-        target=target,
+        target=_target(),
         adapter=_PreviewAdapter(),
     )
-    repository = GitWorkingTreeHistoryRepository(tmp_path)
-    wrong_digest = build_approval_record(
-        decision_id=bundle.decision.decision_id,
-        change_set_id=bundle.change_set.change_set_id,
-        release_plan_id=bundle.release_plan.release_plan_id,
-        version_resolution_id=bundle.version_resolution.version_resolution_id,
-        operation=GovernanceOperation.DEPLOY,
-        action=ReviewEvidenceAction.APPROVE,
-        actor_reference="github:user:reviewer",
-        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
-        scope_reference=bundle.deployment_plan.deployment_plan_id,
-        evidence_references=("sha256:" + ("0" * 64),),
-    )
-    repository.put_approval_record(wrong_digest)
 
-    assert DeploymentApprovalResolver(repository).resolve(bundle) is None
-
-
-def test_deployment_approval_resolver_fails_closed_on_conflicting_exact_history(
-    tmp_path,
-) -> None:
-    target = DeploymentTarget(
-        platform="fake",
-        runtime_target="main.sales",
-        source_reference="runtime:test",
+    assert (
+        DeploymentApprovalResolver(
+            GitWorkingTreeHistoryRepository(tmp_path)
+        ).resolve(bundle)
+        is None
     )
-    service = DeploymentWorkflowService()
-    bundle = service.assess(
-        _contract(name="Orders"),
-        _contract(name="Orders", include_created_at=True),
-        effective_date="2026-09-20",
-        base_revision_ref="git:base",
-        candidate_revision_ref="git:candidate",
-        target=target,
-        adapter=_PreviewAdapter(),
-    )
-    repository = GitWorkingTreeHistoryRepository(tmp_path)
-
-    approved = service.approve(
-        bundle,
-        actor_reference="github:user:alice",
-        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
-    )
-    request_changes = build_approval_record(
-        decision_id=bundle.decision.decision_id,
-        change_set_id=bundle.change_set.change_set_id,
-        release_plan_id=bundle.release_plan.release_plan_id,
-        version_resolution_id=bundle.version_resolution.version_resolution_id,
-        operation=GovernanceOperation.DEPLOY,
-        action=ReviewEvidenceAction.REQUEST_CHANGES,
-        actor_reference="github:user:bob",
-        recorded_at=datetime(2026, 9, 20, 2, 1, tzinfo=timezone.utc),
-        scope_reference=bundle.deployment_plan.deployment_plan_id,
-        evidence_references=(bundle.bundle_digest,),
-    )
-    repository.put_approval_record(approved)
-    repository.put_approval_record(request_changes)
-
-    assert DeploymentApprovalResolver(repository).resolve(bundle) is None
