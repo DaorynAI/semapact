@@ -8,8 +8,10 @@ from semapact.deployment import (
     DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
+    DeploymentSourceSnapshot,
     DeploymentTarget,
     build_deployment_plan,
+    build_deployment_plan_from_source,
 )
 from semapact.exceptions import ValidationError
 from semapact.reconciliation import ReconciliationResult
@@ -20,9 +22,11 @@ class DeploymentService:
 
     def plan(
         self,
-        release: ReleaseSnapshot | AppliedContractRelease,
+        release: ReleaseSnapshot | AppliedContractRelease | DeploymentSourceSnapshot,
         target: DeploymentTarget,
     ) -> DeploymentPlan:
+        if isinstance(release, DeploymentSourceSnapshot):
+            return build_deployment_plan_from_source(release, target)
         return build_deployment_plan(release, target)
 
     def preview(
