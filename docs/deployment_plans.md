@@ -333,7 +333,7 @@ ApprovalRecord
 ContractReleaseRecord
 ```
 
-`semapact release finalize` creates one immutable, target-neutral `ContractReleaseRecord` containing the released contract version, exact revision, and release-artifact identities. Target-specific deployment bundles remain separate. Candidate deployment creates no release history.
+`semapact release finalize` creates one immutable, target-neutral `ContractReleaseRecord` containing the released contract version, the exact source revision from which the release was derived, and release-artifact identities. The released contract snapshot itself is canonical; the source revision is provenance and need not already contain the materialized version bump. Target-specific deployment bundles remain separate. Candidate deployment creates no release history.
 
 The Git adapter writes deterministic history files under `.semapact/history/`. The surrounding GitOps workflow remains responsible for committing/publishing those files; SemaPact does not silently push repository branches.
 
@@ -410,7 +410,7 @@ After deployment of a **finalized formal release** reaches schema reconciliation
 semapact_contract_id
 semapact_contract_version
 semapact_release_id
-semapact_revision
+semapact_source_revision
 ```
 
 For example, a released `orders@1.4.0` table is tagged with version `1.4.0` and the exact `ContractReleaseRecord` identity. Candidate/non-release deployments never publish formal release/version tags.
