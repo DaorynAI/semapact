@@ -65,11 +65,12 @@ def build_deployment_plan(
 
     return DeploymentPlan(
         deployment_plan_id=deployment_plan_id,
+        source_snapshot_id=release_id,
         release_id=release_id,
         contract_id=release.contract_id,
         release_plan_id=release.release_plan_id,
-        released_revision_ref=release.release_revision_ref,
-        selected_version=release.selected_version,
+        revision_ref=release.release_revision_ref,
+        contract_version=release.selected_version,
         target=target,
         actions=ordered_actions,
         plan_version=plan_version,
