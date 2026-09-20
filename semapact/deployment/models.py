@@ -170,9 +170,9 @@ class DeploymentPlan(DeploymentModel):
             raise ValueError("DeploymentPlan cannot contain duplicate governed assets")
 
         if self.plan_version == "5":
-            if self.release_plan_id is not None:
+            if self.release_id is not None or self.release_plan_id is not None:
                 raise ValueError(
-                    "Canonical DeploymentPlan must not duplicate release_plan_id"
+                    "Canonical DeploymentPlan must not duplicate release provenance"
                 )
         else:
             has_release_id = self.release_id is not None
@@ -188,6 +188,10 @@ class DeploymentPlan(DeploymentModel):
 
     @property
     def is_release(self) -> bool:
+        if self.plan_version == "5":
+            raise ValueError(
+                "Canonical DeploymentPlan release mode belongs to DeploymentSourceSnapshot"
+            )
         return self.release_id is not None
 
     @property
@@ -392,9 +396,9 @@ def compute_deployment_plan_id(
         raise ValueError(
             "Legacy DeploymentPlan release_id and release_plan_id must be provided together"
         )
-    if plan_version == "5" and release_plan_id is not None:
+    if plan_version == "5" and (release_id is not None or release_plan_id is not None):
         raise ValueError(
-            "Canonical DeploymentPlan must not duplicate release_plan_id"
+            "Canonical DeploymentPlan must not duplicate release provenance"
         )
     derived_release = has_release_id
     if plan_version == "4" and release is not None and bool(release) != derived_release:
