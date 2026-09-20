@@ -421,23 +421,20 @@ The Databricks principal running CD must have the Unity Catalog privileges neede
 
 Tag mutation is a provider side effect and therefore requires a Databricks SQL warehouse even when the schema deployment itself resolves to `NO_OP`. A tag-write failure fails the release deployment command rather than silently claiming the runtime is fully projected.
 
-## Authorization scope
+## Execution trust boundary
 
-Candidate and release deployment use different authorization semantics:
+Candidate and finalized-release deployments use different provenance, but neither turns release state into runtime execution authority:
 
 ```text
 candidate deployment
 → exact GovernanceDecision + candidate source snapshot
 → BLOCK fails closed
-→ no release ApprovalRecord
 
 formal release deployment
-→ exact ContractOps release context
-→ REVIEW requires exact approval
-→ exact DeploymentPlan authorization
+→ exact finalized ContractRelease provenance
 ```
 
-In both modes, authorization binds the exact source snapshot and target-specific DeploymentPlan before runtime mutation.
+Whether runtime mutation may execute is decided by the surrounding protected CD context, such as a GitHub Environment or Azure DevOps Environment. SemaPact validates the exact bundle, source/plan linkage, fresh runtime observation, deterministic preview, and convergence; it does not manufacture DEPLOY authority from a ContractRelease.
 
 ## Determinism
 
