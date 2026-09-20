@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
@@ -10,6 +10,9 @@ from semapact.application.models.deployment_workflow import (
     DeploymentBundle,
     DeploymentExecutionResult,
     build_deployment_bundle,
+)
+from semapact.application.services.contract_release_history import (
+    ContractReleaseHistoryService,
 )
 from semapact.application.services.deployment import DeploymentService
 from semapact.application.services.governance import GovernanceService
@@ -27,6 +30,8 @@ from semapact.contractops import (
 from semapact.deployment import (
     DeploymentAdapter,
     DeploymentTarget,
+    RuntimeReleaseMetadata,
+    RuntimeReleaseMetadataProjector,
     authorize_candidate_deployment,
     authorize_deployment,
     build_candidate_deployment_source,
@@ -34,7 +39,11 @@ from semapact.deployment import (
 )
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.governance import DecisionResult, GovernanceOperation
-from semapact.reconciliation import classify_reconciliation_status
+from semapact.history import (
+    OperationalHistorySink,
+    build_operational_deployment_event,
+)
+from semapact.reconciliation import RuntimeDriftStatus, classify_reconciliation_status
 
 
 class DeploymentWorkflowService:
@@ -156,12 +165,21 @@ class DeploymentWorkflowService:
         *,
         adapter: DeploymentAdapter,
         approval: ApprovalRecord | None = None,
+        release_history: ContractReleaseHistoryService | None = None,
+        operational_history: OperationalHistorySink | None = None,
+        metadata_projector: RuntimeReleaseMetadataProjector | None = None,
     ) -> DeploymentExecutionResult:
-        """Consume one exact bundle, authorize, fresh-preview, execute, and verify."""
+        """Consume one exact bundle, authorize, deploy, verify, and persist configured facts."""
         if not isinstance(bundle, DeploymentBundle):
             raise TypeError(
                 f"bundle must be DeploymentBundle, got {type(bundle).__name__}"
             )
+
+        started_at = datetime.now(timezone.utc)
+        release_record = None
+        deployment_authorization = None
+        fresh_preview = None
+
 
         contract_authorization = None
         if bundle.release:
@@ -218,6 +236,16 @@ class DeploymentWorkflowService:
                     "Candidate deployment is blocked by governance"
                 )
 
+        if bundle.release:
+            if release_history is None:
+                raise ValidationError(
+                    "Formal release deployment requires a release history repository"
+                )
+            release_record = release_history.record_release(
+                bundle,
+                approval=approval,
+            )
+
         # CI-time review preview is evidence only. CD always derives a fresh preview.
         fresh_preview = self._deployment.preview(
             bundle.deployment_plan,
@@ -235,13 +263,59 @@ class DeploymentWorkflowService:
         )
         status = classify_reconciliation_status(reconciliation)
 
-        return DeploymentExecutionResult(
+        if (
+            bundle.release
+            and status is RuntimeDriftStatus.IN_SYNC
+            and release_record is not None
+            and metadata_projector is not None
+        ):
+            metadata_projector.project_release_metadata(
+                bundle.deployment_plan,
+                RuntimeReleaseMetadata(
+                    contract_id=release_record.contract_id,
+                    contract_version=release_record.contract_version,
+                    contract_release_id=release_record.contract_release_id,
+                    revision_ref=release_record.revision_ref,
+                ),
+            )
+
+        result = DeploymentExecutionResult(
             bundle_digest=bundle.bundle_digest,
             deployment_plan_id=bundle.deployment_plan.deployment_plan_id,
             authorization_id=deployment_authorization.deployment_authorization_id,
+            release_record_id=(
+                release_record.contract_release_id
+                if release_record is not None
+                else None
+            ),
             fresh_preview=fresh_preview,
             reconciliation=reconciliation,
             status=status,
             review_preview_changed=fresh_preview != bundle.review_preview,
         )
+        if operational_history is not None:
+            operational_history.record_deployment(
+                build_operational_deployment_event(
+                    bundle_digest=bundle.bundle_digest,
+                    release=bundle.release,
+                    release_record_id=result.release_record_id,
+                    contract_id=bundle.deployment_plan.contract_id,
+                    contract_version=bundle.deployment_plan.contract_version,
+                    revision_ref=bundle.deployment_plan.revision_ref,
+                    deployment_plan_id=bundle.deployment_plan.deployment_plan_id,
+                    deployment_preview_id=fresh_preview.deployment_preview_id,
+                    deployment_authorization_id=(
+                        deployment_authorization.deployment_authorization_id
+                    ),
+                    platform=bundle.deployment_plan.target.platform,
+                    runtime_target=bundle.deployment_plan.target.runtime_target,
+                    source_reference=bundle.deployment_plan.target.source_reference,
+                    status="SUCCEEDED",
+                    reconciliation_status=status,
+                    started_at=started_at,
+                    completed_at=datetime.now(timezone.utc),
+                    error_message=None,
+                )
+            )
+        return result
 
