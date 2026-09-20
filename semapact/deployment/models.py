@@ -7,7 +7,14 @@ from enum import Enum
 from typing import Literal, Sequence
 
 from open_data_contract_standard.model import SchemaObject
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from semapact.lifecycle.identity import normalize_identity_name
 from semapact.utils.deterministic import deterministic_uuid5
@@ -122,21 +129,23 @@ class DeploymentAction(DeploymentModel):
 
 
 class DeploymentPlan(DeploymentModel):
-    """Pure deterministic runtime convergence plan for one applied release."""
+    """Pure deterministic runtime convergence plan for one exact release snapshot."""
 
     deployment_plan_id: str
-    applied_release_id: str
+    release_id: str = Field(
+        validation_alias=AliasChoices("release_id", "applied_release_id")
+    )
     contract_id: str
     release_plan_id: str
     released_revision_ref: str
     selected_version: str
     target: DeploymentTarget
     actions: tuple[DeploymentAction, ...]
-    plan_version: Literal["2"] = "2"
+    plan_version: Literal["2", "3"] = "3"
 
     @field_validator(
         "deployment_plan_id",
-        "applied_release_id",
+        "release_id",
         "contract_id",
         "release_plan_id",
         "released_revision_ref",
@@ -158,6 +167,11 @@ class DeploymentPlan(DeploymentModel):
             raise ValueError("DeploymentPlan cannot contain duplicate governed assets")
         validate_deployment_plan_identity(self)
         return self
+
+    @property
+    def applied_release_id(self) -> str:
+        """Compatibility alias for serialized v2 deployment plans."""
+        return self.release_id
 
 
 class NativeOperation(DeploymentModel):
@@ -291,19 +305,28 @@ class DeploymentAuthorization(DeploymentModel):
 
 def compute_deployment_plan_id(
     *,
-    applied_release_id: str,
+    release_id: str | None = None,
+    applied_release_id: str | None = None,
     contract_id: str,
     release_plan_id: str,
     released_revision_ref: str,
     selected_version: str,
     target: DeploymentTarget,
     actions: Sequence[DeploymentAction],
-    plan_version: str = "2",
+    plan_version: str = "3",
 ) -> str:
+    resolved_release_id = _resolve_release_id(
+        release_id=release_id,
+        applied_release_id=applied_release_id,
+    )
+    if plan_version not in {"2", "3"}:
+        raise ValueError(f"Unsupported DeploymentPlan version: {plan_version}")
+
+    release_key = "applied_release_id" if plan_version == "2" else "release_id"
     return deterministic_uuid5(
         SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
         {
-            "applied_release_id": applied_release_id,
+            release_key: resolved_release_id,
             "contract_id": contract_id,
             "release_plan_id": release_plan_id,
             "released_revision_ref": released_revision_ref,
@@ -313,6 +336,7 @@ def compute_deployment_plan_id(
             "plan_version": plan_version,
         },
     )
+
 
 
 def compute_deployment_assessment_id(
@@ -383,9 +407,26 @@ def compute_deployment_preview_id(
     )
 
 
+def _resolve_release_id(
+    *,
+    release_id: str | None,
+    applied_release_id: str | None,
+) -> str:
+    values = {
+        value.strip()
+        for value in (release_id, applied_release_id)
+        if isinstance(value, str) and value.strip()
+    }
+    if not values:
+        raise ValueError("release_id is required")
+    if len(values) != 1:
+        raise ValueError("release_id and applied_release_id must identify the same release")
+    return values.pop()
+
+
 def validate_deployment_plan_identity(plan: DeploymentPlan) -> None:
     expected = compute_deployment_plan_id(
-        applied_release_id=plan.applied_release_id,
+        release_id=plan.release_id,
         contract_id=plan.contract_id,
         release_plan_id=plan.release_plan_id,
         released_revision_ref=plan.released_revision_ref,
