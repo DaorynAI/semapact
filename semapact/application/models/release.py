@@ -8,7 +8,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from semapact.contractops import ChangeSet, ReleasePlan, ReleaseSnapshot, VersionResolution
+from semapact.contractops import (
+    ChangeSet,
+    ContractRelease,
+    ReleasePlan,
+    ReleaseSnapshot,
+    VersionResolution,
+)
+from semapact.contractops.integrity import compute_contract_release_id
 from semapact.governance import GovernanceDecision
 from semapact.utils.deterministic import canonical_compact_json
 
@@ -121,3 +128,32 @@ def compute_release_bundle_digest(
     }
     encoded = canonical_compact_json(payload).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def build_contract_release(bundle: ReleaseBundle) -> ContractRelease:
+    """Materialize the canonical target-neutral release fact from one exact bundle."""
+    snapshot = bundle.release_snapshot
+    resolution = bundle.version_resolution
+    release_id = compute_contract_release_id(
+        contract_id=snapshot.contract_id,
+        contract_version=snapshot.selected_version,
+        decision_id=bundle.decision.decision_id,
+        change_set_id=bundle.change_set.change_set_id,
+        release_plan_id=bundle.release_plan.release_plan_id,
+        version_resolution_id=resolution.version_resolution_id,
+        release_snapshot_id=snapshot.release_snapshot_id,
+        source_revision_ref=snapshot.release_revision_ref,
+        released_contract_json=snapshot.released_contract_json,
+    )
+    return ContractRelease(
+        contract_release_id=release_id,
+        contract_id=snapshot.contract_id,
+        contract_version=snapshot.selected_version,
+        decision_id=bundle.decision.decision_id,
+        change_set_id=bundle.change_set.change_set_id,
+        release_plan_id=bundle.release_plan.release_plan_id,
+        version_resolution_id=resolution.version_resolution_id,
+        release_snapshot_id=snapshot.release_snapshot_id,
+        source_revision_ref=snapshot.release_revision_ref,
+        released_contract_json=snapshot.released_contract_json,
+    )
