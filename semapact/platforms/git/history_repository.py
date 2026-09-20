@@ -7,13 +7,14 @@ pull requests; normal GitOps tooling can version the deterministic files it writ
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 
@@ -25,6 +26,12 @@ from semapact.contractops.integrity import (
     validate_release_plan_identity,
 )
 from semapact.deployment import DeploymentAuthorization, DeploymentPlan, DeploymentPreview
+from semapact.deployment.compatibility import (
+    parse_deployment_authorization_payload,
+    parse_deployment_plan_payload,
+    serialize_deployment_authorization_payload,
+    serialize_deployment_plan_payload,
+)
 from semapact.deployment.models import (
     validate_deployment_authorization_identity,
     validate_deployment_plan_identity,
@@ -73,6 +80,8 @@ class _HistoryKindSpec(Generic[T]):
     model_type: type[T]
     id_attribute: str
     integrity_validator: Callable[[T], None] | None = None
+    parser: Callable[[Mapping[str, Any]], T] | None = None
+    serializer: Callable[[T], dict[str, Any]] | None = None
 
 
 _DECISIONS = _HistoryKindSpec(
@@ -132,6 +141,8 @@ _DEPLOYMENT_PLANS = _HistoryKindSpec(
     DeploymentPlan,
     "deployment_plan_id",
     validate_deployment_plan_identity,
+    parse_deployment_plan_payload,
+    serialize_deployment_plan_payload,
 )
 _DEPLOYMENT_PREVIEWS = _HistoryKindSpec(
     "deployment_previews",
@@ -144,6 +155,8 @@ _DEPLOYMENT_AUTHORIZATIONS = _HistoryKindSpec(
     DeploymentAuthorization,
     "deployment_authorization_id",
     validate_deployment_authorization_identity,
+    parse_deployment_authorization_payload,
+    serialize_deployment_authorization_payload,
 )
 _DEPLOYMENT_RECORDS = _HistoryKindSpec(
     "deployment_records",
@@ -830,7 +843,7 @@ class GitWorkingTreeHistoryRepository:
         expected_id: str,
     ) -> None:
         existing = self._read_validated(spec, path, expected_id=expected_id)
-        existing_canonical = _canonical_model_json(existing)
+        existing_canonical = _canonical_artifact_json(spec, existing)
         if existing_canonical != canonical:
             raise HistoryConflictError(
                 f"{spec.model_type.__name__} {expected_id!r} already exists with different content"
@@ -847,7 +860,7 @@ class GitWorkingTreeHistoryRepository:
         try:
             raw = path.read_text(encoding="utf-8")
             self._verify_checksum_if_present(path, raw)
-            artifact = spec.model_type.model_validate_json(raw)
+            artifact = _parse_artifact_json(spec, raw)
             if spec.integrity_validator is not None:
                 spec.integrity_validator(artifact)
         except HistoryCorruptionError:
@@ -876,8 +889,8 @@ class GitWorkingTreeHistoryRepository:
                 f"artifact must be {spec.model_type.__name__}, got {type(artifact).__name__}"
             )
         try:
-            canonical = _canonical_model_json(artifact)
-            validated = spec.model_type.model_validate_json(canonical)
+            canonical = _canonical_artifact_json(spec, artifact)
+            validated = _parse_artifact_json(spec, canonical)
             if spec.integrity_validator is not None:
                 spec.integrity_validator(validated)
         except (PydanticValidationError, ValueError, TypeError) as exc:
@@ -1122,6 +1135,29 @@ def _integrity_issue_sort_key(
 
 def _path_name(path: Path) -> str:
     return path.name
+
+
+def _canonical_artifact_json(
+    spec: _HistoryKindSpec[T],
+    artifact: T,
+) -> str:
+    """Serialize at the persistence boundary, including legacy wire compatibility."""
+    if spec.serializer is not None:
+        return canonical_compact_json(spec.serializer(artifact))
+    return _canonical_model_json(artifact)
+
+
+def _parse_artifact_json(
+    spec: _HistoryKindSpec[T],
+    raw: str,
+) -> T:
+    """Rehydrate persisted wire data through the kind-specific boundary adapter."""
+    if spec.parser is not None:
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("Persisted history artifact must be a JSON object")
+        return spec.parser(payload)
+    return spec.model_type.model_validate_json(raw)
 
 
 def _canonical_model_json(artifact: BaseModel) -> str:
