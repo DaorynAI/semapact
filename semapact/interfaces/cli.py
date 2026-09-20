@@ -490,6 +490,26 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_effective_date_argument(deployment_assess_parser)
 
+    deployment_deploy_parser = deployment_subparsers.add_parser(
+        "deploy",
+        help="Consume an immutable DeploymentBundle, execute against fresh runtime, and verify",
+    )
+    deployment_deploy_parser.add_argument("--bundle", required=True)
+    deployment_deploy_parser.add_argument(
+        "--approval",
+        help="ApprovalRecord JSON required when governance decision is REVIEW",
+    )
+    deployment_deploy_parser.add_argument(
+        "--warehouse-id",
+        help="Databricks SQL warehouse required when fresh operations mutate runtime",
+    )
+    deployment_deploy_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
     deployment_plan_parser = deployment_subparsers.add_parser(
         "plan", help="Build a DeploymentPlan from an exact ReleaseSnapshot or legacy applied release"
     )
@@ -649,6 +669,7 @@ def main() -> int:
         if args.command == "deployment":
             from semapact.interfaces.commands.deployment_cmd import (
                 run_deployment_assess,
+                run_deployment_deploy,
                 run_deployment_execute,
                 run_deployment_plan,
                 run_deployment_preview,
@@ -658,6 +679,8 @@ def main() -> int:
 
             if args.deployment_command == "assess":
                 result = run_deployment_assess(args)
+            elif args.deployment_command == "deploy":
+                result = run_deployment_deploy(args)
             elif args.deployment_command == "plan":
                 result = run_deployment_plan(args)
             elif args.deployment_command == "preview":
