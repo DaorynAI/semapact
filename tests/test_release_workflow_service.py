@@ -12,7 +12,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from semapact.application.models.release import ReleaseBundle
 from semapact.application.services.release_approval import ReleaseApprovalResolver
-from semapact.application.services.release_workflow import ReleaseWorkflowService
+from semapact.application.services.release_workflow import ReleaseFinalizer, ReleaseWorkflowService
 from semapact.exceptions import ContractOpsAuthorizationError
 from semapact.governance import DecisionResult, GovernanceOperation
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
@@ -96,12 +96,10 @@ def test_review_release_finalize_requires_exact_approval(tmp_path) -> None:
     bundle = _bundle()
     repository = GitWorkingTreeHistoryRepository(tmp_path)
     workflow = ReleaseWorkflowService()
+    finalizer = ReleaseFinalizer()
 
     with pytest.raises(ContractOpsAuthorizationError, match="requires approval"):
-        workflow.finalize(
-            bundle,
-            release_history=repository,
-        )
+        finalizer.finalize(bundle)
 
     approval = workflow.approve(
         bundle,
@@ -109,11 +107,11 @@ def test_review_release_finalize_requires_exact_approval(tmp_path) -> None:
         recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
     )
     repository.put_approval_record(approval)
-    record = workflow.finalize(
+    record = finalizer.finalize(
         bundle,
-        release_history=repository,
         approval=approval,
     )
+    repository.put_contract_release(record)
 
     assert record.contract_version == "1.3.0"
     assert record.release_snapshot_id == bundle.release_snapshot.release_snapshot_id
