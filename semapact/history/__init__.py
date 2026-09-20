@@ -6,6 +6,7 @@ revision, governance, ContractOps, deployment, or reconciliation semantics.
 
 from semapact.history.models import (
     ChangeSetDecisionLink,
+    ContractReleaseRecord,
     DeploymentRecord,
     DeploymentStatus,
     HistoryIntegrityIssueCode,
@@ -18,6 +19,7 @@ from semapact.history.repository import (
     ApprovalHistoryRepository,
     ChangeSetDecisionLinkHistoryRepository,
     ChangeSetHistoryRepository,
+    ContractReleaseHistoryRepository,
     ContractRevisionHistoryRepository,
     ContractRevisionSourceHistoryRepository,
     DecisionHistoryRepository,
@@ -41,6 +43,8 @@ __all__ = [
     "ChangeSetDecisionLink",
     "ChangeSetDecisionLinkHistoryRepository",
     "ChangeSetHistoryRepository",
+    "ContractReleaseHistoryRepository",
+    "ContractReleaseRecord",
     "ContractRevisionHistoryRepository",
     "ContractRevisionSourceHistoryRepository",
     "DecisionHistoryRepository",
@@ -65,3 +69,20 @@ __all__ = [
     "RuntimeReconciliationHistoryRepository",
     "RuntimeReconciliationRecord",
 ]
+
+
+from semapact.history.operational import (
+    OperationalDeploymentEvent,
+    OperationalHistorySink,
+    build_operational_deployment_event,
+)
+from semapact.history.operational_registry import create_operational_history_sink
+
+__all__.extend(
+    [
+        "OperationalDeploymentEvent",
+        "OperationalHistorySink",
+        "build_operational_deployment_event",
+        "create_operational_history_sink",
+    ]
+)
