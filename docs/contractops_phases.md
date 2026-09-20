@@ -24,9 +24,6 @@ AUTHORIZE
 
 PUBLISH / DEPLOY
 → external side effects
-
-Legacy APPLY compatibility
-→ AppliedContractRelease
 ```
 
 Each phase consumes artifacts from the previous phases. Later phases do not recalculate earlier decisions.
