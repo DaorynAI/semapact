@@ -554,8 +554,9 @@ def _build_parser() -> argparse.ArgumentParser:
     deployment_deploy_parser.add_argument(
         "--operational-history",
         help=(
-            "Optional operational history backend URI: sqlite:///path/to/history.db "
-            "or delta:///path/to/table. Omit to disable deployment telemetry persistence."
+            "Optional operational-history URI override. When omitted, SemaPact reads "
+            "typed history.operational configuration; if neither is configured, "
+            "deployment telemetry persistence is disabled."
         ),
     )
     deployment_deploy_parser.add_argument(
