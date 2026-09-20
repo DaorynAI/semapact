@@ -38,6 +38,17 @@ class DeploymentService:
         _validate_component_key(adapter.key, plan.target.platform, "deployment adapter")
         return adapter.preview(plan)
 
+    def apply(
+        self,
+        plan: DeploymentPlan,
+        preview: DeploymentPreview,
+        *,
+        adapter: DeploymentAdapter,
+    ) -> None:
+        """Apply one exact preview after the external execution boundary allows CD."""
+        _validate_component_key(adapter.key, plan.target.platform, "deployment adapter")
+        adapter.apply(plan, preview)
+
     def execute(
         self,
         plan: DeploymentPlan,
