@@ -179,7 +179,7 @@ ReleaseBundle
         ↓
 release finalize
         ↓
-ContractReleaseRecord
+ContractRelease
 + versioned ODCS contract
 ```
 
@@ -208,14 +208,14 @@ base + candidate
 Finalized-release deployment:
 
 ```text
-ContractReleaseRecord
+ContractRelease
 → DeploymentSourceSnapshot(release=true)
 → target-specific DeploymentPlan
 → fresh DeploymentPreview
 → DeploymentBundle
 ```
 
-A release-mode `DeploymentBundle` therefore carries the exact finalized `ContractReleaseRecord`, not `ReleasePlan`, `VersionResolution`, or `ReleaseSnapshot`. Deployment never creates or versions a contract release.
+A release-mode `DeploymentBundle` therefore carries the exact finalized `ContractRelease`, not `ReleasePlan`, `VersionResolution`, or `ReleaseSnapshot`. Deployment never creates or versions a contract release.
 
 ## CLI workflow
 
@@ -276,7 +276,7 @@ semapact release finalize \
 Finalization:
 
 - authorizes the exact formal release;
-- writes one immutable `ContractReleaseRecord` to the Git governance ledger;
+- writes one immutable `ContractRelease` to the Git governance ledger;
 - writes the selected version back to the ODCS contract file.
 
 After finalization, build any target-specific deployment bundle from the release identity:
@@ -298,10 +298,10 @@ Two immutable boundaries are now explicit:
 CI release planning
 → ReleaseBundle
 → approval/finalize
-→ ContractReleaseRecord
+→ ContractRelease
 
 runtime planning
-ContractReleaseRecord + target
+ContractRelease + target
 → DeploymentBundle
 → fresh CD execution
 ```
@@ -330,14 +330,14 @@ Git-backed history is appropriate for durable reviewable facts such as:
 
 ```text
 ApprovalRecord
-ContractReleaseRecord
+ContractRelease
 ```
 
-`semapact release finalize` creates one immutable, target-neutral `ContractReleaseRecord` containing the released contract version, the exact source revision from which the release was derived, and release-artifact identities. The released contract snapshot itself is canonical; the source revision is provenance and need not already contain the materialized version bump. Target-specific deployment bundles remain separate. Candidate deployment creates no release history.
+`semapact release finalize` creates one immutable, target-neutral `ContractRelease` containing the released contract version, the exact source revision from which the release was derived, and release-artifact identities. The released contract snapshot itself is canonical; the source revision is provenance and need not already contain the materialized version bump. Target-specific deployment bundles remain separate. Candidate deployment creates no release history.
 
 The Git adapter writes deterministic history files under `.semapact/history/`. The surrounding GitOps workflow remains responsible for committing/publishing those files; SemaPact does not silently push repository branches.
 
-The formal release fact is independent of runtime convergence. Once `ContractReleaseRecord` is created, a later runtime deployment failure does not undo or renumber the release.
+The formal release fact is independent of runtime convergence. Once `ContractRelease` is created, a later runtime deployment failure does not undo or renumber the release.
 
 ### Operational history — opt in
 
@@ -413,7 +413,7 @@ semapact_release_id
 semapact_source_revision
 ```
 
-For example, a released `orders@1.4.0` table is tagged with version `1.4.0` and the exact `ContractReleaseRecord` identity. Candidate/non-release deployments never publish formal release/version tags.
+For example, a released `orders@1.4.0` table is tagged with version `1.4.0` and the exact `ContractRelease` identity. Candidate/non-release deployments never publish formal release/version tags.
 
 This projection is deliberately limited to SemaPact provenance. ODCS business tags, classifications, PII labels, or governed ABAC tags are **not** automatically mapped to Unity Catalog tags; those require a separate explicit mapping policy.
 
