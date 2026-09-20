@@ -15,6 +15,7 @@ from open_data_contract_standard.model import (
 )
 
 from semapact.application.services.deployment import DeploymentService
+from semapact.application.services.deployment_workflow import DeploymentWorkflowService
 from semapact.change_context import ChangeContext
 from semapact.contractops import (
     apply_contract_release,
@@ -341,6 +342,76 @@ def _assert_in_sync(workflow) -> None:
     assert classify_reconciliation_status(result) is RuntimeDriftStatus.IN_SYNC
     assert result.differences == ()
     assert result.unverified_paths == ()
+
+
+def test_bundle_ci_to_cd_create_and_fresh_verify_converge() -> None:
+    workspace = _StatefulWorkspace(present=False)
+    adapter = _adapter(workspace)
+    base = _contract(
+        _property("id", "integer", required=True),
+        name="orders-old",
+    )
+    candidate = _contract(
+        _property("id", "integer", required=True),
+        name="orders-new",
+    )
+    service = DeploymentWorkflowService()
+
+    bundle = service.assess(
+        base,
+        candidate,
+        effective_date=_CONTEXT.effective_date,
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=_target(),
+        adapter=adapter,
+    )
+    assert bundle.review_preview.operations[0].kind is NativeOperationKind.CREATE
+
+    result = service.deploy(bundle, adapter=adapter)
+
+    assert result.status is RuntimeDriftStatus.IN_SYNC
+    assert result.fresh_preview.operations[0].kind is NativeOperationKind.CREATE
+    assert workspace.statements == [
+        "CREATE TABLE `main`.`silver`.`orders` "
+        "(`id` INT NOT NULL) USING DELTA"
+    ]
+
+
+def test_bundle_cd_replans_against_runtime_changed_after_ci() -> None:
+    workspace = _StatefulWorkspace(present=False)
+    adapter = _adapter(workspace)
+    base = _contract(
+        _property("id", "integer", required=True),
+        name="orders-old",
+    )
+    candidate = _contract(
+        _property("id", "integer", required=True),
+        name="orders-new",
+    )
+    service = DeploymentWorkflowService()
+
+    bundle = service.assess(
+        base,
+        candidate,
+        effective_date=_CONTEXT.effective_date,
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=_target(),
+        adapter=adapter,
+    )
+    assert bundle.review_preview.operations[0].kind is NativeOperationKind.CREATE
+
+    # Another actor converges the table after CI but before CD.
+    workspace.present = True
+    workspace.columns = [("id", "INT", False)]
+
+    result = service.deploy(bundle, adapter=adapter)
+
+    assert result.status is RuntimeDriftStatus.IN_SYNC
+    assert result.review_preview_changed is True
+    assert result.fresh_preview.operations[0].kind is NativeOperationKind.NO_OP
+    assert workspace.statements == []
 
 
 def test_missing_table_create_execute_and_fresh_verify_converge() -> None:
