@@ -178,3 +178,63 @@ def test_assessment_source_reference_cannot_override_contract_host() -> None:
             server,
             "https://other-workspace.example",
         )
+
+
+def test_operational_history_cli_override_takes_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from semapact.core.config import config_manager
+
+    monkeypatch.setattr(
+        config_manager,
+        "get",
+        lambda *args, **kwargs: {
+            "backend": "sqlite",
+            "path": ".semapact/from-config.db",
+        },
+    )
+
+    assert (
+        deployment_cmd._resolve_operational_history_uri(
+            "sqlite:///explicit.db"
+        )
+        == "sqlite:///explicit.db"
+    )
+
+
+def test_operational_history_falls_back_to_typed_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from semapact.core.config import config_manager
+
+    monkeypatch.setattr(
+        config_manager,
+        "get",
+        lambda *args, **kwargs: {
+            "backend": "sqlite",
+            "path": ".semapact/operational.db",
+        },
+    )
+
+    assert (
+        deployment_cmd._resolve_operational_history_uri(None)
+        == "sqlite:///.semapact/operational.db"
+    )
+
+
+def test_invalid_operational_history_config_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from semapact.core.config import config_manager
+
+    monkeypatch.setattr(
+        config_manager,
+        "get",
+        lambda *args, **kwargs: {
+            "backend": "git",
+            "path": ".semapact/history",
+        },
+    )
+
+    with pytest.raises(ValidationError, match="history.operational"):
+        deployment_cmd._resolve_operational_history_uri(None)
