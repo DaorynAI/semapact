@@ -67,19 +67,26 @@ GovernanceDecision
 Governance Gate
 ```
 
-Canonical ContractOps then carries the exact governed decision forward:
+The exact governed decision then feeds either candidate deployment or an explicit formal release:
 
 ```text
 GovernanceDecision
 → ChangeSet
-→ ReleasePlan
-→ VersionResolution
-→ ReleaseSnapshot
-→ DeploymentPlan
-→ DeploymentBundle (CI artifact)
-
-Approval / authorization remains a separate side-effect boundary before runtime mutation.
+   ├─ candidate deployment
+   │    → DeploymentSourceSnapshot
+   │    → DeploymentPlan
+   │    → DeploymentBundle
+   │
+   └─ formal release (--release)
+        → ReleasePlan
+        → VersionResolution
+        → ReleaseSnapshot
+        → DeploymentPlan
+        → DeploymentBundle
+        → ContractReleaseRecord
 ```
+
+Release approval and runtime authorization remain explicit side-effect boundaries.
 
 For production assurance:
 
