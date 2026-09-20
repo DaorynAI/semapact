@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 
 import pytest
 from open_data_contract_standard.model import (
-    OpenDataContractStandard,
     SchemaObject,
     SchemaProperty,
 )
@@ -13,7 +12,6 @@ from semapact.deployment import (
     DeploymentAction,
     DeploymentAdapter,
     DeploymentActionKind,
-    DeploymentAssessment,
     DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
@@ -22,7 +20,6 @@ from semapact.deployment import (
     NativeOperationKind,
 )
 from semapact.deployment.models import (
-    compute_deployment_assessment_id,
     compute_deployment_authorization_id,
     compute_deployment_plan_id,
     compute_deployment_preview_id,
@@ -43,21 +40,13 @@ class FakeDeploymentAdapter(DeploymentAdapter):
         self,
         preview: DeploymentPreview,
         verification: ReconciliationResult,
-        assessment: DeploymentAssessment | None = None,
     ) -> None:
         self.preview_result = preview
         self.verification_result = verification
-        self.assessment_result = assessment
-        self.assess_calls = 0
         self.preview_calls = 0
         self.verify_calls = 0
         self.execute_calls = 0
         self.executed = None
-
-    def assess(self, contract, *, candidate_revision_ref, target):
-        self.assess_calls += 1
-        assert self.assessment_result is not None
-        return self.assessment_result
 
     def validate(self, plan: DeploymentPlan) -> None:
         pass
@@ -174,44 +163,6 @@ def _adapter(plan: DeploymentPlan) -> FakeDeploymentAdapter:
     return FakeDeploymentAdapter(
         _preview(plan),
         _verification(plan),
-        _assessment(plan),
-    )
-
-
-def _candidate_contract() -> OpenDataContractStandard:
-    return OpenDataContractStandard.model_construct(
-        id="orders-contract",
-        version="1.2.3",
-        schema_=[],
-        servers=[],
-    )
-
-
-def _assessment(plan: DeploymentPlan) -> DeploymentAssessment:
-    observation = _observation()
-    operation = NativeOperation(
-        kind=NativeOperationKind.NO_OP,
-        governed_asset="orders",
-    )
-    assert observation.fingerprint is not None
-    assessment_id = compute_deployment_assessment_id(
-        contract_id="orders-contract",
-        candidate_revision_ref="candidate:abc",
-        candidate_version="1.2.3",
-        target=plan.target,
-        source_identifier=observation.source_identifier,
-        observation_fingerprint=observation.fingerprint,
-        operations=(operation,),
-    )
-    return DeploymentAssessment(
-        deployment_assessment_id=assessment_id,
-        contract_id="orders-contract",
-        candidate_revision_ref="candidate:abc",
-        candidate_version="1.2.3",
-        target=plan.target,
-        source_identifier=observation.source_identifier,
-        observation_fingerprint=observation.fingerprint,
-        operations=(operation,),
     )
 
 
@@ -231,23 +182,6 @@ def _authorization(plan: DeploymentPlan) -> DeploymentAuthorization:
     )
 
 
-
-
-def test_assess_delegates_candidate_to_unified_adapter_entrypoint() -> None:
-    plan = _plan()
-    adapter = _adapter(plan)
-
-    result = DeploymentService().assess(
-        _candidate_contract(),
-        candidate_revision_ref="candidate:abc",
-        target=plan.target,
-        adapter=adapter,
-    )
-
-    assert result == adapter.assessment_result
-    assert adapter.assess_calls == 1
-    assert adapter.preview_calls == 0
-    assert adapter.execute_calls == 0
 
 
 def test_preview_delegates_to_unified_adapter_entrypoint() -> None:
@@ -288,21 +222,14 @@ def test_verify_delegates_to_same_adapter_entrypoint() -> None:
     assert adapter.verify_calls == 1
 
 
-@pytest.mark.parametrize("operation", ["assess", "preview", "verify", "execute"])
+@pytest.mark.parametrize("operation", ["preview", "verify", "execute"])
 def test_service_rejects_adapter_platform_mismatch(operation: str) -> None:
     plan = _plan()
     adapter = _adapter(plan)
     adapter.key = "snowflake"
 
     with pytest.raises(ValidationError, match="Deployment adapter does not match"):
-        if operation == "assess":
-            DeploymentService().assess(
-                _candidate_contract(),
-                candidate_revision_ref="candidate:abc",
-                target=plan.target,
-                adapter=adapter,
-            )
-        elif operation == "preview":
+        if operation == "preview":
             DeploymentService().preview(plan, adapter=adapter)
         elif operation == "verify":
             DeploymentService().verify(plan, adapter=adapter)
@@ -314,7 +241,6 @@ def test_service_rejects_adapter_platform_mismatch(operation: str) -> None:
                 adapter=adapter,
             )
 
-    assert adapter.assess_calls == 0
     assert adapter.preview_calls == 0
     assert adapter.verify_calls == 0
     assert adapter.execute_calls == 0
