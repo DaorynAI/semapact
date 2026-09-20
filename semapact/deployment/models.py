@@ -12,7 +12,6 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
-    model_serializer,
     model_validator,
 )
 
@@ -139,51 +138,6 @@ class DeploymentPlan(DeploymentModel):
     release_plan_id: str | None = None
     plan_version: Literal["2", "3", "4", "5"] = "5"
 
-    @model_validator(mode="before")
-    @classmethod
-    def _upgrade_legacy_plan_payload(cls, value):
-        if not isinstance(value, dict):
-            return value
-        payload = dict(value)
-        raw_version = payload.get("plan_version")
-        if raw_version is None:
-            if "applied_release_id" in payload:
-                version = "2"
-            elif (
-                "release_id" in payload
-                or "released_revision_ref" in payload
-                or "selected_version" in payload
-            ):
-                version = "3"
-            else:
-                return payload
-            payload["plan_version"] = version
-        else:
-            version = str(raw_version)
-        if version == "4":
-            legacy_release = payload.pop("release", None)
-            has_release_provenance = bool(
-                payload.get("release_id") or payload.get("release_plan_id")
-            )
-            if legacy_release is not None and bool(legacy_release) != has_release_provenance:
-                raise ValueError(
-                    "Legacy DeploymentPlan release flag conflicts with release provenance"
-                )
-            return payload
-        if version not in {"2", "3"}:
-            return payload
-
-        legacy_release_id = payload.get("release_id") or payload.get(
-            "applied_release_id"
-        )
-        payload.setdefault("source_snapshot_id", legacy_release_id)
-        payload.setdefault("revision_ref", payload.get("released_revision_ref"))
-        payload.setdefault("contract_version", payload.get("selected_version"))
-        payload.setdefault("release_id", legacy_release_id)
-        payload.pop("applied_release_id", None)
-        payload.pop("released_revision_ref", None)
-        payload.pop("selected_version", None)
-        return payload
 
     @field_validator(
         "deployment_plan_id",
@@ -231,21 +185,6 @@ class DeploymentPlan(DeploymentModel):
         validate_deployment_plan_identity(self)
         return self
 
-    @model_serializer(mode="wrap")
-    def _serialize_legacy_plan(self, handler):
-        payload = handler(self)
-        if self.plan_version == "4":
-            payload["release"] = self.is_release
-            return payload
-        if self.plan_version not in {"2", "3"}:
-            return payload
-
-        payload["released_revision_ref"] = payload.pop("revision_ref")
-        payload["selected_version"] = payload.pop("contract_version")
-        payload.pop("source_snapshot_id", None)
-        if self.plan_version == "2":
-            payload["applied_release_id"] = payload.pop("release_id")
-        return payload
 
     @property
     def is_release(self) -> bool:
@@ -344,25 +283,6 @@ class DeploymentAuthorization(DeploymentModel):
     authorization_reference: str
     authorization_version: Literal["1", "2"] = "2"
 
-    @model_validator(mode="before")
-    @classmethod
-    def _upgrade_legacy_authorization_payload(cls, value):
-        if not isinstance(value, dict):
-            return value
-        payload = dict(value)
-        if "source_snapshot_id" in payload:
-            return payload
-        contractops_id = payload.get("contract_ops_authorization_id")
-        release_id = payload.get("applied_release_id")
-        if contractops_id is None or release_id is None:
-            return payload
-        payload["source_snapshot_id"] = release_id
-        payload["authorization_kind"] = "contractops"
-        payload["authorization_reference"] = contractops_id
-        payload["authorization_version"] = "1"
-        payload.pop("contract_ops_authorization_id", None)
-        payload.pop("applied_release_id", None)
-        return payload
 
     @field_validator(
         "deployment_authorization_id",
@@ -382,18 +302,6 @@ class DeploymentAuthorization(DeploymentModel):
         validate_deployment_authorization_identity(self)
         return self
 
-    @model_serializer(mode="wrap")
-    def _serialize_legacy_authorization(self, handler):
-        payload = handler(self)
-        if self.authorization_version != "1":
-            return payload
-        payload["contract_ops_authorization_id"] = payload.pop(
-            "authorization_reference"
-        )
-        payload["applied_release_id"] = payload.pop("source_snapshot_id")
-        payload.pop("authorization_kind", None)
-        payload.pop("authorization_version", None)
-        return payload
 
     @property
     def contract_ops_authorization_id(self) -> str:
