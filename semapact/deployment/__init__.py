@@ -1,4 +1,8 @@
-"""Provider-neutral deployment planning, orchestration and authorization boundary."""
+"""Provider-neutral deployment planning and orchestration boundary.
+
+Legacy authorization symbols remain importable for compatibility but are not part of
+the canonical public surface.
+"""
 
 from semapact.deployment.adapters import (
     DeploymentAdapter,
@@ -50,7 +54,6 @@ __all__ = [
     "DeploymentAdapter",
     "RuntimeReleaseMetadata",
     "RuntimeReleaseMetadataProjector",
-    "DeploymentAuthorization",
     "DeploymentExecutionConfig",
     "DeploymentOrchestrator",
     "DeploymentPlan",
@@ -62,8 +65,6 @@ __all__ = [
     "NativeOperationKind",
     "TransitionCompiler",
     "SchemaTransitionPlanner",
-    "authorize_candidate_deployment",
-    "authorize_deployment",
     "validate_candidate_deployment_context",
     "validate_contract_release_deployment_context",
     "build_deployment_actions",
@@ -71,7 +72,6 @@ __all__ = [
     "build_deployment_plan_from_source",
     "build_candidate_deployment_source",
     "build_contract_release_deployment_source",
-    "build_release_deployment_source",
     "DeploymentSourceSnapshot",
     "verify_deployment_convergence",
 ]
