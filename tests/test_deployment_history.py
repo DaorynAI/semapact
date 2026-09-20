@@ -71,13 +71,15 @@ def _deployment_artifacts(*, preview_runtime_target: str = "catalog.schema", all
     )
     plan = DeploymentPlan(
         deployment_plan_id=plan_id,
-        applied_release_id="applied-release-1",
+        source_snapshot_id="applied-release-1",
+        release_id="applied-release-1",
         contract_id="orders-product",
         release_plan_id="release-plan-1",
-        released_revision_ref="candidate-revision-1",
-        selected_version="1.3.0",
+        revision_ref="candidate-revision-1",
+        contract_version="1.3.0",
         target=target,
         actions=(),
+        plan_version="2",
     )
 
     preview_id = compute_deployment_preview_id(
@@ -106,10 +108,12 @@ def _deployment_artifacts(*, preview_runtime_target: str = "catalog.schema", all
     )
     authorization = DeploymentAuthorization(
         deployment_authorization_id=authorization_id,
-        contract_ops_authorization_id="deploy-authorization-1",
         deployment_plan_id=plan.deployment_plan_id,
-        applied_release_id=plan.applied_release_id,
+        source_snapshot_id=plan.source_snapshot_id,
         allowed=allowed,
+        authorization_kind="contractops",
+        authorization_reference="deploy-authorization-1",
+        authorization_version="1",
     )
     return plan, preview, authorization
 
