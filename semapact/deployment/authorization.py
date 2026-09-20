@@ -104,6 +104,33 @@ def authorize_deployment(
 
 
 
+def validate_candidate_deployment_context(
+    plan: DeploymentPlan,
+    source: DeploymentSourceSnapshot,
+    decision: GovernanceDecision,
+) -> None:
+    """Validate candidate deployment provenance and fail closed on BLOCK."""
+    if source.source_kind != "candidate" or plan.is_release:
+        raise ReleaseValidationError(
+            "Candidate deployment requires candidate source without release provenance"
+        )
+    validate_deployment_plan_identity(plan)
+    if plan.source_snapshot_id != source.source_snapshot_id:
+        raise ReleaseValidationError(
+            "DeploymentPlan does not reference the supplied candidate source"
+        )
+    if plan.contract_id != source.contract_id:
+        raise ReleaseValidationError(
+            "DeploymentPlan and candidate source contract IDs do not match"
+        )
+    if decision.contract_id != source.contract_id:
+        raise ReleaseValidationError(
+            "GovernanceDecision does not match candidate deployment contract"
+        )
+    if decision.decision is DecisionResult.BLOCK:
+        raise ReleaseValidationError("Candidate deployment is blocked by governance")
+
+
 def authorize_candidate_deployment(
     plan: DeploymentPlan,
     source: DeploymentSourceSnapshot,
@@ -114,7 +141,7 @@ def authorize_candidate_deployment(
     Candidate deployment never creates release approval evidence. BLOCK remains
     fail-closed; ALLOW and REVIEW may proceed as non-release runtime validation.
     """
-    if plan.release or source.release:
+    if plan.is_release or source.source_kind != "candidate":
         raise ReleaseValidationError(
             "Candidate deployment authorization requires non-release plan/source"
         )
@@ -151,15 +178,15 @@ def authorize_candidate_deployment(
     )
 
 
-def authorize_contract_release_deployment(
+def validate_contract_release_deployment_context(
     plan: DeploymentPlan,
     source: DeploymentSourceSnapshot,
     release: ContractRelease,
-) -> DeploymentAuthorization:
-    """Authorize deployment from one already-finalized formal contract release."""
-    if not plan.release or not source.release:
+) -> None:
+    """Validate that one plan is derived from the exact finalized release."""
+    if source.source_kind != "contract_release" or not plan.is_release:
         raise ReleaseValidationError(
-            "Finalized release deployment requires release plan/source"
+            "Finalized release deployment requires ContractRelease source provenance"
         )
     validate_deployment_plan_identity(plan)
     if plan.source_snapshot_id != source.source_snapshot_id:
@@ -187,6 +214,19 @@ def authorize_contract_release_deployment(
             "DeploymentPlan does not reference the finalized ContractRelease"
         )
 
+
+def authorize_contract_release_deployment(
+    plan: DeploymentPlan,
+    source: DeploymentSourceSnapshot,
+    release: ContractRelease,
+) -> DeploymentAuthorization:
+    """Compatibility adapter for callers that still require an authorization artifact.
+
+    Canonical CI/CD validates the release context and treats the protected execution
+    boundary as deployment authority; it does not interpret ContractRelease itself as
+    authorization.
+    """
+    validate_contract_release_deployment_context(plan, source, release)
     authorization_id = compute_deployment_authorization_id(
         deployment_plan_id=plan.deployment_plan_id,
         source_snapshot_id=source.source_snapshot_id,
