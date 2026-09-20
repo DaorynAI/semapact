@@ -152,9 +152,7 @@ class ContractReleaseRecord(HistoryModel):
     version_resolution_id: str
     release_snapshot_id: str
     revision_ref: str
-    bundle_digest: str
     released_contract_json: str
-    approval_id: str | None = None
 
     @field_validator(
         "contract_release_id",
@@ -166,20 +164,11 @@ class ContractReleaseRecord(HistoryModel):
         "version_resolution_id",
         "release_snapshot_id",
         "revision_ref",
-        "bundle_digest",
         "released_contract_json",
     )
     @classmethod
     def _require_contract_release_text(cls, value: str) -> str:
         return _required_text(value)
-
-    @field_validator("approval_id")
-    @classmethod
-    def _normalize_contract_release_approval(
-        cls,
-        value: str | None,
-    ) -> str | None:
-        return _optional_text(value)
 
     @model_validator(mode="after")
     def _validate_contract_release_snapshot(self) -> "ContractReleaseRecord":
