@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from open_data_contract_standard.model import OpenDataContractStandard
-
-from semapact.contractops import AppliedContractRelease
+from semapact.contractops import AppliedContractRelease, ReleaseSnapshot
 from semapact.deployment import (
     DeploymentAdapter,
-    DeploymentAssessment,
     DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
@@ -21,24 +18,9 @@ from semapact.reconciliation import ReconciliationResult
 class DeploymentService:
     """Application boundary over the generic deployment lifecycle."""
 
-    def assess(
-        self,
-        contract: OpenDataContractStandard,
-        *,
-        candidate_revision_ref: str,
-        target: DeploymentTarget,
-        adapter: DeploymentAdapter,
-    ) -> DeploymentAssessment:
-        _validate_component_key(adapter.key, target.platform, "deployment adapter")
-        return adapter.assess(
-            contract,
-            candidate_revision_ref=candidate_revision_ref,
-            target=target,
-        )
-
     def plan(
         self,
-        release: AppliedContractRelease,
+        release: ReleaseSnapshot | AppliedContractRelease,
         target: DeploymentTarget,
     ) -> DeploymentPlan:
         return build_deployment_plan(release, target)
