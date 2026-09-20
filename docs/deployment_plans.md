@@ -331,7 +331,7 @@ ApprovalRecord
 ContractReleaseRecord
 ```
 
-A formal `--release` deployment creates one immutable `ContractReleaseRecord` containing the released contract version, exact revision, release artifacts, and bundle digest. A candidate deployment creates no release history.
+A formal `--release` deployment creates one immutable, target-neutral `ContractReleaseRecord` containing the released contract version, exact revision, and release-artifact identities. Target-specific bundle/approval evidence remains separate. A candidate deployment creates no release history.
 
 The Git adapter writes deterministic history files under `.semapact/history/`. The surrounding GitOps workflow remains responsible for committing/publishing those files; SemaPact does not silently push repository branches.
 
