@@ -7,14 +7,20 @@ from typing import Protocol
 from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.contractops.context import validate_release_context
-from semapact.contractops.execution_models import AppliedContractRelease, PublicationResult
+from semapact.contractops.execution_models import (
+    AppliedContractRelease,
+    PublicationResult,
+    ReleaseSnapshot,
+)
 from semapact.contractops.integrity import (
     SEMAPACT_APPLIED_RELEASE_NAMESPACE,
     SEMAPACT_PUBLICATION_NAMESPACE,
     compute_applied_release_id,
+    compute_release_snapshot_id,
     compute_publication_id,
     validate_applied_release_identity,
     validate_contractops_authorization_identity,
+    validate_release_snapshot_identity,
 )
 from semapact.contractops.models import (
     ChangeSet,
@@ -37,7 +43,7 @@ class ContractReleasePublisher(Protocol):
         ...
 
 
-def apply_contract_release(
+def build_release_snapshot(
     candidate_contract: OpenDataContractStandard,
     *,
     candidate_revision_ref: str,
@@ -45,13 +51,8 @@ def apply_contract_release(
     change_set: ChangeSet,
     release_plan: ReleasePlan,
     version_resolution: VersionResolution,
-    authorization: ContractOpsAuthorization,
-) -> AppliedContractRelease:
-    """Materialize the exact released ODCS state after explicit APPLY authorization.
-
-    This is the canonical M2 apply path. It never re-runs governance, change
-    classification, or version authority. The input candidate is not mutated.
-    """
+) -> ReleaseSnapshot:
+    """Freeze one exact governed release without requiring side-effect authorization."""
     if not isinstance(candidate_contract, OpenDataContractStandard):
         raise TypeError(
             "candidate_contract must be OpenDataContractStandard, "
@@ -61,14 +62,6 @@ def apply_contract_release(
         raise TypeError("candidate_revision_ref must be str")
 
     validate_release_context(decision, change_set, release_plan, version_resolution)
-    _validate_authorization(
-        authorization,
-        decision=decision,
-        change_set=change_set,
-        release_plan=release_plan,
-        version_resolution=version_resolution,
-        operation=GovernanceOperation.APPLY,
-    )
 
     supplied_revision_ref = candidate_revision_ref.strip()
     if not supplied_revision_ref:
@@ -104,7 +97,7 @@ def apply_contract_release(
     released_contract.version = selected_version
     released_contract_json = canonical_contract_json(released_contract)
 
-    applied_release_id = compute_applied_release_id(
+    release_snapshot_id = compute_release_snapshot_id(
         contract_id=release_plan.contract_id,
         decision_id=decision.decision_id,
         change_set_id=change_set.change_set_id,
@@ -112,21 +105,74 @@ def apply_contract_release(
         version_resolution_id=version_resolution.version_resolution_id,
         release_revision_ref=release_plan.release_revision_ref,
         selected_version=selected_version,
-        authorization_id=authorization.authorization_id,
         released_contract_json=released_contract_json,
+    )
+    snapshot = ReleaseSnapshot(
+        release_snapshot_id=release_snapshot_id,
+        contract_id=release_plan.contract_id,
+        decision_id=decision.decision_id,
+        change_set_id=change_set.change_set_id,
+        release_plan_id=release_plan.release_plan_id,
+        version_resolution_id=version_resolution.version_resolution_id,
+        release_revision_ref=release_plan.release_revision_ref,
+        selected_version=selected_version,
+        released_contract_json=released_contract_json,
+    )
+    validate_release_snapshot_identity(snapshot)
+    return snapshot
+
+
+def apply_contract_release(
+    candidate_contract: OpenDataContractStandard,
+    *,
+    candidate_revision_ref: str,
+    decision: GovernanceDecision,
+    change_set: ChangeSet,
+    release_plan: ReleasePlan,
+    version_resolution: VersionResolution,
+    authorization: ContractOpsAuthorization,
+) -> AppliedContractRelease:
+    """Compatibility APPLY boundary wrapping the pure ReleaseSnapshot."""
+    _validate_authorization(
+        authorization,
+        decision=decision,
+        change_set=change_set,
+        release_plan=release_plan,
+        version_resolution=version_resolution,
+        operation=GovernanceOperation.APPLY,
+    )
+    snapshot = build_release_snapshot(
+        candidate_contract,
+        candidate_revision_ref=candidate_revision_ref,
+        decision=decision,
+        change_set=change_set,
+        release_plan=release_plan,
+        version_resolution=version_resolution,
+    )
+
+    applied_release_id = compute_applied_release_id(
+        contract_id=snapshot.contract_id,
+        decision_id=snapshot.decision_id,
+        change_set_id=snapshot.change_set_id,
+        release_plan_id=snapshot.release_plan_id,
+        version_resolution_id=snapshot.version_resolution_id,
+        release_revision_ref=snapshot.release_revision_ref,
+        selected_version=snapshot.selected_version,
+        authorization_id=authorization.authorization_id,
+        released_contract_json=snapshot.released_contract_json,
     )
 
     return AppliedContractRelease(
         applied_release_id=applied_release_id,
-        contract_id=release_plan.contract_id,
-        decision_id=decision.decision_id,
-        change_set_id=change_set.change_set_id,
-        release_plan_id=release_plan.release_plan_id,
-        version_resolution_id=version_resolution.version_resolution_id,
-        release_revision_ref=release_plan.release_revision_ref,
-        selected_version=selected_version,
+        contract_id=snapshot.contract_id,
+        decision_id=snapshot.decision_id,
+        change_set_id=snapshot.change_set_id,
+        release_plan_id=snapshot.release_plan_id,
+        version_resolution_id=snapshot.version_resolution_id,
+        release_revision_ref=snapshot.release_revision_ref,
+        selected_version=snapshot.selected_version,
         authorization_id=authorization.authorization_id,
-        released_contract_json=released_contract_json,
+        released_contract_json=snapshot.released_contract_json,
     )
 
 
