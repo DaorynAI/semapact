@@ -125,7 +125,7 @@ class DeploymentAction(DeploymentModel):
 
 
 class DeploymentPlan(DeploymentModel):
-    """Pure deterministic runtime convergence plan for one exact source snapshot."""
+    """Canonical deterministic runtime convergence plan for one exact source snapshot."""
 
     deployment_plan_id: str
     source_snapshot_id: str
@@ -134,10 +134,7 @@ class DeploymentPlan(DeploymentModel):
     contract_version: str
     target: DeploymentTarget
     actions: tuple[DeploymentAction, ...]
-    release_id: str | None = None
-    release_plan_id: str | None = None
-    plan_version: Literal["2", "3", "4", "5"] = "5"
-
+    plan_version: Literal["5"] = "5"
 
     @field_validator(
         "deployment_plan_id",
@@ -153,14 +150,6 @@ class DeploymentPlan(DeploymentModel):
             raise ValueError("value must not be empty")
         return cleaned
 
-    @field_validator("release_id", "release_plan_id")
-    @classmethod
-    def _normalize_optional_plan_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        cleaned = value.strip()
-        return cleaned or None
-
     @model_validator(mode="after")
     def _validate_action_order_and_identity(self) -> "DeploymentPlan":
         governed_assets = [action.governed_asset for action in self.actions]
@@ -169,52 +158,8 @@ class DeploymentPlan(DeploymentModel):
         if len(governed_assets) != len(set(governed_assets)):
             raise ValueError("DeploymentPlan cannot contain duplicate governed assets")
 
-        if self.plan_version == "5":
-            if self.release_id is not None or self.release_plan_id is not None:
-                raise ValueError(
-                    "Canonical DeploymentPlan must not duplicate release provenance"
-                )
-        else:
-            has_release_id = self.release_id is not None
-            has_release_plan = self.release_plan_id is not None
-            if has_release_id != has_release_plan:
-                raise ValueError(
-                    "Legacy DeploymentPlan release_id and release_plan_id must be provided together"
-                )
-
         validate_deployment_plan_identity(self)
         return self
-
-
-    @property
-    def is_release(self) -> bool:
-        if self.plan_version == "5":
-            raise ValueError(
-                "Canonical DeploymentPlan release mode belongs to DeploymentSourceSnapshot"
-            )
-        return self.release_id is not None
-
-    @property
-    def release(self) -> bool:
-        """Compatibility accessor; canonical state is release provenance."""
-        return self.is_release
-
-    @property
-    def applied_release_id(self) -> str:
-        """Compatibility alias for callers using the v2 release field."""
-        if self.release_id is None:
-            raise ValueError("Non-release DeploymentPlan has no applied release")
-        return self.release_id
-
-    @property
-    def released_revision_ref(self) -> str:
-        """Compatibility alias for pre-v4 callers."""
-        return self.revision_ref
-
-    @property
-    def selected_version(self) -> str:
-        """Compatibility alias for pre-v4 callers."""
-        return self.contract_version
 
 
 class NativeOperation(DeploymentModel):
@@ -277,7 +222,7 @@ class DeploymentPreview(DeploymentModel):
 
 
 class DeploymentAuthorization(DeploymentModel):
-    """Authorization bound to one exact DeploymentPlan source snapshot."""
+    """Canonical authorization bound to one exact DeploymentPlan source snapshot."""
 
     deployment_authorization_id: str
     deployment_plan_id: str
@@ -285,8 +230,7 @@ class DeploymentAuthorization(DeploymentModel):
     allowed: bool = Field(strict=True)
     authorization_kind: Literal["contractops", "governance"] = "contractops"
     authorization_reference: str
-    authorization_version: Literal["1", "2"] = "2"
-
+    authorization_version: Literal["2"] = "2"
 
     @field_validator(
         "deployment_authorization_id",
@@ -307,187 +251,54 @@ class DeploymentAuthorization(DeploymentModel):
         return self
 
 
-    @property
-    def contract_ops_authorization_id(self) -> str:
-        """Compatibility accessor for ContractOps-backed authorization."""
-        if self.authorization_kind != "contractops":
-            raise ValueError("Authorization is not backed by ContractOps")
-        return self.authorization_reference
-
-    @property
-    def applied_release_id(self) -> str:
-        """Compatibility accessor for pre-v2 deployment authorization."""
-        return self.source_snapshot_id
-
-
 def compute_deployment_plan_id(
     *,
-    source_snapshot_id: str | None = None,
-    release_id: str | None = None,
-    applied_release_id: str | None = None,
+    source_snapshot_id: str,
     contract_id: str,
-    revision_ref: str | None = None,
-    released_revision_ref: str | None = None,
-    contract_version: str | None = None,
-    selected_version: str | None = None,
-    release_plan_id: str | None = None,
-    release: bool | None = None,
+    revision_ref: str,
+    contract_version: str,
     target: DeploymentTarget,
     actions: Sequence[DeploymentAction],
-    plan_version: str | None = None,
+    plan_version: str = "5",
 ) -> str:
-    if plan_version is None:
-        if applied_release_id is not None:
-            plan_version = "2"
-        elif source_snapshot_id is not None:
-            plan_version = "5"
-        else:
-            plan_version = "3"
-
-    legacy_release_id = _resolve_optional_legacy_release_id(
-        release_id=release_id,
-        applied_release_id=applied_release_id,
-    )
-    resolved_source_id = (
-        source_snapshot_id.strip()
-        if isinstance(source_snapshot_id, str) and source_snapshot_id.strip()
-        else legacy_release_id
-    )
-    if resolved_source_id is None:
-        raise ValueError("source_snapshot_id is required")
-
-    resolved_revision = _resolve_text_pair(
-        revision_ref,
-        released_revision_ref,
-        "revision_ref",
-    )
-    resolved_version = _resolve_text_pair(
-        contract_version,
-        selected_version,
-        "contract_version",
-    )
-
-    if plan_version in {"2", "3"}:
-        if legacy_release_id is None:
-            legacy_release_id = resolved_source_id
-        if release_plan_id is None:
-            raise ValueError("legacy DeploymentPlan requires release_plan_id")
-        release_key = "applied_release_id" if plan_version == "2" else "release_id"
-        return deterministic_uuid5(
-            SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
-            {
-                release_key: legacy_release_id,
-                "contract_id": contract_id,
-                "release_plan_id": release_plan_id,
-                "released_revision_ref": resolved_revision,
-                "selected_version": resolved_version,
-                "target": target.model_dump(mode="json"),
-                "actions": [action.model_dump(mode="json") for action in actions],
-                "plan_version": plan_version,
-            },
-        )
-
-    if plan_version not in {"4", "5"}:
-        raise ValueError(f"Unsupported DeploymentPlan version: {plan_version}")
-
-    has_release_id = release_id is not None
-    has_release_plan = release_plan_id is not None
-    if plan_version == "4" and has_release_id != has_release_plan:
-        raise ValueError(
-            "Legacy DeploymentPlan release_id and release_plan_id must be provided together"
-        )
-    if plan_version == "5" and (release_id is not None or release_plan_id is not None):
-        raise ValueError(
-            "Canonical DeploymentPlan must not duplicate release provenance"
-        )
-    derived_release = has_release_id
-    if plan_version == "4" and release is not None and bool(release) != derived_release:
-        raise ValueError(
-            "Legacy DeploymentPlan release flag conflicts with release provenance"
-        )
-
-    payload = {
-        "source_snapshot_id": resolved_source_id,
-        "contract_id": contract_id,
-        "revision_ref": resolved_revision,
-        "contract_version": resolved_version,
-        "release_id": release_id,
-        "release_plan_id": release_plan_id if plan_version == "4" else None,
-        "target": target.model_dump(mode="json"),
-        "actions": [action.model_dump(mode="json") for action in actions],
-        "plan_version": plan_version,
-    }
-    if plan_version == "4":
-        payload["release"] = derived_release
+    if plan_version != "5":
+        raise ValueError(f"Unsupported canonical DeploymentPlan version: {plan_version}")
     return deterministic_uuid5(
         SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
-        payload,
+        {
+            "source_snapshot_id": source_snapshot_id,
+            "contract_id": contract_id,
+            "revision_ref": revision_ref,
+            "contract_version": contract_version,
+            "target": target.model_dump(mode="json"),
+            "actions": [action.model_dump(mode="json") for action in actions],
+            "plan_version": plan_version,
+        },
     )
 
 
 def compute_deployment_authorization_id(
     *,
     deployment_plan_id: str,
-    source_snapshot_id: str | None = None,
-    authorization_kind: str = "contractops",
-    authorization_reference: str | None = None,
+    source_snapshot_id: str,
+    authorization_kind: str,
+    authorization_reference: str,
     allowed: bool,
-    contract_ops_authorization_id: str | None = None,
-    applied_release_id: str | None = None,
-    authorization_version: str | None = None,
+    authorization_version: str = "2",
 ) -> str:
-    if authorization_version is None:
-        authorization_version = (
-            "1"
-            if contract_ops_authorization_id is not None
-            or applied_release_id is not None
-            else "2"
-        )
-
-    if authorization_version == "1":
-        contractops_id = _resolve_text_pair(
-            authorization_reference,
-            contract_ops_authorization_id,
-            "contract_ops_authorization_id",
-        )
-        release_id = _resolve_text_pair(
-            source_snapshot_id,
-            applied_release_id,
-            "applied_release_id",
-        )
-        return deterministic_uuid5(
-            SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE,
-            {
-                "contract_ops_authorization_id": contractops_id,
-                "deployment_plan_id": deployment_plan_id,
-                "applied_release_id": release_id,
-                "allowed": allowed,
-            },
-        )
-
     if authorization_version != "2":
         raise ValueError(
-            f"Unsupported DeploymentAuthorization version: {authorization_version}"
+            f"Unsupported canonical DeploymentAuthorization version: {authorization_version}"
         )
     if authorization_kind not in {"contractops", "governance"}:
         raise ValueError("Unsupported deployment authorization kind")
-    source_id = _resolve_text_pair(
-        source_snapshot_id,
-        None,
-        "source_snapshot_id",
-    )
-    reference = _resolve_text_pair(
-        authorization_reference,
-        None,
-        "authorization_reference",
-    )
     return deterministic_uuid5(
         SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE,
         {
             "authorization_kind": authorization_kind,
-            "authorization_reference": reference,
+            "authorization_reference": authorization_reference,
             "deployment_plan_id": deployment_plan_id,
-            "source_snapshot_id": source_id,
+            "source_snapshot_id": source_snapshot_id,
             "allowed": allowed,
             "authorization_version": authorization_version,
         },
@@ -518,49 +329,12 @@ def compute_deployment_preview_id(
     )
 
 
-def _resolve_optional_legacy_release_id(
-    *,
-    release_id: str | None,
-    applied_release_id: str | None,
-) -> str | None:
-    values = {
-        value.strip()
-        for value in (release_id, applied_release_id)
-        if isinstance(value, str) and value.strip()
-    }
-    if len(values) > 1:
-        raise ValueError(
-            "release_id and applied_release_id must identify the same release"
-        )
-    return values.pop() if values else None
-
-
-def _resolve_text_pair(
-    primary: str | None,
-    compatibility: str | None,
-    field_name: str,
-) -> str:
-    values = {
-        value.strip()
-        for value in (primary, compatibility)
-        if isinstance(value, str) and value.strip()
-    }
-    if not values:
-        raise ValueError(f"{field_name} is required")
-    if len(values) != 1:
-        raise ValueError(f"{field_name} compatibility values do not match")
-    return values.pop()
-
-
 def validate_deployment_plan_identity(plan: DeploymentPlan) -> None:
     expected = compute_deployment_plan_id(
         source_snapshot_id=plan.source_snapshot_id,
-        release_id=plan.release_id,
         contract_id=plan.contract_id,
-        release_plan_id=plan.release_plan_id,
         revision_ref=plan.revision_ref,
         contract_version=plan.contract_version,
-        release=plan.is_release if plan.plan_version == "4" else None,
         target=plan.target,
         actions=plan.actions,
         plan_version=plan.plan_version,
