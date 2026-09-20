@@ -143,6 +143,11 @@ class ReleaseRecord(HistoryModel):
 
 # Backward-compatible persistence name. Canonical ownership lives in ContractOps.
 ContractReleaseRecord = ContractRelease
+
+
+# Legacy Git-backed operational records. Canonical high-frequency deployment
+# telemetry lives in semapact.history.operational and is never written to Git by
+# the bundle-driven workflow.
 class DeploymentStatus(str, Enum):
     """Terminal provider-execution outcome for one deployment occurrence."""
 
