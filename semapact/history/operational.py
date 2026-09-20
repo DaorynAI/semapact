@@ -28,6 +28,7 @@ class OperationalDeploymentEvent(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     event_id: str
+    event_version: Literal["1"] = "1"
     bundle_digest: str
     release: bool
     contract_release_id: str | None = None
@@ -98,6 +99,7 @@ class OperationalDeploymentEvent(BaseModel):
         if self.status == "FAILED" and self.error_message is None:
             raise ValueError("Failed deployment event requires error_message")
         expected = compute_operational_deployment_event_id(
+            event_version=self.event_version,
             bundle_digest=self.bundle_digest,
             release=self.release,
             contract_release_id=self.contract_release_id,
@@ -155,6 +157,7 @@ def build_operational_deployment_event(
 ) -> OperationalDeploymentEvent:
     normalized_platform = platform.strip().casefold()
     event_id = compute_operational_deployment_event_id(
+        event_version="1",
         bundle_digest=bundle_digest,
         release=release,
         contract_release_id=contract_release_id,
@@ -177,6 +180,7 @@ def build_operational_deployment_event(
     )
     return OperationalDeploymentEvent(
         event_id=event_id,
+        event_version="1",
         bundle_digest=bundle_digest,
         release=release,
         contract_release_id=contract_release_id,
