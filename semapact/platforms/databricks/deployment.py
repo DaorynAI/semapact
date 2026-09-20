@@ -7,7 +7,12 @@ from typing import Any, Literal
 
 from pydantic import field_validator
 
-from semapact.deployment.models import NativeOperation
+from semapact.deployment import RuntimeReleaseMetadata
+from semapact.deployment.models import (
+    DeploymentPlan,
+    NativeOperation,
+    NativeOperationKind,
+)
 from semapact.deployment.orchestrator import DeploymentOrchestrator
 from semapact.deployment.providers import (
     DeploymentExecutionConfig,
@@ -18,10 +23,11 @@ from semapact.observation.providers import RuntimeProvider
 from semapact.platforms.databricks.transition_compiler import (
     DatabricksTransitionCompiler,
 )
+from semapact.platforms.databricks.target import parse_databricks_runtime_target
 from semapact.platforms.databricks.transition_planner import (
     DatabricksSchemaTransitionPlanner,
 )
-from semapact.schema import SqlSchemaMapper
+from semapact.schema import SqlSchemaMapper, validate_simple_sql_identifier
 
 
 _TERMINAL_STATES = {"SUCCEEDED", "FAILED", "CANCELED", "CLOSED"}
@@ -146,6 +152,58 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
         )
 
 
+    def project_release_metadata(
+        self,
+        plan: DeploymentPlan,
+        metadata: RuntimeReleaseMetadata,
+    ) -> None:
+        """Project SemaPact release provenance into Unity Catalog table tags."""
+        if not plan.release:
+            raise ValidationError(
+                "Release metadata projection requires a formal release DeploymentPlan"
+            )
+        if metadata.contract_id != plan.contract_id:
+            raise ValidationError(
+                "Release metadata contract does not match DeploymentPlan"
+            )
+        if metadata.contract_version != plan.contract_version:
+            raise ValidationError(
+                "Release metadata version does not match DeploymentPlan"
+            )
+
+        catalog, schema_name = parse_databricks_runtime_target(
+            plan.target.runtime_target
+        )
+        validate_simple_sql_identifier(catalog, "catalog")
+        validate_simple_sql_identifier(schema_name, "schema")
+
+        tags = {
+            "semapact_contract_id": metadata.contract_id,
+            "semapact_contract_version": metadata.contract_version,
+            "semapact_release_id": metadata.contract_release_id,
+            "semapact_revision": metadata.revision_ref,
+        }
+        rendered_tags = ", ".join(
+            f"{_sql_string(key)} = {_sql_string(value)}"
+            for key, value in sorted(tags.items())
+        )
+        for action in plan.actions:
+            validate_simple_sql_identifier(action.physical_name, "asset")
+            qualified = ".".join(
+                f"`{part}`"
+                for part in (catalog, schema_name, action.physical_name)
+            )
+            self._executor.execute(
+                NativeOperation(
+                    kind=NativeOperationKind.ALTER,
+                    governed_asset=action.governed_asset,
+                    statement=(
+                        f"ALTER TABLE {qualified} SET TAGS ({rendered_tags})"
+                    ),
+                )
+            )
+
+
 def _statement_state(response: Any) -> str:
     status = getattr(response, "status", None)
     state = getattr(status, "state", None)
@@ -155,3 +213,7 @@ def _statement_state(response: Any) -> str:
         )
     value = getattr(state, "value", state)
     return str(value).upper()
+
+
+def _sql_string(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
