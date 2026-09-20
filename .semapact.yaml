@@ -17,3 +17,7 @@ llm:
   model_name: gpt-4-turbo
   api_key: ''
   base_url: ''
+
+history:
+  # Disabled by default. Configure a typed backend when deployment telemetry is needed.
+  operational: null
