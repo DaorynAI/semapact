@@ -13,14 +13,11 @@ from semapact.contractops.execution_models import (
     ReleaseSnapshot,
 )
 from semapact.contractops.integrity import (
-    SEMAPACT_APPLIED_RELEASE_NAMESPACE,
-    SEMAPACT_PUBLICATION_NAMESPACE,
     compute_applied_release_id,
     compute_release_snapshot_id,
     compute_publication_id,
     validate_applied_release_identity,
     validate_contractops_authorization_identity,
-    validate_release_snapshot_identity,
 )
 from semapact.contractops.models import (
     ChangeSet,
@@ -107,7 +104,7 @@ def build_release_snapshot(
         selected_version=selected_version,
         released_contract_json=released_contract_json,
     )
-    snapshot = ReleaseSnapshot(
+    return ReleaseSnapshot(
         release_snapshot_id=release_snapshot_id,
         contract_id=release_plan.contract_id,
         decision_id=decision.decision_id,
@@ -118,8 +115,6 @@ def build_release_snapshot(
         selected_version=selected_version,
         released_contract_json=released_contract_json,
     )
-    validate_release_snapshot_identity(snapshot)
-    return snapshot
 
 
 def apply_contract_release(
