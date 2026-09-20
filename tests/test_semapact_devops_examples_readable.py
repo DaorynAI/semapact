@@ -53,7 +53,8 @@ def test_data_product_github_example_uses_bundle_driven_ci_cd() -> None:
     assert "release approve" in workflow
     assert "release finalize" in workflow
     assert "deployment assess" in workflow
-    assert "--release-id" in workflow
+    assert "--release " in workflow
+    assert "--release-id" not in workflow
     assert "deployment deploy" in workflow
     assert "environment: contract-release" in workflow
     assert "environment: production" in workflow
@@ -73,9 +74,10 @@ def test_central_contract_repo_github_example_fans_out_and_commits_ledger_once()
     assert "release finalize" in workflow
     assert "finalize-releases:" in workflow
     assert "deployment assess" in workflow
-    assert "--release-id" in workflow
+    assert "--release " in workflow
+    assert "--release-id" not in workflow
     assert "deployment deploy" in workflow
-    assert "merge-multiple: true" in workflow
+    assert "semapact-finalized-releases" in workflow
     assert "--operational-history" not in workflow
 
 
