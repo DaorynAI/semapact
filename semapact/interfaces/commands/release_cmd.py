@@ -56,9 +56,6 @@ def run_release_approve(args: argparse.Namespace) -> dict[str, Any]:
 def run_release_finalize(args: argparse.Namespace) -> dict[str, Any]:
     """Finalize one exact release, persist ledger fact, and materialize versioned ODCS."""
     from semapact.application.models.release import ReleaseBundle
-    from semapact.application.services.contract_release_history import (
-        ContractReleaseHistoryService,
-    )
     from semapact.application.services.release_approval import ReleaseApprovalResolver
     from semapact.application.services.release_workflow import ReleaseWorkflowService
     from semapact.governance import DecisionResult
@@ -73,7 +70,7 @@ def run_release_finalize(args: argparse.Namespace) -> dict[str, Any]:
 
     record = ReleaseWorkflowService().finalize(
         bundle,
-        release_history=ContractReleaseHistoryService(repository),
+        release_history=repository,
         approval=approval,
     )
     output_path = dump_yaml(bundle.release_snapshot.to_contract(), args.output_contract)
