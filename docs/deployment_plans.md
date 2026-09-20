@@ -146,7 +146,32 @@ The plan does not contain credentials, workspace clients, SQL connections, or pr
 
 ## CI assessment and the DeploymentBundle boundary
 
-CI must produce a stable artifact that CD can consume after approval. SemaPact packages the exact planning material into a content-addressed `DeploymentBundle`:
+Deployment and formal contract release are related but distinct lifecycles.
+
+By default, `deployment assess` prepares a **candidate deployment**. It evaluates governance and freezes the exact candidate revision, but it does not calculate a new semantic version, create release approval evidence, or create release history:
+
+```text
+base + candidate
+    ↓
+GovernanceDecision
+→ ChangeSet
+→ DeploymentSourceSnapshot(release=false)
+→ DeploymentPlan
+        +
+fresh runtime observation
+        ↓
+DeploymentPreview   # review evidence only
+        ↓
+DeploymentBundle(release=false)
+```
+
+A formal release is explicit:
+
+```bash
+semapact deployment assess ... --release
+```
+
+Only that mode enters ContractOps release planning:
 
 ```text
 base + candidate
@@ -156,28 +181,53 @@ GovernanceDecision
 → ReleasePlan
 → VersionResolution
 → ReleaseSnapshot
+→ DeploymentSourceSnapshot(release=true)
 → DeploymentPlan
         +
 fresh runtime observation
         ↓
-DeploymentPreview   # review evidence only
+DeploymentPreview
         ↓
-DeploymentBundle
-        ↓
-sha256 content digest
+DeploymentBundle(release=true)
 ```
 
-`DeploymentBundle` is a transport and integrity boundary, not another governance authority. It contains the canonical decision/planning artifacts, the exact release snapshot, the target-specific deployment plan, and the runtime preview that CI showed to reviewers.
+The `release` flag is content-addressed inside the bundle. CD cannot reinterpret the same CI artifact as release or non-release later.
 
-The bundle contains **no execution authorization**. The CI preview is also not a future SQL script: CD must re-observe runtime and re-derive provider operations at the mutation boundary. The bundle digest lets CI publish one immutable artifact and lets approval/CD pin the exact reviewed material.
+A contract release is environment-neutral. One released version can subsequently be deployed to multiple targets without another version bump:
 
-The previous candidate-specific `DeploymentAssessment` artifact is intentionally not part of this model. CI uses the same canonical `DeploymentPlan → preview` path as later deployment rather than maintaining a second desired-vs-runtime workflow.
+```text
+orders@1.4.0
+├── dev
+├── test
+└── prod
+```
+
+Promotion between targets is deployment lifecycle, not contract version lifecycle.
 
 ## CLI workflow
 
-The deployment CLI exposes one bundle workflow: `assess` for CI/manual planning and `deploy` for CD/manual execution. `approve` remains an optional hook for custom/manual workflows that want to supply an explicit ApprovalRecord.
+The public deployment workflow remains `assess → deploy`. `approve` is an optional explicit hook for custom/manual release workflows.
 
-### Assess
+### Candidate deployment — default
+
+```bash
+semapact deployment assess \
+  --base ./contracts/orders.yaml \
+  --candidate ./contracts/orders.candidate.yaml \
+  --base-revision-ref git:abc123 \
+  --candidate-revision-ref git:def456 \
+  --effective-date 2026-09-20 \
+  --server development \
+  --bundle-out ./artifacts/orders-dev.bundle.json
+```
+
+This keeps the candidate contract's existing version unchanged. It does not create `ReleasePlan`, `VersionResolution`, `ReleaseSnapshot`, `ApprovalRecord`, or `ContractReleaseRecord`.
+
+A non-release `GovernanceDecision(REVIEW)` may still be deployed for validation/test environments without release approval. `BLOCK` always fails closed.
+
+### Formal release
+
+Add `--release` only when this workflow is intended to create a new formal contract version:
 
 ```bash
 semapact deployment assess \
@@ -187,169 +237,194 @@ semapact deployment assess \
   --candidate-revision-ref git:def456 \
   --effective-date 2026-09-20 \
   --server production \
-  --bundle-out ./artifacts/orders-prod.bundle.json \
-  --output text
+  --release \
+  --bundle-out ./artifacts/orders-prod.bundle.json
 ```
 
-When the candidate contract defines the selected server, its platform, catalog/schema target, and host are authoritative. For contracts without servers, provide `--platform`, `--runtime`, and `--source-reference`.
-
-The bundle file contains the canonical planning artifacts, `ReleaseSnapshot`, v3 `DeploymentPlan`, and CI-time `reviewPreview`, protected by `bundleDigest`. Use `--output json` to emit that same bundle on stdout instead. CI can publish the file using its normal pipeline-artifact mechanism; SemaPact does not couple this package to one CI vendor.
+Release mode calculates the semantic version exactly once and embeds the resulting release artifacts in the immutable bundle. A REVIEW release requires exact approval evidence. An ALLOW release does not require human approval.
 
 ### CI artifact handoff
 
-SemaPact deliberately emits an ordinary file artifact so CI systems can use their native immutable artifact store. The pipeline should publish the exact bundle file produced by `assess`; CD should download that artifact rather than rebuilding it from the merged repository state.
-
-Generic CI:
+Both modes publish the exact bundle produced in CI. CD must download that artifact rather than rebuilding it from merged repository state.
 
 ```text
-CI job
-  semapact deployment assess --bundle-out deployment.bundle.json
+CI
+  semapact deployment assess [...]
         ↓
-  publish deployment.bundle.json
+  immutable DeploymentBundle
         ↓
-  record immutable artifact/digest reference
+  pipeline artifact storage
         ↓
-approval
+CD
+  download exact bundle
         ↓
-CD job
-  download the exact published deployment.bundle.json
-        ↓
-  semapact deployment deploy --bundle deployment.bundle.json
+  semapact deployment deploy --bundle ...
 ```
 
-GitHub Actions can use the normal artifact actions:
-
-```yaml
-- name: Build SemaPact deployment bundle
-  run: |
-    semapact deployment assess \
-      --base contracts/orders.base.yaml \
-      --candidate contracts/orders.yaml \
-      --base-revision-ref "git:${{ github.event.pull_request.base.sha }}" \
-      --candidate-revision-ref "git:${{ github.event.pull_request.head.sha }}" \
-      --effective-date "$(date -u +%F)" \
-      --server production \
-      --bundle-out artifacts/orders-prod.bundle.json
-
-- name: Publish deployment bundle
-  uses: actions/upload-artifact@v4
-  with:
-    name: semapact-orders-prod
-    path: artifacts/orders-prod.bundle.json
-    if-no-files-found: error
-```
-
-The corresponding CD job downloads that exact artifact and passes it unchanged to `deployment deploy`. Azure DevOps should use the equivalent Pipeline Artifact publish/download tasks. SemaPact does not require a vendor-specific artifact registry.
-
-Do not regenerate the bundle in CD. Rebuilding would create a new CI boundary and could make approval refer to material different from what CD consumes. CD is allowed—and required—to re-observe runtime, but not to replace the approved desired-state bundle.
+For a formal release, the bundle also carries the exact version resolution that will become the release fact. For a candidate deployment, no release version is calculated.
 
 ### Review evidence intake
 
-The normal CI/CD path does **not** require `semapact deployment approve`.
+The normal CI/CD path does **not** require a human to run `semapact deployment approve`.
 
-The review happens in the external workflow provider. A trusted integration records that provider event into SemaPact approval history, for example through the generic `semapact approval record` intake surface. That history record carries the exact DEPLOY context, `deploymentPlanId`, and `bundleDigest` evidence.
+For a formal REVIEW release, GitHub / Azure DevOps / GitLab owns the review interaction. A trusted integration records the provider event as an `ApprovalRecord` in Git-backed approval history. CD resolves the exact record automatically when `--approval` is omitted.
 
-```text
-GitHub / Azure DevOps / GitLab review
-        ↓
-trusted workflow integration
-        ↓
-ApprovalRecord in .semapact/history
-        ↓
-CD: semapact deployment deploy --bundle ...
-        ↓
-automatic exact approval resolution
-```
+A usable release approval must match the exact:
 
-`semapact deployment approve --bundle ...` remains a convenience for manual/custom workflows that want to construct an explicit approval artifact directly. It is not a required stage in standard CI/CD.
+- `decisionId`;
+- `changeSetId`;
+- `releasePlanId`;
+- `versionResolutionId`;
+- `DEPLOY` operation;
+- `deploymentPlanId`;
+- `bundleDigest`.
 
-### Deploy
+Conflicting exact review actions fail closed. There is no hidden "latest approval wins" rule.
 
-After CI publishes the exact bundle and any required human approval is recorded, CD consumes that bundle directly:
-
-```bash
-semapact deployment deploy \
-  --bundle ./artifacts/orders-prod.bundle.json \
-  --warehouse-id <databricks-sql-warehouse-id> \
-  --output json
-```
-
-For `GovernanceDecision(REVIEW)`, `deploy` first looks for an exact matching DEPLOY approval in Git-backed history under `.semapact/history` (or `--repository-root`). The record must match the exact decision/change-set/release/version context, exact `deploymentPlanId`, and exact `bundleDigest`. Conflicting exact review actions fail closed.
-
-Custom workflows may inject an approval artifact explicitly:
+Custom/manual release workflows can still inject one directly:
 
 ```bash
 semapact deployment deploy \
   --bundle ./artifacts/orders-prod.bundle.json \
   --approval ./artifacts/orders-prod.approval.json \
-  --warehouse-id <databricks-sql-warehouse-id>
+  --warehouse-id <warehouse-id>
 ```
 
-An explicit `--approval` takes precedence over Git-history resolution. For governance-ALLOW deployments, no human approval is required.
+Candidate deployments do not read or write release approval records.
 
-The CD workflow deliberately ignores the CI-time review preview as execution input:
+### Deploy
+
+Candidate CD:
+
+```bash
+semapact deployment deploy \
+  --bundle ./artifacts/orders-dev.bundle.json \
+  --warehouse-id <warehouse-id>
+```
+
+Formal release CD uses the same command. The release mode is already pinned inside the bundle.
+
+At execution time SemaPact always re-observes runtime:
 
 ```text
-load + validate exact DeploymentBundle
-→ validate approval / operation authorization
+exact bundle
+→ authorize exact deployment source
 → fresh runtime observation
 → fresh DeploymentPreview
-→ execute exact fresh preview
-→ fresh verification
+→ execute
+→ fresh reconciliation
 → IN_SYNC / DRIFT / INDETERMINATE
 ```
 
-If runtime changed between CI and CD, the fresh preview may differ. A CI-time ALTER can become NO_OP; a newly unsafe or conflicting transition fails closed. Provider execution success is not sufficient: the command returns reconciliation semantics after a separate fresh verify.
+The CI preview is review evidence only. It is never replayed as executable SQL.
 
-For governance-ALLOW deployments, `--approval` may be omitted.
+## Governance ledger vs operational history
+
+SemaPact deliberately separates low-frequency governance facts from high-frequency deployment telemetry.
+
+### Git governance ledger
+
+Git-backed history is appropriate for durable reviewable facts such as:
+
+```text
+ApprovalRecord
+ContractReleaseRecord
+```
+
+A formal `--release` deployment creates one immutable `ContractReleaseRecord` containing the released contract version, exact revision, release artifacts, and bundle digest. A candidate deployment creates no release history.
+
+The Git adapter writes deterministic history files under `.semapact/history/`. The surrounding GitOps workflow remains responsible for committing/publishing those files; SemaPact does not silently push repository branches.
+
+The formal release fact is independent of runtime convergence. Once `ContractReleaseRecord` is created, a later runtime deployment failure does not undo or renumber the release.
+
+### Operational history — opt in
+
+Deployment executions can be much more frequent than releases, so SemaPact does **not** write deployment/reconciliation telemetry to Git by default.
+
+Without configuration:
+
+```text
+deployment execute + verify
+→ return DeploymentExecutionResult
+→ no operational history persistence
+```
+
+To persist operational telemetry explicitly:
+
+```bash
+# local / lightweight
+semapact deployment deploy \
+  --bundle ./artifacts/orders-dev.bundle.json \
+  --operational-history sqlite:///./.semapact/operational.db
+
+# shared / higher-volume
+semapact deployment deploy \
+  --bundle ./artifacts/orders-prod.bundle.json \
+  --operational-history delta:///path/to/semapact_operational_history
+```
+
+Supported operational history backends in this slice are SQLite and Delta. The Delta backend is lazy and requires the `delta` optional extra.
+
+Operational events record concrete deployment occurrence facts including success/failure, exact bundle/plan/source provenance, target, timestamps, and reconciliation status when available.
 
 ## Databricks deployment capability
 
-The first Databricks write slice is intentionally narrow and fail-closed.
+The first Databricks write slice remains intentionally narrow and fail-closed for schema mutation:
 
 | Observed state | Supported behavior |
 | --- | --- |
 | Governed table is missing | `CREATE TABLE ... USING DELTA` as a managed table |
 | Existing `MANAGED` table is missing a governed nullable column | `ALTER TABLE ... ADD COLUMNS (...)` |
 | Existing `MANAGED` table already satisfies the governed shape | `NO_OP` |
-| Runtime contains extra columns not governed by this contract | Leave them untouched; no inferred `DROP` |
+| Runtime contains extra columns not governed by this contract | Leave them untouched |
 
-For this slice, `ALTER` means **only additive nullable-column change**. The adapter does not interpret `ALTER` as generic schema evolution.
+Rename, existing-column type/nullability mutation, unsafe required-column addition, DROP, non-managed mutation, and ambiguous mappings fail closed.
 
-The following are rejected rather than guessed or silently converted:
+### Unity Catalog release provenance tags
 
-- column rename;
-- existing-column physical type change;
-- existing-column nullability change;
-- adding a required/non-null column without an explicit safe migration/default strategy;
-- `DROP` or other destructive reconciliation;
-- mutation of existing external/non-managed assets;
-- unsupported or ambiguous provider mappings.
+After a **formal release** reaches schema reconciliation status `IN_SYNC`, the Databricks adapter projects SemaPact-owned release provenance onto every governed Unity Catalog table:
 
-Existing external/non-managed assets remain observable through the runtime read side, but this deployment adapter does not claim mutation authority over them.
+```text
+semapact_contract_id
+semapact_contract_version
+semapact_release_id
+semapact_revision
+```
 
-The adapter is also not a general Databricks infrastructure engine. Workspace, catalog, schema, SQL warehouse, credentials, external locations, storage configuration, grants, jobs, and clusters are outside this deployment boundary and must be provisioned separately.
+For example, a released `orders@1.4.0` table is tagged with version `1.4.0` and the exact `ContractReleaseRecord` identity. Candidate/non-release deployments never publish formal release/version tags.
+
+This projection is deliberately limited to SemaPact provenance. ODCS business tags, classifications, PII labels, or governed ABAC tags are **not** automatically mapped to Unity Catalog tags; those require a separate explicit mapping policy.
+
+Tag mutation is a provider side effect and therefore requires a Databricks SQL warehouse even when the schema deployment itself resolves to `NO_OP`. A tag-write failure fails the release deployment command rather than silently claiming the runtime is fully projected.
 
 ## Authorization scope
 
-Runtime deployment is a separate protected operation from publishing a contract release artifact.
+Candidate and release deployment use different authorization semantics:
 
-At the canonical application boundary, REVIEW deployments require exact approval evidence bound to the `deploymentPlanId` and `bundleDigest`. The CLI can resolve that evidence from Git-backed approval history automatically, or callers can provide an explicit `ApprovalRecord` for custom workflows. This makes the CI artifact itself part of the approval scope rather than approving a mutable path or SQL string.
+```text
+candidate deployment
+→ exact GovernanceDecision + candidate source snapshot
+→ BLOCK fails closed
+→ no release ApprovalRecord
 
-The current low-level domain implementation still bridges this into the historical `ContractOpsAuthorization → DeploymentAuthorization` types before calling the adapter. That bridge is compatibility machinery; Data Engineers and CI/CD callers do not construct those artifacts in the bundle workflow. A future cleanup can collapse the bridge without changing the public bundle contract.
+formal release deployment
+→ exact ContractOps release context
+→ REVIEW requires exact approval
+→ exact DeploymentPlan authorization
+```
 
-A PUBLISH authorization cannot authorize DEPLOY.
+In both modes, authorization binds the exact source snapshot and target-specific DeploymentPlan before runtime mutation.
 
 ## Determinism
 
 `deploymentPlanId` is UUID5-derived from the full stable plan record:
 
-- exact release identity and provenance (`ReleaseSnapshot` for v3 plans; legacy applied-release identity for v2 compatibility);
+- exact deployment source snapshot (candidate or release) and revision/version provenance;
 - exact deployment target, including runtime source reference;
 - canonical actions ordered by governed asset identity;
 - plan schema version.
 
-The same exact release and target therefore produce the same DeploymentPlan.
+The same exact deployment source and target therefore produce the same DeploymentPlan.
 
 Action ordering is canonical even when schemas appear in a different order in source ODCS. However, DeploymentPlan does not redefine release identity: two distinct exact release artifacts remain distinct plan inputs even if their projected actions happen to be equivalent.
 
