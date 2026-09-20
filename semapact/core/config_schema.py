@@ -19,7 +19,7 @@ class SQLiteOperationalHistoryConfig(_OperationalHistoryConfig):
     """Local SQLite operational history configuration."""
 
     backend: Literal["sqlite"]
-    path: str
+    path: str = Field(min_length=1)
 
     @field_validator("path")
     @classmethod
@@ -37,7 +37,7 @@ class DeltaOperationalHistoryConfig(_OperationalHistoryConfig):
     """Delta Lake operational history configuration."""
 
     backend: Literal["delta"]
-    table_uri: str
+    table_uri: str = Field(min_length=1)
 
     @field_validator("table_uri")
     @classmethod
@@ -68,7 +68,13 @@ class HistoryConfig(BaseModel):
 class SemaPactConfigSchema(BaseModel):
     """Incremental root schema for project/global SemaPact configuration."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://semapact.org/schemas/semapact-config.schema.json",
+        },
+    )
 
     history: HistoryConfig | None = None
 
@@ -88,3 +94,8 @@ def operational_history_uri_from_config(value: object) -> str | None:
     """Return the normalized sink URI represented by typed configuration."""
     config = parse_operational_history_config(value)
     return config.as_uri() if config is not None else None
+
+
+def published_config_json_schema() -> dict[str, object]:
+    """Return the canonical machine-readable SemaPact configuration schema."""
+    return SemaPactConfigSchema.model_json_schema()
