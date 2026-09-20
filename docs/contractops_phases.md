@@ -195,25 +195,28 @@ Git, storage, and other release-artifact publication behavior belongs in adapter
 
 ## DEPLOY
 
-DEPLOY mutates a runtime toward one exact target-specific `DeploymentPlan`. It is downstream of governance and may consume either:
+DEPLOY converges one runtime toward an exact target-specific `DeploymentPlan`. The desired state comes from one immutable `DeploymentSourceSnapshot`:
 
-- a candidate deployment source (`release=false`), with no release version/approval/history; or
-- a formal release source (`release=true`), with exact release/version provenance and REVIEW approval when required.
+- `source_kind=candidate` for validation/test deployment without a formal release;
+- `source_kind=contract_release` for deployment of an already-finalized `ContractRelease`.
 
-Candidate REVIEW deployments are allowed as non-release validation/test deployments without creating release approval evidence. `BLOCK` always fails closed.
+Candidate `BLOCK` decisions fail closed. Candidate `REVIEW` may still be deployed for non-release validation/test because this path creates no formal release fact or release approval.
 
-For formal release mode, the new `ContractRelease` is the durable Git governance fact. Runtime deployment history is operational telemetry and is not written to Git by default.
+Formal REVIEW approval belongs to the earlier PUBLISH boundary. A `ContractRelease` proves what was released; it does not grant permission to mutate a runtime. Whether `semapact deployment deploy` may run is controlled by the surrounding protected execution context, such as a GitHub or Azure DevOps Environment.
 
-Provider-specific execution stays behind the deployment adapter. For Databricks, a formal release that reaches `IN_SYNC` also projects SemaPact-owned release/version provenance into Unity Catalog tags.
+The deployment adapter validates exact plan/source binding, re-observes runtime, derives a fresh deterministic preview, checks runtime freshness, applies safe operations, then verifies convergence. For Databricks, a finalized release that reaches `IN_SYNC` also projects SemaPact-owned release/version provenance into Unity Catalog tags.
+
+Runtime deployment history is optional operational telemetry and is not written to Git by default.
 
 See [`deployment_plans.md`](deployment_plans.md) for the complete candidate/release CLI flow, operational-history backends, Databricks tags, and convergence semantics.
+
 ## Failure semantics
 
-ContractOps distinguishes invalid context from denied authorization:
+ContractOps distinguishes invalid release context from denied publication authorization:
 
-- mismatched revision/artifact/operation context → `ReleaseValidationError`;
-- a valid context whose explicit authorization is denied → `ContractOpsAuthorizationError`;
-- external publishers or runtime adapters are never invoked when authorization validation fails.
+- mismatched release revision/artifact context → `ReleaseValidationError`;
+- a valid formal release whose required PUBLISH approval is denied/missing → `ContractOpsAuthorizationError`;
+- runtime deployment fails closed on invalid source/plan provenance, stale runtime evidence, or unsupported provider transitions.
 
 Unexpected publisher/runtime failures are not converted into governance decisions; they propagate as execution failures.
 
