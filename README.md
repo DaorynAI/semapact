@@ -73,20 +73,25 @@ The exact governed decision then feeds either candidate deployment or an explici
 GovernanceDecision
 → ChangeSet
    ├─ candidate deployment
-   │    → DeploymentSourceSnapshot
+   │    → DeploymentSourceSnapshot(source_kind=candidate)
    │    → DeploymentPlan
    │    → DeploymentBundle
    │
-   └─ formal release (--release)
+   └─ formal release
         → ReleasePlan
         → VersionResolution
         → ReleaseSnapshot
+        → ReleaseBundle
+        → ContractRelease
+             ↓
+          + target
+             ↓
+        DeploymentSourceSnapshot(source_kind=contract_release)
         → DeploymentPlan
         → DeploymentBundle
-        → ContractRelease
 ```
 
-Release approval and runtime authorization remain explicit side-effect boundaries.
+Release approval protects formal publication. Runtime deployment permission belongs to the surrounding protected execution context; ContractRelease is provenance, not DEPLOY authorization.
 
 For production assurance:
 
