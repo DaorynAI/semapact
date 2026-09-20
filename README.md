@@ -184,48 +184,56 @@ SemaPact supports two version-authority modes:
 
 See [`docs/contractops_phases.md`](docs/contractops_phases.md) and [`docs/version_authority.md`](docs/version_authority.md).
 
-### Governed runtime deployment
+### Contract release and runtime deployment
 
-SemaPact separates **candidate deployment** from **formal contract release**.
+SemaPact treats formal contract release and runtime deployment as separate lifecycles.
 
-The default path deploys an exact candidate revision without creating another semantic version:
+A formal release is target-neutral:
 
 ```text
-deployment assess
-→ GovernanceDecision + ChangeSet
-→ exact candidate DeploymentSourceSnapshot
-→ DeploymentPlan + fresh CI preview
-→ DeploymentBundle(release=false)
+release assess
+→ GovernanceDecision
+→ ChangeSet
+→ ReleasePlan
+→ VersionResolution
+→ ReleaseSnapshot
+→ ReleaseBundle
+
+REVIEW → exact release approval
+        ↓
+release finalize
+→ ContractReleaseRecord
+→ materialize the selected version back to ODCS
+```
+
+The selected version is calculated once. The resulting `ContractReleaseRecord` can then be deployed to any number of runtime targets without another version bump:
+
+```text
+orders@1.4.0
+├── dev
+├── test
+└── prod
+```
+
+Deployment is target-specific:
+
+```text
+deployment assess --release-id <contract-release-id>
+→ DeploymentSourceSnapshot
+→ DeploymentPlan
+→ fresh runtime preview
+→ DeploymentBundle
 
 deployment deploy
 → fresh preview → execute → fresh verify
 → IN_SYNC / DRIFT / INDETERMINATE
 ```
 
-A formal release is explicit:
-
-```bash
-semapact deployment assess ... --release
-```
-
-Release mode adds:
-
-```text
-ReleasePlan
-→ VersionResolution
-→ ReleaseSnapshot
-→ DeploymentBundle(release=true)
-→ exact approval when REVIEW
-→ ContractReleaseRecord
-```
-
-A released version is environment-neutral. The same version can later be deployed to dev, test, and prod without another version bump.
-
-`deploy` always re-observes runtime before execution; CI-time preview operations are never replayed blindly.
+Candidate/non-release deployment remains available directly from base + candidate and does not create a new contract version or release history.
 
 Deployment telemetry is disabled by default. High-frequency execution history can be enabled once in typed `.semapact.yaml` configuration with a SQLite or Delta backend; it is not written into Git governance history. The `--operational-history` CLI option is only an override.
 
-For Databricks, once a **formal release** is verified `IN_SYNC`, SemaPact projects release provenance to governed Unity Catalog tables using reserved tags:
+For Databricks, once deployment of a finalized formal release verifies `IN_SYNC`, SemaPact projects the finalized release provenance to governed Unity Catalog tables using reserved tags:
 
 ```text
 semapact_contract_id
@@ -375,29 +383,47 @@ semapact deployment assess \
   --bundle-out ./artifacts/orders-dev.bundle.json
 ```
 
-Use `--release` only when that CI artifact is intended to create a new formal contract release/version:
+Build a target-neutral formal release separately:
 
 ```bash
-semapact deployment assess \
+semapact release assess \
   --base ./contracts/orders.yaml \
   --candidate ./contracts/orders.candidate.yaml \
   --base-revision-ref git:abc123 \
   --candidate-revision-ref git:def456 \
   --effective-date 2026-09-20 \
-  --server production \
-  --release \
-  --bundle-out ./artifacts/orders-prod.bundle.json
+  --bundle-out ./artifacts/orders.release.bundle.json
 ```
 
-CD consumes the exact bundle in either mode:
+For REVIEW releases, record the exact external approval and then finalize the release:
 
 ```bash
+semapact release approve \
+  --bundle ./artifacts/orders.release.bundle.json \
+  --actor-reference github-environment:contract-release \
+  --recorded-at 2026-09-20T10:00:00+10:00
+
+semapact release finalize \
+  --bundle ./artifacts/orders.release.bundle.json \
+  --output-contract ./contracts/orders.yaml
+```
+
+Finalization writes the selected semantic version back to the ODCS contract and records the immutable `ContractReleaseRecord` in the Git governance ledger.
+
+Deployment then consumes that finalized release identity:
+
+```bash
+semapact deployment assess \
+  --release-id <contract-release-id> \
+  --server production \
+  --bundle-out ./artifacts/orders-prod.deployment.bundle.json
+
 semapact deployment deploy \
-  --bundle ./artifacts/orders-prod.bundle.json \
+  --bundle ./artifacts/orders-prod.deployment.bundle.json \
   --warehouse-id <databricks-sql-warehouse-id>
 ```
 
-Formal REVIEW releases resolve exact approval evidence from Git-backed history unless `--approval` is supplied explicitly. Candidate deployments do not require release approval.
+Candidate deployments do not require release approval.
 
 Operational deployment history is configured project-wide rather than repeated on every deploy:
 
