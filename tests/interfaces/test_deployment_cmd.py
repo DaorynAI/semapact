@@ -1,80 +1,21 @@
 from __future__ import annotations
 
-import json
 import sys
 
-from open_data_contract_standard.model import (
-    OpenDataContractStandard,
-    SchemaObject,
-    SchemaProperty,
-    Server,
-)
+from open_data_contract_standard.model import Server
 import pytest
 
-from semapact.contractops import AppliedContractRelease
-from semapact.deployment import (
-    DeploymentAdapter,
-    DeploymentTarget,
-    build_deployment_plan,
-)
-from semapact.contractops.integrity import compute_applied_release_id
 from semapact.exceptions import ValidationError
 from semapact.interfaces import cli
 from semapact.interfaces.commands import deployment_cmd
 from semapact.interfaces.commands.deployment_cmd import DeploymentCommandResult
 from semapact.interfaces.outcomes import ProcessOutcome
-from semapact.reconciliation import ReconciliationResult
+
 
 SOURCE_REFERENCE = "https://workspace.example"
 
 
-def _release() -> AppliedContractRelease:
-    contract = OpenDataContractStandard(
-        apiVersion="v3.1.0",
-        kind="DataContract",
-        id="orders-product",
-        name="Orders",
-        version="1.2.0",
-        status="active",
-        schema=[
-            SchemaObject(
-                name="orders",
-                physicalName="orders_runtime",
-                properties=[
-                    SchemaProperty(
-                        name="id",
-                        physicalName="order_id",
-                        type="integer",
-                        physicalType="BIGINT",
-                        required=True,
-                    )
-                ],
-            )
-        ],
-    )
-    released_contract_json = json.dumps(
-        contract.model_dump(mode="json", by_alias=True, exclude_none=True),
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    fields = {
-        "contract_id": "orders-product",
-        "decision_id": "decision:test",
-        "change_set_id": "change-set:test",
-        "release_plan_id": "release-plan:test",
-        "version_resolution_id": "version-resolution:test",
-        "release_revision_ref": "rev:released",
-        "selected_version": "1.2.0",
-        "authorization_id": "authorization:test",
-        "released_contract_json": released_contract_json,
-    }
-    return AppliedContractRelease(
-        applied_release_id=compute_applied_release_id(**fields),
-        **fields,
-    )
-
-
-def test_deployment_parser_exposes_read_only_assessment_and_explicit_phases() -> None:
+def test_deployment_parser_exposes_only_bundle_workflow() -> None:
     parser = cli._build_parser()
 
     assess = parser.parse_args(
@@ -99,6 +40,22 @@ def test_deployment_parser_exposes_read_only_assessment_and_explicit_phases() ->
             "json",
         ]
     )
+    approve = parser.parse_args(
+        [
+            "deployment",
+            "approve",
+            "--bundle",
+            "bundle.json",
+            "--actor-reference",
+            "human:reviewer",
+            "--recorded-at",
+            "2026-09-20T10:00:00+10:00",
+            "--approval-out",
+            "approval.json",
+            "--output",
+            "json",
+        ]
+    )
     deploy = parser.parse_args(
         [
             "deployment",
@@ -113,100 +70,34 @@ def test_deployment_parser_exposes_read_only_assessment_and_explicit_phases() ->
             "json",
         ]
     )
-    plan = parser.parse_args(
-        [
-            "deployment",
-            "plan",
-            "--release",
-            "release.json",
-            "--platform",
-            "databricks",
-            "--runtime",
-            "main.silver",
-            "--source-reference",
-            SOURCE_REFERENCE,
-        ]
-    )
-    preview = parser.parse_args(
-        ["deployment", "preview", "--plan", "plan.json"]
-    )
-    execute = parser.parse_args(
-        [
-            "deployment",
-            "execute",
-            "--plan",
-            "plan.json",
-            "--preview",
-            "preview.json",
-            "--authorization",
-            "authorization.json",
-        ]
-    )
-    verify = parser.parse_args(
-        ["deployment", "verify", "--plan", "plan.json", "--output", "json"]
-    )
 
     assert assess.deployment_command == "assess"
-    assert assess.output == "json"
     assert assess.server == "production"
     assert assess.bundle_out == "bundle.json"
+    assert assess.output == "json"
+
+    assert approve.deployment_command == "approve"
+    assert approve.bundle == "bundle.json"
+    assert approve.actor_reference == "human:reviewer"
+    assert approve.approval_out == "approval.json"
+
     assert deploy.deployment_command == "deploy"
     assert deploy.bundle == "bundle.json"
     assert deploy.approval == "approval.json"
     assert deploy.warehouse_id == "warehouse-1"
     assert deploy.output == "json"
-    assert plan.deployment_command == "plan"
-    assert plan.source_reference == SOURCE_REFERENCE
-    assert preview.deployment_command == "preview"
-    assert not hasattr(preview, "warehouse_id")
-    assert execute.deployment_command == "execute"
-    assert execute.warehouse_id is None
-    assert verify.deployment_command == "verify"
-    assert verify.output == "json"
 
 
-def test_plan_command_outputs_canonical_deployment_plan(tmp_path) -> None:
-    release_path = tmp_path / "release.json"
-    release = _release()
-    release_path.write_text(release.model_dump_json(), encoding="utf-8")
-    args = cli._build_parser().parse_args(
-        [
-            "deployment",
-            "plan",
-            "--release",
-            str(release_path),
-            "--platform",
-            "databricks",
-            "--runtime",
-            "main.silver",
-            "--source-reference",
-            SOURCE_REFERENCE,
-            "--server",
-            "production",
-        ]
-    )
+@pytest.mark.parametrize("legacy_command", ["plan", "preview", "execute", "verify"])
+def test_legacy_deployment_commands_are_not_public_cli(
+    legacy_command: str,
+) -> None:
+    parser = cli._build_parser()
 
-    result = deployment_cmd.run_deployment_plan(args)
-    payload = json.loads(result.output)
+    with pytest.raises(SystemExit) as exc:
+        parser.parse_args(["deployment", legacy_command])
 
-    assert result.outcome is ProcessOutcome.SUCCESS
-    assert payload["applied_release_id"] == release.applied_release_id
-    assert payload["target"] == {
-        "platform": "databricks",
-        "runtime_target": "main.silver",
-        "source_reference": SOURCE_REFERENCE,
-        "server_name": "production",
-    }
-    assert payload["actions"][0]["governed_asset"] == "orders"
-    assert payload["actions"][0]["physical_name"] == "orders_runtime"
-
-
-def test_invalid_artifact_is_a_validation_failure(tmp_path) -> None:
-    invalid = tmp_path / "invalid.json"
-    invalid.write_text("{}", encoding="utf-8")
-
-    with pytest.raises(ValidationError, match="Invalid DeploymentPlan artifact"):
-        deployment_cmd._load_model(str(invalid), deployment_cmd.DeploymentPlan)
+    assert exc.value.code == 2
 
 
 @pytest.mark.parametrize(
@@ -217,7 +108,7 @@ def test_invalid_artifact_is_a_validation_failure(tmp_path) -> None:
         (ProcessOutcome.RUNTIME_INDETERMINATE, 7),
     ],
 )
-def test_main_preserves_verification_outcome_semantics(
+def test_main_preserves_bundle_deploy_outcome_semantics(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     outcome: ProcessOutcome,
@@ -225,84 +116,17 @@ def test_main_preserves_verification_outcome_semantics(
 ) -> None:
     monkeypatch.setattr(
         deployment_cmd,
-        "run_deployment_verify",
-        lambda args: DeploymentCommandResult(output="verification", outcome=outcome),
+        "run_deployment_deploy",
+        lambda args: DeploymentCommandResult(output="deployment", outcome=outcome),
     )
     monkeypatch.setattr(
         sys,
         "argv",
-        ["semapact", "deployment", "verify", "--plan", "plan.json"],
+        ["semapact", "deployment", "deploy", "--bundle", "bundle.json"],
     )
 
     assert cli.main() == expected_exit
-    assert capsys.readouterr().out.strip() == "verification"
-
-
-
-def test_verify_command_uses_unified_deployment_adapter(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    plan = build_deployment_plan(
-        _release(),
-        DeploymentTarget(
-            platform="databricks",
-            runtime_target="main.silver",
-            source_reference=SOURCE_REFERENCE,
-        ),
-    )
-    plan_path = tmp_path / "plan.json"
-    plan_path.write_text(plan.model_dump_json(), encoding="utf-8")
-
-    class _Adapter(DeploymentAdapter):
-        key = "databricks"
-
-        def __init__(self) -> None:
-            self.verify_calls = 0
-
-        def validate(self, plan):
-            raise AssertionError("CLI should call the service entrypoint")
-
-        def preview(self, plan):
-            raise AssertionError("preview should not be called")
-
-        def execute(self, plan, preview, authorization):
-            raise AssertionError("execute should not be called")
-
-        def verify(self, plan):
-            self.verify_calls += 1
-            return ReconciliationResult(
-                contract_id=plan.contract_id,
-                contract_version=plan.selected_version,
-                observation_source_identifier=SOURCE_REFERENCE,
-                observation_fingerprint="obs-v2:sha256:test",
-            )
-
-    adapter = _Adapter()
-
-    import semapact.platforms.runtime_registry as runtime_registry
-
-    monkeypatch.setattr(
-        runtime_registry,
-        "create_deployment_adapter",
-        lambda platform: adapter,
-    )
-
-    args = cli._build_parser().parse_args(
-        [
-            "deployment",
-            "verify",
-            "--plan",
-            str(plan_path),
-            "--output",
-            "json",
-        ]
-    )
-    result = deployment_cmd.run_deployment_verify(args)
-
-    assert result.outcome is ProcessOutcome.SUCCESS
-    assert adapter.verify_calls == 1
-    assert json.loads(result.output)["status"] == "IN_SYNC"
+    assert capsys.readouterr().out.strip() == "deployment"
 
 
 def test_assessment_source_reference_prefers_contract_server_host() -> None:
