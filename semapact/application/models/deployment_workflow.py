@@ -31,7 +31,7 @@ class DeploymentExecutionResult(BaseModel):
     bundle_digest: str
     deployment_plan_id: str
     authorization_id: str
-    release_record_id: str | None = None
+    contract_release_id: str | None = None
     fresh_preview: DeploymentPreview
     reconciliation: ReconciliationResult
     status: RuntimeDriftStatus
