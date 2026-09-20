@@ -90,4 +90,6 @@ def test_release_finalize_materializes_selected_version_and_history(tmp_path) ->
     repository = GitWorkingTreeHistoryRepository(tmp_path)
     record = repository.get_contract_release(result["contractReleaseId"])
     assert record.contract_version == "1.3.0"
+    assert record.source_revision_ref == "git:candidate"
+    assert result["sourceRevisionRef"] == "git:candidate"
     assert record.released_contract_json
