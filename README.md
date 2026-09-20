@@ -133,9 +133,9 @@ DRAFT → ACTIVE → DEPRECATED → RETIRED
 
 Lifecycle status does not itself mean that a revision has been authorized for release.
 
-### Side effects are operation-scoped
+### Side effects have explicit trust boundaries
 
-SemaPact distinguishes pure planning/materialization from external side effects. PUBLISH and DEPLOY are protected operation scopes; release snapshot construction itself is pure. A publication authorization cannot be reused as runtime deployment authority.
+SemaPact distinguishes pure planning/materialization from external side effects. Formal release PUBLISH approval is recorded explicitly when governance requires review. Runtime DEPLOY permission belongs to the surrounding protected execution boundary (for example a GitHub or Azure DevOps Environment), not to the ContractRelease artifact. Release state therefore cannot authorize runtime mutation by itself.
 
 ### Runtime-aware without becoming platform-owned
 
@@ -218,7 +218,7 @@ orders@1.4.0
 Deployment is target-specific:
 
 ```text
-deployment assess --release-id <contract-release-id>
+deployment assess --release ./artifacts/contract-release.json
 → DeploymentSourceSnapshot
 → DeploymentPlan
 → fresh runtime preview
