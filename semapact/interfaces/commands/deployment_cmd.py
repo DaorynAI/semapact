@@ -174,7 +174,7 @@ def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
         else None
     )
     operational_history = create_operational_history_sink(
-        args.operational_history
+        _resolve_operational_history_uri(args.operational_history)
     )
     metadata_projector = (
         adapter
@@ -199,6 +199,25 @@ def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
         output=rendered,
         outcome=outcome_from_reconciliation_status(result.status),
     )
+
+
+def _resolve_operational_history_uri(cli_override: str | None) -> str | None:
+    """Resolve CLI override first, then typed project/global configuration."""
+    if cli_override is not None and cli_override.strip():
+        return cli_override.strip()
+
+    from pydantic import ValidationError as PydanticConfigValidationError
+
+    from semapact.core.config import config_manager
+    from semapact.core.config_schema import operational_history_uri_from_config
+
+    raw_config = config_manager.get("history.operational", default=None)
+    try:
+        return operational_history_uri_from_config(raw_config)
+    except PydanticConfigValidationError as exc:
+        raise ValidationError(
+            f"Invalid history.operational configuration: {exc}"
+        ) from exc
 
 
 def _resolve_deployment_approval(
