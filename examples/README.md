@@ -48,4 +48,6 @@ Both examples assume contracts define Databricks servers named `development` and
 
 Operational deployment history is config-first through `.semapact.yaml`. The examples do not repeat `--operational-history` on every deployment.
 
-GitHub Environment protection is used as the human production approval surface. Until SemaPact has a provider-native approval-ingestion command, the examples explicitly project a REVIEW bundle into the generic `semapact approval record` CLI before deployment.
+The examples use two distinct GitHub Environment boundaries. `contract-release` supplies human PUBLISH approval for REVIEW releases, recorded with `semapact release approve`. `production` protects whether the deployment job may run; SemaPact does not convert the finalized ContractRelease into DEPLOY authorization.
+
+`release finalize --release-out` publishes the immutable ContractRelease as a pipeline artifact. Deployment jobs consume that artifact directly with `deployment assess --release`; Git history remains the governance ledger rather than the job-to-job transport.
