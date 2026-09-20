@@ -2,27 +2,24 @@
 
 from __future__ import annotations
 
-from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject
+from open_data_contract_standard.model import SchemaObject
 
 from semapact.deployment.adapters import DeploymentAdapter
 from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
     DeploymentAction,
     DeploymentActionKind,
-    DeploymentAssessment,
     DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
     DeploymentTarget,
     NativeOperation,
     NativeOperationKind,
-    compute_deployment_assessment_id,
     compute_deployment_preview_id,
     validate_deployment_authorization_identity,
     validate_deployment_plan_identity,
     validate_deployment_preview_identity,
 )
-from semapact.deployment.planner import build_deployment_actions
 from semapact.deployment.providers import NativeOperationExecutor
 from semapact.deployment.schema_transitions import SchemaTransitionPlanner
 from semapact.deployment.verification import verify_deployment_convergence
@@ -73,71 +70,6 @@ class DeploymentOrchestrator(DeploymentAdapter):
     @property
     def key(self) -> str:
         return self._runtime_provider.key
-
-    def assess(
-        self,
-        contract: OpenDataContractStandard,
-        *,
-        candidate_revision_ref: str,
-        target: DeploymentTarget,
-    ) -> DeploymentAssessment:
-        """Assess candidate desired state against fresh runtime without authority."""
-        if not isinstance(contract, OpenDataContractStandard):
-            raise TypeError(
-                "contract must be OpenDataContractStandard, "
-                f"got {type(contract).__name__}"
-            )
-        if not isinstance(target, DeploymentTarget):
-            raise TypeError(
-                f"target must be DeploymentTarget, got {type(target).__name__}"
-            )
-
-        contract_id = str(contract.id or "").strip()
-        candidate_version = str(contract.version or "").strip()
-        revision_ref = str(candidate_revision_ref).strip()
-        if not contract_id:
-            raise ValidationError("Candidate contract id is required for deployment assessment")
-        if not candidate_version:
-            raise ValidationError(
-                "Candidate contract version is required for deployment assessment"
-            )
-        if not revision_ref:
-            raise ValidationError(
-                "candidate_revision_ref is required for deployment assessment"
-            )
-
-        actions = build_deployment_actions(contract)
-        desired_by_action = self._validate_and_map_actions(target, actions)
-        observed_state, bindings = self._observe_scope(target, actions)
-        operations = self._operations_for_scope(
-            target,
-            actions,
-            observed_state,
-            bindings=bindings,
-            desired_by_action=desired_by_action,
-        )
-        if observed_state.fingerprint is None:
-            raise ValidationError("Runtime observation fingerprint is required")
-
-        assessment_id = compute_deployment_assessment_id(
-            contract_id=contract_id,
-            candidate_revision_ref=revision_ref,
-            candidate_version=candidate_version,
-            target=target,
-            source_identifier=observed_state.source_identifier,
-            observation_fingerprint=observed_state.fingerprint,
-            operations=operations,
-        )
-        return DeploymentAssessment(
-            deployment_assessment_id=assessment_id,
-            contract_id=contract_id,
-            candidate_revision_ref=revision_ref,
-            candidate_version=candidate_version,
-            target=target,
-            source_identifier=observed_state.source_identifier,
-            observation_fingerprint=observed_state.fingerprint,
-            operations=operations,
-        )
 
     def validate(self, plan: DeploymentPlan) -> None:
         """Validate one exact plan without runtime observation side effects."""
