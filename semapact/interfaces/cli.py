@@ -546,7 +546,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     deployment_deploy_parser.add_argument(
         "--warehouse-id",
-        help="Databricks SQL warehouse required when fresh operations mutate runtime",
+        help=(
+            "Databricks SQL warehouse required for runtime mutation and formal-release "
+            "Unity Catalog provenance tag projection"
+        ),
     )
     deployment_deploy_parser.add_argument(
         "--operational-history",
