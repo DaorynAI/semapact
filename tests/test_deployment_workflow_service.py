@@ -11,6 +11,7 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
+from semapact.approval import build_approval_record
 from semapact.application.models.deployment_workflow import DeploymentBundle
 from semapact.application.services.deployment_workflow import DeploymentWorkflowService
 from semapact.deployment import (
@@ -20,9 +21,12 @@ from semapact.deployment import (
     NativeOperation,
     NativeOperationKind,
 )
+from semapact.contractops import ReviewEvidenceAction
 from semapact.deployment.models import compute_deployment_preview_id
+from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
+from semapact.governance import DecisionResult, GovernanceOperation
 from semapact.observation import ObservedPlatformState, with_observed_state_fingerprint
-from semapact.reconciliation import ReconciliationResult
+from semapact.reconciliation import ReconciliationResult, RuntimeDriftStatus
 
 
 class _PreviewAdapter(DeploymentAdapter):
@@ -76,7 +80,90 @@ class _PreviewAdapter(DeploymentAdapter):
         raise AssertionError("CI bundle construction must not verify deployment")
 
 
-def _contract(*, name: str) -> OpenDataContractStandard:
+class _ExecutionAdapter(DeploymentAdapter):
+    key = "fake"
+
+    def __init__(self) -> None:
+        self.preview_calls = 0
+        self.execute_calls = 0
+        self.verify_calls = 0
+        self.executed_preview = None
+
+    def validate(self, plan) -> None:
+        pass
+
+    def preview(self, plan) -> DeploymentPreview:
+        self.preview_calls += 1
+        observation = with_observed_state_fingerprint(
+            ObservedPlatformState(
+                platform="fake",
+                source_identifier=plan.target.source_reference,
+                assets=(),
+                captured_at=datetime(2026, 9, 20, 1, tzinfo=timezone.utc),
+            )
+        )
+        assert observation.fingerprint is not None
+        operations = (
+            NativeOperation(
+                kind=NativeOperationKind.NO_OP,
+                governed_asset="orders",
+            ),
+        )
+        return DeploymentPreview(
+            deployment_preview_id=compute_deployment_preview_id(
+                deployment_plan_id=plan.deployment_plan_id,
+                platform="fake",
+                runtime_target=plan.target.runtime_target,
+                source_identifier=observation.source_identifier,
+                observation_fingerprint=observation.fingerprint,
+                operations=operations,
+            ),
+            deployment_plan_id=plan.deployment_plan_id,
+            platform="fake",
+            runtime_target=plan.target.runtime_target,
+            source_identifier=observation.source_identifier,
+            observation_fingerprint=observation.fingerprint,
+            operations=operations,
+        )
+
+    def execute(self, plan, preview, authorization) -> None:
+        assert authorization.allowed is True
+        self.execute_calls += 1
+        self.executed_preview = preview
+
+    def verify(self, plan) -> ReconciliationResult:
+        self.verify_calls += 1
+        return ReconciliationResult(
+            contract_id=plan.contract_id,
+            contract_version=plan.selected_version,
+            observation_source_identifier=plan.target.source_reference,
+            observation_fingerprint="obs-v2:sha256:verified",
+        )
+
+
+def _contract(
+    *,
+    name: str,
+    include_created_at: bool = False,
+) -> OpenDataContractStandard:
+    properties = [
+        SchemaProperty(
+            name="id",
+            logicalType="string",
+            physicalType="varchar(255)",
+            required=True,
+        )
+    ]
+    if include_created_at:
+        properties.append(
+            SchemaProperty(
+                name="created_at",
+                logicalType="timestamp",
+                physicalType="timestamp",
+                required=False,
+            )
+        )
+
     return OpenDataContractStandard(
         apiVersion="v3.1.0",
         kind="DataContract",
@@ -84,19 +171,7 @@ def _contract(*, name: str) -> OpenDataContractStandard:
         name=name,
         version="1.2.3",
         status="active",
-        schema=[
-            SchemaObject(
-                name="orders",
-                properties=[
-                    SchemaProperty(
-                        name="id",
-                        logicalType="string",
-                        physicalType="varchar(255)",
-                        required=True,
-                    )
-                ],
-            )
-        ],
+        schema=[SchemaObject(name="orders", properties=properties)],
     )
 
 
@@ -183,3 +258,113 @@ def test_bundle_rehydration_fails_closed_when_digest_is_tampered() -> None:
 
     with pytest.raises(PydanticValidationError, match="digest does not match"):
         DeploymentBundle.model_validate(payload)
+
+
+def test_cd_uses_fresh_preview_not_ci_review_preview() -> None:
+    target = DeploymentTarget(
+        platform="fake",
+        runtime_target="main.sales",
+        source_reference="runtime:test",
+    )
+    service = DeploymentWorkflowService()
+    bundle = service.assess(
+        _contract(name="Orders old"),
+        _contract(name="Orders new"),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=target,
+        adapter=_PreviewAdapter(),
+    )
+    assert bundle.decision.decision is DecisionResult.ALLOW
+    assert bundle.review_preview.operations[0].kind is NativeOperationKind.CREATE
+
+    adapter = _ExecutionAdapter()
+    result = service.deploy(bundle, adapter=adapter)
+
+    assert adapter.preview_calls == 1
+    assert adapter.execute_calls == 1
+    assert adapter.verify_calls == 1
+    assert adapter.executed_preview is result.fresh_preview
+    assert result.fresh_preview.operations[0].kind is NativeOperationKind.NO_OP
+    assert result.review_preview_changed is True
+    assert result.status is RuntimeDriftStatus.IN_SYNC
+
+
+def test_review_deployment_requires_approval_bound_to_plan_and_bundle_digest() -> None:
+    target = DeploymentTarget(
+        platform="fake",
+        runtime_target="main.sales",
+        source_reference="runtime:test",
+    )
+    service = DeploymentWorkflowService()
+    bundle = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders", include_created_at=True),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=target,
+        adapter=_PreviewAdapter(),
+    )
+    assert bundle.decision.decision is DecisionResult.REVIEW
+
+    with pytest.raises(ContractOpsAuthorizationError, match="requires approval"):
+        service.deploy(bundle, adapter=_ExecutionAdapter())
+
+    approval = build_approval_record(
+        decision_id=bundle.decision.decision_id,
+        change_set_id=bundle.change_set.change_set_id,
+        release_plan_id=bundle.release_plan.release_plan_id,
+        version_resolution_id=bundle.version_resolution.version_resolution_id,
+        operation=GovernanceOperation.DEPLOY,
+        action=ReviewEvidenceAction.APPROVE,
+        actor_reference="human:reviewer",
+        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
+        scope_reference=bundle.deployment_plan.deployment_plan_id,
+        evidence_references=(bundle.bundle_digest,),
+    )
+
+    result = service.deploy(
+        bundle,
+        adapter=_ExecutionAdapter(),
+        approval=approval,
+    )
+    assert result.status is RuntimeDriftStatus.IN_SYNC
+
+
+def test_review_deployment_rejects_approval_for_different_bundle_digest() -> None:
+    target = DeploymentTarget(
+        platform="fake",
+        runtime_target="main.sales",
+        source_reference="runtime:test",
+    )
+    service = DeploymentWorkflowService()
+    bundle = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders", include_created_at=True),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=target,
+        adapter=_PreviewAdapter(),
+    )
+    approval = build_approval_record(
+        decision_id=bundle.decision.decision_id,
+        change_set_id=bundle.change_set.change_set_id,
+        release_plan_id=bundle.release_plan.release_plan_id,
+        version_resolution_id=bundle.version_resolution.version_resolution_id,
+        operation=GovernanceOperation.DEPLOY,
+        action=ReviewEvidenceAction.APPROVE,
+        actor_reference="human:reviewer",
+        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
+        scope_reference=bundle.deployment_plan.deployment_plan_id,
+        evidence_references=("sha256:" + ("0" * 64),),
+    )
+
+    with pytest.raises(ValidationError, match="exact DeploymentBundle digest"):
+        service.deploy(
+            bundle,
+            adapter=_ExecutionAdapter(),
+            approval=approval,
+        )
