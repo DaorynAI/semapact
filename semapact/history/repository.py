@@ -11,6 +11,7 @@ from semapact.governance import GovernanceDecision
 from semapact.governance.gate import GovernanceOperation
 from semapact.history.models import (
     ChangeSetDecisionLink,
+    ContractReleaseRecord,
     DeploymentRecord,
     HistoryStorageIntegrityIssue,
     ReleaseRecord,
@@ -125,6 +126,22 @@ class ReleaseRecordHistoryRepository(Protocol):
         contract_id: str,
         contract_version: str,
     ) -> ReleaseRecord: ...
+
+
+class ContractReleaseHistoryRepository(Protocol):
+    """Persistence capability for finalized formal contract release facts."""
+
+    def put_contract_release(self, record: ContractReleaseRecord) -> None: ...
+    def get_contract_release(self, contract_release_id: str) -> ContractReleaseRecord: ...
+    def list_contract_releases(
+        self,
+        contract_id: str,
+    ) -> tuple[ContractReleaseRecord, ...]: ...
+    def get_contract_release_by_version(
+        self,
+        contract_id: str,
+        contract_version: str,
+    ) -> ContractReleaseRecord: ...
 
 
 class DeploymentPlanHistoryRepository(Protocol):
