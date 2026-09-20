@@ -195,6 +195,54 @@ When the candidate contract defines the selected server, its platform, catalog/s
 
 The bundle file contains the canonical planning artifacts, `ReleaseSnapshot`, v3 `DeploymentPlan`, and CI-time `reviewPreview`, protected by `bundleDigest`. Use `--output json` to emit that same bundle on stdout instead. CI can publish the file using its normal pipeline-artifact mechanism; SemaPact does not couple this package to one CI vendor.
 
+### CI artifact handoff
+
+SemaPact deliberately emits an ordinary file artifact so CI systems can use their native immutable artifact store. The pipeline should publish the exact bundle file produced by `assess`; CD should download that artifact rather than rebuilding it from the merged repository state.
+
+Generic CI:
+
+```text
+CI job
+  semapact deployment assess --bundle-out deployment.bundle.json
+        ↓
+  publish deployment.bundle.json
+        ↓
+  record immutable artifact/digest reference
+        ↓
+approval
+        ↓
+CD job
+  download the exact published deployment.bundle.json
+        ↓
+  semapact deployment deploy --bundle deployment.bundle.json
+```
+
+GitHub Actions can use the normal artifact actions:
+
+```yaml
+- name: Build SemaPact deployment bundle
+  run: |
+    semapact deployment assess \
+      --base contracts/orders.base.yaml \
+      --candidate contracts/orders.yaml \
+      --base-revision-ref "git:${{ github.event.pull_request.base.sha }}" \
+      --candidate-revision-ref "git:${{ github.event.pull_request.head.sha }}" \
+      --effective-date "$(date -u +%F)" \
+      --server production \
+      --bundle-out artifacts/orders-prod.bundle.json
+
+- name: Publish deployment bundle
+  uses: actions/upload-artifact@v4
+  with:
+    name: semapact-orders-prod
+    path: artifacts/orders-prod.bundle.json
+    if-no-files-found: error
+```
+
+The corresponding CD job downloads that exact artifact and passes it unchanged to `deployment deploy`. Azure DevOps should use the equivalent Pipeline Artifact publish/download tasks. SemaPact does not require a vendor-specific artifact registry.
+
+Do not regenerate the bundle in CD. Rebuilding would create a new CI boundary and could make approval refer to material different from what CD consumes. CD is allowed—and required—to re-observe runtime, but not to replace the approved desired-state bundle.
+
 ### Deploy
 
 After CI publishes the exact bundle and any required human approval is recorded, CD consumes that bundle directly:
