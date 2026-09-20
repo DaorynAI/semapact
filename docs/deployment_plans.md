@@ -333,7 +333,7 @@ ApprovalRecord
 ContractReleaseRecord
 ```
 
-A formal `--release` deployment creates one immutable, target-neutral `ContractReleaseRecord` containing the released contract version, exact revision, and release-artifact identities. Target-specific bundle/approval evidence remains separate. A candidate deployment creates no release history.
+`semapact release finalize` creates one immutable, target-neutral `ContractReleaseRecord` containing the released contract version, exact revision, and release-artifact identities. Target-specific deployment bundles remain separate. Candidate deployment creates no release history.
 
 The Git adapter writes deterministic history files under `.semapact/history/`. The surrounding GitOps workflow remains responsible for committing/publishing those files; SemaPact does not silently push repository branches.
 
@@ -404,7 +404,7 @@ Rename, existing-column type/nullability mutation, unsafe required-column additi
 
 ### Unity Catalog release provenance tags
 
-After a **formal release** reaches schema reconciliation status `IN_SYNC`, the Databricks adapter projects SemaPact-owned release provenance onto every governed Unity Catalog table:
+After deployment of a **finalized formal release** reaches schema reconciliation status `IN_SYNC`, the Databricks adapter projects SemaPact-owned release provenance onto every governed Unity Catalog table:
 
 ```text
 semapact_contract_id
