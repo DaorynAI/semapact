@@ -16,8 +16,8 @@ from semapact.deployment.models import (
     validate_deployment_plan_identity,
 )
 from semapact.deployment.source import DeploymentSourceSnapshot
+from semapact.contractops import ContractRelease
 from semapact.governance import DecisionResult, GovernanceDecision
-from semapact.history.models import ContractReleaseRecord
 from semapact.exceptions import ReleaseValidationError
 from semapact.governance.gate import GovernanceOperation
 
@@ -154,7 +154,7 @@ def authorize_candidate_deployment(
 def authorize_contract_release_deployment(
     plan: DeploymentPlan,
     source: DeploymentSourceSnapshot,
-    release: ContractReleaseRecord,
+    release: ContractRelease,
 ) -> DeploymentAuthorization:
     """Authorize deployment from one already-finalized formal contract release."""
     if not plan.release or not source.release:
@@ -168,23 +168,23 @@ def authorize_contract_release_deployment(
         )
     if source.release_id != release.contract_release_id:
         raise ReleaseValidationError(
-            "Deployment source does not reference the finalized ContractReleaseRecord"
+            "Deployment source does not reference the finalized ContractRelease"
         )
     if source.contract_id != release.contract_id:
         raise ReleaseValidationError(
-            "Deployment source and ContractReleaseRecord contract IDs do not match"
+            "Deployment source and ContractRelease contract IDs do not match"
         )
     if source.contract_version != release.contract_version:
         raise ReleaseValidationError(
-            "Deployment source and ContractReleaseRecord versions do not match"
+            "Deployment source and ContractRelease versions do not match"
         )
     if source.revision_ref != release.revision_ref:
         raise ReleaseValidationError(
-            "Deployment source and ContractReleaseRecord revisions do not match"
+            "Deployment source and ContractRelease revisions do not match"
         )
     if plan.release_id != release.contract_release_id:
         raise ReleaseValidationError(
-            "DeploymentPlan does not reference the finalized ContractReleaseRecord"
+            "DeploymentPlan does not reference the finalized ContractRelease"
         )
 
     authorization_id = compute_deployment_authorization_id(
