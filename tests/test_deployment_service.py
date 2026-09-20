@@ -19,6 +19,10 @@ from semapact.deployment import (
     NativeOperation,
     NativeOperationKind,
 )
+from semapact.deployment.compatibility import (
+    parse_deployment_authorization_payload,
+    serialize_deployment_authorization_payload,
+)
 from semapact.deployment.models import (
     compute_deployment_authorization_id,
     compute_deployment_plan_id,
@@ -190,6 +194,18 @@ def _authorization(plan: DeploymentPlan) -> DeploymentAuthorization:
     )
 
 
+
+
+def test_legacy_authorization_wire_format_is_explicitly_adapted() -> None:
+    plan = _plan()
+    authorization = _authorization(plan)
+
+    payload = serialize_deployment_authorization_payload(authorization)
+
+    assert payload["contract_ops_authorization_id"] == "contractops-auth-1"
+    assert payload["applied_release_id"] == plan.source_snapshot_id
+    assert "source_snapshot_id" not in payload
+    assert parse_deployment_authorization_payload(payload) == authorization
 
 
 def test_preview_delegates_to_unified_adapter_entrypoint() -> None:
