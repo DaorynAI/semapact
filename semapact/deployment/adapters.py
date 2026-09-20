@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from semapact.deployment.models import (
-    DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
 )
@@ -64,14 +63,4 @@ class DeploymentAdapter(ABC):
         preview: DeploymentPreview,
     ) -> None:
         """Apply one exact preview after the application boundary authorizes execution."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def execute(
-        self,
-        plan: DeploymentPlan,
-        preview: DeploymentPreview,
-        authorization: DeploymentAuthorization,
-    ) -> None:
-        """Compatibility entrypoint for legacy in-process authorization artifacts."""
         raise NotImplementedError
