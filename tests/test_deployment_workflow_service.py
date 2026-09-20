@@ -73,6 +73,9 @@ class _PreviewAdapter(DeploymentAdapter):
             operations=operations,
         )
 
+    def apply(self, plan, preview) -> None:
+        raise AssertionError("CI bundle construction must not apply")
+
     def execute(self, plan, preview, authorization) -> None:
         raise AssertionError("CI bundle construction must not execute")
 
@@ -88,6 +91,7 @@ class _ExecutionAdapter(DeploymentAdapter):
         self.execute_calls = 0
         self.verify_calls = 0
         self.executed_preview = None
+        self.metadata_calls = []
 
     def validate(self, plan) -> None:
         pass
@@ -126,11 +130,17 @@ class _ExecutionAdapter(DeploymentAdapter):
             operations=operations,
         )
 
+    def apply(self, plan, preview) -> None:
+        self.execute_calls += 1
+        self.executed_preview = preview
+
     def execute(self, plan, preview, authorization) -> None:
         assert authorization.allowed is True
         assert authorization.source_snapshot_id == plan.source_snapshot_id
-        self.execute_calls += 1
-        self.executed_preview = preview
+        self.apply(plan, preview)
+
+    def project_release_metadata(self, plan, metadata) -> None:
+        self.metadata_calls.append((plan, metadata))
 
     def verify(self, plan) -> ReconciliationResult:
         self.verify_calls += 1
@@ -151,16 +161,8 @@ class _OperationalSink:
 
 
 class _FailingExecutionAdapter(_ExecutionAdapter):
-    def execute(self, plan, preview, authorization) -> None:
+    def apply(self, plan, preview) -> None:
         raise RuntimeError("provider mutation failed")
-
-
-class _MetadataProjector:
-    def __init__(self) -> None:
-        self.calls = []
-
-    def project_release_metadata(self, plan, metadata) -> None:
-        self.calls.append((plan, metadata))
 
 
 def _contract(
@@ -238,14 +240,14 @@ def test_candidate_assessment_does_not_calculate_release_version() -> None:
         adapter=_PreviewAdapter(),
     )
 
-    assert bundle.release is False
+    assert bundle.is_release is False
     assert bundle.contract_release is None
     assert bundle.decision is not None
     assert bundle.change_set is not None
-    assert bundle.deployment_source.release is False
+    assert bundle.deployment_source.source_kind == "candidate"
     assert bundle.deployment_source.contract_version == "1.2.3"
-    assert bundle.deployment_plan.release is False
-    assert bundle.deployment_plan.plan_version == "4"
+    assert bundle.deployment_plan.is_release is False
+    assert bundle.deployment_plan.plan_version == "5"
 
 
 def test_finalized_release_assessment_binds_exact_release_record(tmp_path) -> None:
@@ -256,7 +258,7 @@ def test_finalized_release_assessment_binds_exact_release_record(tmp_path) -> No
         adapter=_PreviewAdapter(),
     )
 
-    assert bundle.release is True
+    assert bundle.is_release is True
     assert bundle.decision is None
     assert bundle.change_set is None
     assert bundle.contract_release == release
@@ -405,18 +407,16 @@ def test_release_deployment_projects_finalized_version_after_in_sync(tmp_path) -
         target=_target(),
         adapter=_PreviewAdapter(),
     )
-    projector = _MetadataProjector()
-
+    adapter = _ExecutionAdapter()
     result = DeploymentWorkflowService().deploy(
         bundle,
-        adapter=_ExecutionAdapter(),
-        metadata_projector=projector,
+        adapter=adapter,
     )
 
     assert result.status is RuntimeDriftStatus.IN_SYNC
     assert result.contract_release_id == release.contract_release_id
-    assert len(projector.calls) == 1
-    plan, metadata = projector.calls[0]
+    assert len(adapter.metadata_calls) == 1
+    plan, metadata = adapter.metadata_calls[0]
     assert metadata.contract_version == release.contract_version
     assert metadata.contract_release_id == release.contract_release_id
     assert plan.release_id == release.contract_release_id
