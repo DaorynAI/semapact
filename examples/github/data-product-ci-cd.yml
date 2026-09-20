@@ -128,8 +128,6 @@ jobs:
     # Example policy: GitHub Environment protects formal release publication.
     # SemaPact only persists an ApprovalRecord when its decision is REVIEW.
     environment: contract-release
-    outputs:
-      release_id: ${{ steps.finalize.outputs.release_id }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -166,9 +164,8 @@ jobs:
           semapact release finalize \
             --bundle artifacts/release.bundle.json \
             --output-contract "${CONTRACT_PATH}" \
+            --release-out artifacts/contract-release.json \
             > artifacts/finalize.json
-          RELEASE_ID=$(jq -r '.contractReleaseId' artifacts/finalize.json)
-          echo "release_id=${RELEASE_ID}" >> "${GITHUB_OUTPUT}"
 
       - name: Commit released contract and governance ledger once
         run: |
@@ -185,7 +182,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: semapact-finalized-release
-          path: artifacts/finalize.json
+          path: |
+            artifacts/finalize.json
+            artifacts/contract-release.json
 
   deploy-production:
     needs: finalize-release
@@ -209,11 +208,16 @@ jobs:
       - name: Install SemaPact
         run: pip install "semapact[databricks]"
 
+      - name: Download finalized release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: semapact-finalized-release
+          path: artifacts
+
       - name: Assess finalized release against production
         run: |
-          mkdir -p artifacts
           semapact deployment assess \
-            --release-id "${{ needs.finalize-release.outputs.release_id }}" \
+            --release artifacts/contract-release.json \
             --server "${PROD_SERVER}" \
             --bundle-out artifacts/production.deployment.bundle.json
 
