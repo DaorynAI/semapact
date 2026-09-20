@@ -144,34 +144,11 @@ Preview, execution, and verification fail closed when fresh runtime evidence com
 
 The plan does not contain credentials, workspace clients, SQL connections, or provider sessions.
 
-## CI assessment and the DeploymentBundle boundary
+## ReleaseBundle and DeploymentBundle boundaries
 
-Deployment and formal contract release are related but distinct lifecycles.
+Formal contract release and runtime deployment are separate lifecycles with separate immutable handoff artifacts.
 
-By default, `deployment assess` prepares a **candidate deployment**. It evaluates governance and freezes the exact candidate revision, but it does not calculate a new semantic version, create release approval evidence, or create release history:
-
-```text
-base + candidate
-    ↓
-GovernanceDecision
-→ ChangeSet
-→ DeploymentSourceSnapshot(release=false)
-→ DeploymentPlan
-        +
-fresh runtime observation
-        ↓
-DeploymentPreview   # review evidence only
-        ↓
-DeploymentBundle(release=false)
-```
-
-A formal release is explicit:
-
-```bash
-semapact deployment assess ... --release
-```
-
-Only that mode enters ContractOps release planning:
+A formal release is target-neutral:
 
 ```text
 base + candidate
@@ -181,34 +158,70 @@ GovernanceDecision
 → ReleasePlan
 → VersionResolution
 → ReleaseSnapshot
-→ DeploymentSourceSnapshot(release=true)
-→ DeploymentPlan
-        +
-fresh runtime observation
-        ↓
-DeploymentPreview
-        ↓
-DeploymentBundle(release=true)
+→ ReleaseBundle
 ```
 
-The `release` flag is content-addressed inside the bundle. CD cannot reinterpret the same CI artifact as release or non-release later.
+`ReleaseBundle` contains no runtime target, workspace, catalog, schema, warehouse, or deployment preview. It freezes exactly what is intended to become a released contract.
 
-A contract release is environment-neutral. One released version can subsequently be deployed to multiple targets without another version bump:
+For REVIEW decisions, approval binds:
 
 ```text
-orders@1.4.0
+PUBLISH
++ exact ReleaseSnapshot ID
++ exact ReleaseBundle digest
+```
+
+Finalization then creates the formal release fact and materializes the selected semantic version back into ODCS:
+
+```text
+ReleaseBundle
++ exact approval when REVIEW
+        ↓
+release finalize
+        ↓
+ContractReleaseRecord
++ versioned ODCS contract
+```
+
+A finalized release is environment-neutral. One release can subsequently fan out to multiple runtime targets without another version bump:
+
+```text
+ContractRelease orders@1.4.0
 ├── dev
 ├── test
 └── prod
 ```
 
-Promotion between targets is deployment lifecycle, not contract version lifecycle.
+Deployment begins only after the release exists, or directly from an unreleased candidate for validation/test use.
+
+Candidate deployment:
+
+```text
+base + candidate
+→ GovernanceDecision + ChangeSet
+→ DeploymentSourceSnapshot(release=false)
+→ target-specific DeploymentPlan
+→ fresh DeploymentPreview
+→ DeploymentBundle
+```
+
+Finalized-release deployment:
+
+```text
+ContractReleaseRecord
+→ DeploymentSourceSnapshot(release=true)
+→ target-specific DeploymentPlan
+→ fresh DeploymentPreview
+→ DeploymentBundle
+```
+
+A release-mode `DeploymentBundle` therefore carries the exact finalized `ContractReleaseRecord`, not `ReleasePlan`, `VersionResolution`, or `ReleaseSnapshot`. Deployment never creates or versions a contract release.
 
 ## CLI workflow
 
-The public deployment workflow remains `assess → deploy`. `approve` is an optional explicit hook for custom/manual release workflows.
+### Candidate deployment
 
-### Candidate deployment — default
+Candidate deployment remains a direct `assess → deploy` path:
 
 ```bash
 semapact deployment assess \
@@ -218,105 +231,94 @@ semapact deployment assess \
   --candidate-revision-ref git:def456 \
   --effective-date 2026-09-20 \
   --server development \
-  --bundle-out ./artifacts/orders-dev.bundle.json
+  --bundle-out ./artifacts/orders-dev.deployment.bundle.json
+
+semapact deployment deploy \
+  --bundle ./artifacts/orders-dev.deployment.bundle.json \
+  --warehouse-id <warehouse-id>
 ```
 
-This keeps the candidate contract's existing version unchanged. It does not create `ReleasePlan`, `VersionResolution`, `ReleaseSnapshot`, `ApprovalRecord`, or `ContractReleaseRecord`.
-
-A non-release `GovernanceDecision(REVIEW)` may still be deployed for validation/test environments without release approval. `BLOCK` always fails closed.
+This does not calculate another semantic version, create release approval, or write release history. REVIEW may proceed for candidate runtime validation; BLOCK always fails closed.
 
 ### Formal release
 
-Add `--release` only when this workflow is intended to create a new formal contract version:
+Build the target-neutral release artifact first:
 
 ```bash
-semapact deployment assess \
+semapact release assess \
   --base ./contracts/orders.yaml \
   --candidate ./contracts/orders.candidate.yaml \
   --base-revision-ref git:abc123 \
   --candidate-revision-ref git:def456 \
   --effective-date 2026-09-20 \
+  --bundle-out ./artifacts/orders.release.bundle.json
+```
+
+For a REVIEW release, an external workflow may persist exact approval with the convenience command:
+
+```bash
+semapact release approve \
+  --bundle ./artifacts/orders.release.bundle.json \
+  --actor-reference github-environment:contract-release \
+  --recorded-at 2026-09-20T10:00:00+10:00
+```
+
+The approval is `PUBLISH`-scoped to the exact `ReleaseSnapshot` and `ReleaseBundle` digest. ALLOW releases do not require an ApprovalRecord.
+
+Finalize exactly once:
+
+```bash
+semapact release finalize \
+  --bundle ./artifacts/orders.release.bundle.json \
+  --output-contract ./contracts/orders.yaml
+```
+
+Finalization:
+
+- authorizes the exact formal release;
+- writes one immutable `ContractReleaseRecord` to the Git governance ledger;
+- writes the selected version back to the ODCS contract file.
+
+After finalization, build any target-specific deployment bundle from the release identity:
+
+```bash
+semapact deployment assess \
+  --release-id <contract-release-id> \
   --server production \
-  --release \
-  --bundle-out ./artifacts/orders-prod.bundle.json
+  --bundle-out ./artifacts/orders-prod.deployment.bundle.json
 ```
 
-Release mode calculates the semantic version exactly once and embeds the resulting release artifacts in the immutable bundle. A REVIEW release requires exact approval evidence. An ALLOW release does not require human approval.
+The same `contract-release-id` may be assessed/deployed against dev, test, prod, or another runtime target.
 
-### CI artifact handoff
+### CI/CD handoff rules
 
-Both modes publish the exact bundle produced in CI. CD must download that artifact rather than rebuilding it from merged repository state.
+Two immutable boundaries are now explicit:
 
 ```text
-CI
-  semapact deployment assess [...]
-        ↓
-  immutable DeploymentBundle
-        ↓
-  pipeline artifact storage
-        ↓
-CD
-  download exact bundle
-        ↓
-  semapact deployment deploy --bundle ...
+CI release planning
+→ ReleaseBundle
+→ approval/finalize
+→ ContractReleaseRecord
+
+runtime planning
+ContractReleaseRecord + target
+→ DeploymentBundle
+→ fresh CD execution
 ```
 
-For a formal release, the bundle also carries the exact version resolution that will become the release fact. For a candidate deployment, no release version is calculated.
+CD must not rebuild either artifact from mutable repository state after its trust boundary. Deployment always re-observes runtime before mutation, so the CI-time preview remains review evidence only and is never replayed blindly.
 
-### Review evidence intake
-
-The normal CI/CD path does **not** require a human to run `semapact deployment approve`.
-
-For a formal REVIEW release, GitHub / Azure DevOps / GitLab owns the review interaction. A trusted integration records the provider event as an `ApprovalRecord` in Git-backed approval history. CD resolves the exact record automatically when `--approval` is omitted.
-
-A usable release approval must match the exact:
-
-- `decisionId`;
-- `changeSetId`;
-- `releasePlanId`;
-- `versionResolutionId`;
-- `DEPLOY` operation;
-- `deploymentPlanId`;
-- `bundleDigest`.
-
-Conflicting exact review actions fail closed. There is no hidden "latest approval wins" rule.
-
-Custom/manual release workflows can still inject one directly:
-
-```bash
-semapact deployment deploy \
-  --bundle ./artifacts/orders-prod.bundle.json \
-  --approval ./artifacts/orders-prod.approval.json \
-  --warehouse-id <warehouse-id>
-```
-
-Candidate deployments do not read or write release approval records.
-
-### Deploy
-
-Candidate CD:
-
-```bash
-semapact deployment deploy \
-  --bundle ./artifacts/orders-dev.bundle.json \
-  --warehouse-id <warehouse-id>
-```
-
-Formal release CD uses the same command. The release mode is already pinned inside the bundle.
-
-At execution time SemaPact always re-observes runtime:
+At execution time:
 
 ```text
-exact bundle
-→ authorize exact deployment source
+exact DeploymentBundle
+→ authorize exact candidate/finalized-release source
 → fresh runtime observation
 → fresh DeploymentPreview
 → execute
 → fresh reconciliation
 → IN_SYNC / DRIFT / INDETERMINATE
 ```
-
-The CI preview is review evidence only. It is never replayed as executable SQL.
 
 ## Governance ledger vs operational history
 
