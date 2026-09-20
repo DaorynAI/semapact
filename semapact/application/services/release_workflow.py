@@ -22,11 +22,10 @@ from semapact.contractops import (
 )
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.governance import DecisionResult, GovernanceOperation
-from semapact.history import ContractReleaseHistoryRepository
 
 
 class ReleaseWorkflowService:
-    """Assess and finalize one formal contract release independently of deployment."""
+    """Assess and approve target-neutral formal contract releases."""
 
     def __init__(
         self,
@@ -97,14 +96,17 @@ class ReleaseWorkflowService:
             evidence_references=(bundle.bundle_digest,),
         )
 
+
+class ReleaseFinalizer:
+    """Authorize one exact ReleaseBundle and construct its ContractRelease fact."""
+
     def finalize(
         self,
         bundle: ReleaseBundle,
         *,
-        release_history: ContractReleaseHistoryRepository,
         approval: ApprovalRecord | None = None,
     ) -> ContractRelease:
-        """Authorize and persist one formal release exactly once."""
+        """Finalize domain state without persisting or materializing projections."""
         evidence = None
         if bundle.decision.decision is DecisionResult.REVIEW:
             if approval is None:
@@ -136,6 +138,4 @@ class ReleaseWorkflowService:
                 "Formal release is not authorized: "
                 f"{authorization.reason.value}"
             )
-        release = build_contract_release(bundle)
-        release_history.put_contract_release(release)
-        return release
+        return build_contract_release(bundle)
