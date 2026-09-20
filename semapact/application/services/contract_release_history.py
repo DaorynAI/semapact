@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from semapact.approval import ApprovalRecord
 from semapact.application.models.release import ReleaseBundle
+from semapact.contractops import ContractRelease
+from semapact.contractops.integrity import compute_contract_release_id
 from semapact.governance import DecisionResult, GovernanceOperation
-from semapact.history import ContractReleaseHistoryRepository, ContractReleaseRecord
-from semapact.history.integrity import compute_contract_release_record_id
+from semapact.history import ContractReleaseHistoryRepository
 
 
 class ContractReleaseHistoryService:
@@ -20,7 +21,7 @@ class ContractReleaseHistoryService:
         bundle: ReleaseBundle,
         *,
         approval: ApprovalRecord | None,
-    ) -> ContractReleaseRecord:
+    ) -> ContractRelease:
         """Persist one finalized release, idempotently, after exact review validation."""
         if bundle.decision.decision is DecisionResult.REVIEW:
             if approval is None:
@@ -40,7 +41,7 @@ class ContractReleaseHistoryService:
 
         snapshot = bundle.release_snapshot
         resolution = bundle.version_resolution
-        record_id = compute_contract_release_record_id(
+        record_id = compute_contract_release_id(
             contract_id=snapshot.contract_id,
             contract_version=snapshot.selected_version,
             decision_id=bundle.decision.decision_id,
@@ -51,7 +52,7 @@ class ContractReleaseHistoryService:
             revision_ref=snapshot.release_revision_ref,
             released_contract_json=snapshot.released_contract_json,
         )
-        record = ContractReleaseRecord(
+        record = ContractRelease(
             contract_release_id=record_id,
             contract_id=snapshot.contract_id,
             contract_version=snapshot.selected_version,
