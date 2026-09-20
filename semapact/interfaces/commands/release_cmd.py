@@ -57,7 +57,7 @@ def run_release_finalize(args: argparse.Namespace) -> dict[str, Any]:
     """Finalize one exact release, persist ledger fact, and materialize versioned ODCS."""
     from semapact.application.models.release import ReleaseBundle
     from semapact.application.services.release_approval import ReleaseApprovalResolver
-    from semapact.application.services.release_workflow import ReleaseWorkflowService
+    from semapact.application.services.release_workflow import ReleaseFinalizer
     from semapact.governance import DecisionResult
     from semapact.platforms.git import GitWorkingTreeHistoryRepository
     from semapact.utils.yaml_utils import dump_yaml
@@ -68,11 +68,11 @@ def run_release_finalize(args: argparse.Namespace) -> dict[str, Any]:
     if bundle.decision.decision is DecisionResult.REVIEW:
         approval = ReleaseApprovalResolver(repository).resolve(bundle)
 
-    record = ReleaseWorkflowService().finalize(
+    record = ReleaseFinalizer().finalize(
         bundle,
-        release_history=repository,
         approval=approval,
     )
+    repository.put_contract_release(record)
     output_path = dump_yaml(bundle.release_snapshot.to_contract(), args.output_contract)
     release_out = getattr(args, "release_out", None)
     if release_out:
