@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+from pydantic import ValidationError as PydanticValidationError
+
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
     SchemaObject,
     SchemaProperty,
 )
 
+from semapact.application.models.deployment_workflow import DeploymentBundle
 from semapact.application.services.deployment_workflow import DeploymentWorkflowService
 from semapact.deployment import (
     DeploymentAdapter,
@@ -157,3 +161,25 @@ def test_same_inputs_produce_same_bundle_digest() -> None:
 
     assert first.bundle_digest == second.bundle_digest
     assert first == second
+
+
+def test_bundle_rehydration_fails_closed_when_digest_is_tampered() -> None:
+    target = DeploymentTarget(
+        platform="fake",
+        runtime_target="main.sales",
+        source_reference="runtime:test",
+    )
+    bundle = DeploymentWorkflowService().assess(
+        _contract(name="Orders old"),
+        _contract(name="Orders new"),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=target,
+        adapter=_PreviewAdapter(),
+    )
+    payload = bundle.model_dump(mode="json")
+    payload["bundle_digest"] = "sha256:" + ("0" * 64)
+
+    with pytest.raises(PydanticValidationError, match="digest does not match"):
+        DeploymentBundle.model_validate(payload)
