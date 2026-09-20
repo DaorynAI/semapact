@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://semapact.org/schemas/semapact-config.schema.json",
+  "title": "SemaPact configuration",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "history": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "operational": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SQLiteOperationalHistoryConfig"
+            },
+            {
+              "$ref": "#/$defs/DeltaOperationalHistoryConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      }
+    }
+  },
+  "$defs": {
+    "SQLiteOperationalHistoryConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "path"
+      ],
+      "properties": {
+        "backend": {
+          "const": "sqlite"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "DeltaOperationalHistoryConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "table_uri"
+      ],
+      "properties": {
+        "backend": {
+          "const": "delta"
+        },
+        "table_uri": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
