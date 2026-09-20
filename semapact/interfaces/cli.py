@@ -275,6 +275,63 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="release_command", required=True
     )
 
+    release_assess_parser = release_subparsers.add_parser(
+        "assess",
+        help="Build one immutable target-neutral formal ReleaseBundle",
+    )
+    release_assess_parser.add_argument("--base", required=True)
+    release_assess_parser.add_argument("--candidate", required=True)
+    release_assess_parser.add_argument("--base-revision-ref", required=True)
+    release_assess_parser.add_argument("--candidate-revision-ref", required=True)
+    release_assess_parser.add_argument(
+        "--authority-reference",
+        help="Explicit Git release reference when release.versionAuthority=git",
+    )
+    release_assess_parser.add_argument("--runtime-context", default="auto")
+    release_assess_parser.add_argument(
+        "--bundle-out",
+        help="Write the immutable ReleaseBundle JSON artifact to this path",
+    )
+    _add_effective_date_argument(release_assess_parser)
+
+    release_approve_parser = release_subparsers.add_parser(
+        "approve",
+        help="Record explicit REVIEW approval for one exact ReleaseBundle",
+    )
+    release_approve_parser.add_argument("--bundle", required=True)
+    release_approve_parser.add_argument("--actor-reference", required=True)
+    release_approve_parser.add_argument(
+        "--recorded-at",
+        required=True,
+        help="Approval timestamp as timezone-aware ISO-8601",
+    )
+    release_approve_parser.add_argument("--comment")
+    release_approve_parser.add_argument(
+        "--repository-root",
+        default=".",
+        help="Repository root containing the Git governance ledger",
+    )
+    release_approve_parser.add_argument(
+        "--approval-out",
+        help="Optional standalone ApprovalRecord JSON output",
+    )
+
+    release_finalize_parser = release_subparsers.add_parser(
+        "finalize",
+        help="Finalize one ReleaseBundle, record it, and materialize the versioned contract",
+    )
+    release_finalize_parser.add_argument("--bundle", required=True)
+    release_finalize_parser.add_argument(
+        "--output-contract",
+        required=True,
+        help="Write the exact released/versioned ODCS contract to this path",
+    )
+    release_finalize_parser.add_argument(
+        "--repository-root",
+        default=".",
+        help="Repository root containing the Git governance ledger",
+    )
+
     release_classify_parser = release_subparsers.add_parser(
         "classify",
         help="Analyze the required version bump without creating release artifacts",
@@ -443,7 +500,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     deployment_parser = subparsers.add_parser(
         "deployment",
-        help="Assess, approve, and deploy immutable governed runtime bundles",
+        help="Assess and deploy immutable target-specific runtime bundles",
     )
     deployment_subparsers = deployment_parser.add_subparsers(
         dest="deployment_command", required=True
@@ -451,41 +508,41 @@ def _build_parser() -> argparse.ArgumentParser:
 
     deployment_assess_parser = deployment_subparsers.add_parser(
         "assess",
-        help="Assess base/candidate contract change against fresh runtime without mutation",
+        help=(
+            "Assess either a base/candidate change or an already-finalized release "
+            "against one fresh runtime target"
+        ),
     )
-    deployment_assess_parser.add_argument("--base", required=True)
-    deployment_assess_parser.add_argument("--candidate", required=True)
-    deployment_assess_parser.add_argument("--base-revision-ref", required=True)
-    deployment_assess_parser.add_argument("--candidate-revision-ref", required=True)
+    deployment_assess_parser.add_argument("--base")
+    deployment_assess_parser.add_argument("--candidate")
+    deployment_assess_parser.add_argument("--base-revision-ref")
+    deployment_assess_parser.add_argument("--candidate-revision-ref")
     deployment_assess_parser.add_argument(
-        "--authority-reference",
-        help="Explicit Git release reference when release.versionAuthority=git",
+        "--release-id",
+        help="Finalized ContractReleaseRecord ID to deploy instead of a candidate",
+    )
+    deployment_assess_parser.add_argument(
+        "--repository-root",
+        default=".",
+        help="Repository root containing finalized release history",
     )
     deployment_assess_parser.add_argument(
         "--server",
-        help="Contract server identifier when the candidate defines multiple servers",
+        help="Contract server identifier when the deployment source defines multiple servers",
     )
     deployment_assess_parser.add_argument(
         "--platform",
-        help="Fallback runtime provider when the candidate defines no servers",
+        help="Fallback runtime provider when the deployment source defines no servers",
     )
     deployment_assess_parser.add_argument(
         "--runtime",
-        help="Fallback provider-local runtime target when the candidate defines no servers",
+        help="Fallback provider-local runtime target when the deployment source defines no servers",
     )
     deployment_assess_parser.add_argument(
         "--source-reference",
-        help="Fallback stable runtime source identity when the candidate defines no server host",
+        help="Fallback stable runtime source identity when the source defines no server host",
     )
     deployment_assess_parser.add_argument("--runtime-context", default="auto")
-    deployment_assess_parser.add_argument(
-        "--release",
-        action="store_true",
-        help=(
-            "Create a formal contract release: resolve a new semantic version, "
-            "require release approval when governance is REVIEW, and record release history"
-        ),
-    )
     deployment_assess_parser.add_argument(
         "--bundle-out",
         help="Write the immutable DeploymentBundle JSON artifact to this path",
@@ -496,54 +553,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default="text",
         help="Output format (default: text)",
     )
-    _add_effective_date_argument(deployment_assess_parser)
-
-    deployment_approve_parser = deployment_subparsers.add_parser(
-        "approve",
-        help=(
-            "Create an explicit DEPLOY ApprovalRecord for a custom/manual workflow; "
-            "standard CD can resolve Git-backed approval history automatically"
-        ),
-    )
-    deployment_approve_parser.add_argument("--bundle", required=True)
-    deployment_approve_parser.add_argument("--actor-reference", required=True)
-    deployment_approve_parser.add_argument(
-        "--recorded-at",
-        required=True,
-        help="Approval timestamp as timezone-aware ISO-8601",
-    )
-    deployment_approve_parser.add_argument("--comment")
-    deployment_approve_parser.add_argument(
-        "--approval-out",
-        help="Write the exact ApprovalRecord JSON artifact to this path",
-    )
-    deployment_approve_parser.add_argument(
-        "--output",
-        choices=["text", "json"],
-        default="text",
-        help="Output format (default: text)",
-    )
+    _add_effective_date_argument(deployment_assess_parser, required=False)
 
     deployment_deploy_parser = deployment_subparsers.add_parser(
         "deploy",
         help="Consume an immutable DeploymentBundle, execute against fresh runtime, and verify",
     )
     deployment_deploy_parser.add_argument("--bundle", required=True)
-    deployment_deploy_parser.add_argument(
-        "--approval",
-        help=(
-            "Optional ApprovalRecord JSON. When omitted for REVIEW, SemaPact "
-            "resolves an exact matching approval from Git-backed history."
-        ),
-    )
-    deployment_deploy_parser.add_argument(
-        "--repository-root",
-        default=".",
-        help=(
-            "Repository root containing .semapact/history approval records "
-            "(default: current directory)"
-        ),
-    )
     deployment_deploy_parser.add_argument(
         "--warehouse-id",
         help=(
@@ -685,15 +701,12 @@ def main() -> int:
 
         if args.command == "deployment":
             from semapact.interfaces.commands.deployment_cmd import (
-                run_deployment_approve,
                 run_deployment_assess,
                 run_deployment_deploy,
             )
             from semapact.interfaces.outcomes import exit_code_from_outcome
 
-            if args.deployment_command == "approve":
-                result = run_deployment_approve(args)
-            elif args.deployment_command == "assess":
+            if args.deployment_command == "assess":
                 result = run_deployment_assess(args)
             elif args.deployment_command == "deploy":
                 result = run_deployment_deploy(args)
@@ -704,14 +717,29 @@ def main() -> int:
 
         if args.command == "release":
             from semapact.interfaces.commands.release_cmd import (
+                run_release_approve,
+                run_release_assess,
                 run_release_build_manifest,
                 run_release_classify,
                 run_release_classify_repo,
                 run_release_create_pr,
                 run_release_create_prs,
+                run_release_finalize,
                 run_release_plan,
                 run_release_prepare,
             )
+            if args.release_command == "assess":
+                payload = run_release_assess(args)
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return 0
+            if args.release_command == "approve":
+                payload = run_release_approve(args)
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return 0
+            if args.release_command == "finalize":
+                payload = run_release_finalize(args)
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return 0
             if args.release_command == "classify":
                 payload = run_release_classify(args)
                 print(json.dumps(payload, indent=2, sort_keys=True))
