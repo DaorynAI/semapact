@@ -179,30 +179,57 @@ See [`docs/contractops_phases.md`](docs/contractops_phases.md) and [`docs/versio
 
 ### Governed runtime deployment
 
-`semapact deployment` exposes one bundle-driven CLI/CI workflow:
+SemaPact separates **candidate deployment** from **formal contract release**.
+
+The default path deploys an exact candidate revision without creating another semantic version:
 
 ```text
-assess
-→ governance + ReleaseSnapshot + DeploymentPlan + fresh review preview
-→ content-addressed DeploymentBundle
-→ read-only / no execution authority
+deployment assess
+→ GovernanceDecision + ChangeSet
+→ exact candidate DeploymentSourceSnapshot
+→ DeploymentPlan + fresh CI preview
+→ DeploymentBundle(release=false)
 
-approve
-→ optional explicit ApprovalRecord hook for custom/manual workflows
-
-deploy
-→ exact DeploymentBundle
-→ resolve Git-backed approval history for REVIEW, unless explicit approval is supplied
+deployment deploy
 → fresh preview → execute → fresh verify
 → IN_SYNC / DRIFT / INDETERMINATE
 ```
 
-`assess` is the CI/manual planning boundary and `deploy` is the CD/manual execution boundary. `approve` is optional: standard GitOps/CD flows can record provider approval events into Git-backed approval history and let `deploy` resolve the exact matching record automatically. Internal planning, preview, execution, and verification primitives remain application/domain APIs rather than separate Data Engineer CLI phases.
+A formal release is explicit:
 
-The first Databricks write capability is intentionally narrow: create a missing managed Delta table, add missing nullable governed columns to an existing managed table, or perform NO_OP when the governed shape is already satisfied. Rename, existing-column type/nullability mutation, required-column addition without a safe migration strategy, DROP, and existing external/non-managed asset mutation fail closed.
+```bash
+semapact deployment assess ... --release
+```
+
+Release mode adds:
+
+```text
+ReleasePlan
+→ VersionResolution
+→ ReleaseSnapshot
+→ DeploymentBundle(release=true)
+→ exact approval when REVIEW
+→ ContractReleaseRecord
+```
+
+A released version is environment-neutral. The same version can later be deployed to dev, test, and prod without another version bump.
+
+`deploy` always re-observes runtime before execution; CI-time preview operations are never replayed blindly.
+
+Deployment telemetry is disabled by default. High-frequency execution history can be enabled explicitly with a SQLite or Delta operational-history backend; it is not written into Git governance history.
+
+For Databricks, once a **formal release** is verified `IN_SYNC`, SemaPact projects release provenance to governed Unity Catalog tables using reserved tags:
+
+```text
+semapact_contract_id
+semapact_contract_version
+semapact_release_id
+semapact_revision
+```
+
+Candidate deployments do not publish formal version/release tags. Business classifications or ABAC tags are not automatically mapped.
 
 See [`docs/deployment_plans.md`](docs/deployment_plans.md).
-
 ### Databricks discovery and observation
 
 With the `databricks` extra, SemaPact provides a thin read-side integration using the official Databricks SDK:
@@ -328,7 +355,20 @@ pip install "semapact[databricks]"
 
 The Databricks SDK owns authentication-provider selection. SemaPact forwards supported connection hints rather than implementing a separate credential system.
 
-Before approval, assess the candidate contract against the selected Databricks target without creating execution authority:
+Assess a candidate deployment without creating a new contract version:
+
+```bash
+semapact deployment assess \
+  --base ./contracts/orders.yaml \
+  --candidate ./contracts/orders.candidate.yaml \
+  --base-revision-ref git:abc123 \
+  --candidate-revision-ref git:def456 \
+  --effective-date 2026-09-20 \
+  --server development \
+  --bundle-out ./artifacts/orders-dev.bundle.json
+```
+
+Use `--release` only when that CI artifact is intended to create a new formal contract release/version:
 
 ```bash
 semapact deployment assess \
@@ -338,12 +378,11 @@ semapact deployment assess \
   --candidate-revision-ref git:def456 \
   --effective-date 2026-09-20 \
   --server production \
+  --release \
   --bundle-out ./artifacts/orders-prod.bundle.json
 ```
 
-The bundle contains the exact reviewed `ReleaseSnapshot`, v3 `DeploymentPlan`, CI-time review preview, and a SHA-256 content digest. CI publishes this file using its normal artifact mechanism; the preview remains review evidence only and must be refreshed at CD execution time.
-
-CD then consumes that exact artifact:
+CD consumes the exact bundle in either mode:
 
 ```bash
 semapact deployment deploy \
@@ -351,7 +390,7 @@ semapact deployment deploy \
   --warehouse-id <databricks-sql-warehouse-id>
 ```
 
-For REVIEW decisions, the command resolves an exact matching DEPLOY approval from Git-backed `.semapact/history` by default. Custom workflows may pass `--approval ./approval.json` explicitly instead. The approval evidence must bind the exact deployment plan and bundle digest. The deploy command re-observes runtime, derives a fresh preview, executes only that fresh plan, then performs a separate fresh convergence verification.
+Formal REVIEW releases resolve exact approval evidence from Git-backed history unless `--approval` is supplied explicitly. Candidate deployments do not require release approval. Operational deployment history is optional via `--operational-history sqlite:///...` or `delta:///...`.
 
 ## Optional Dependencies
 
