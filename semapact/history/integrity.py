@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import uuid
 
+from semapact.contractops import ContractRelease
+from semapact.contractops.integrity import (
+    compute_contract_release_id,
+    validate_contract_release_identity,
+)
 from semapact.history.models import (
-    ContractReleaseRecord,
     DeploymentRecord,
     ReleaseRecord,
     RuntimeObservationRecord,
@@ -18,9 +22,6 @@ from semapact.utils.deterministic import deterministic_uuid5
 
 SEMAPACT_RELEASE_RECORD_NAMESPACE = uuid.UUID(
     "9f750d1c-8f0a-491a-b861-8e349fc351cb"
-)
-SEMAPACT_CONTRACT_RELEASE_RECORD_NAMESPACE = uuid.UUID(
-    "0f95c8c5-4957-43f7-a38c-2756605c2df6"
 )
 SEMAPACT_DEPLOYMENT_RECORD_NAMESPACE = uuid.UUID(
     "93db6770-90f0-4ac5-a185-2f21e818d18e"
@@ -102,51 +103,17 @@ def validate_release_record_identity(record: ReleaseRecord) -> None:
 
 
 def compute_contract_release_record_id(
-    *,
-    contract_id: str,
-    contract_version: str,
-    decision_id: str,
-    change_set_id: str,
-    release_plan_id: str,
-    version_resolution_id: str,
-    release_snapshot_id: str,
-    revision_ref: str,
-    released_contract_json: str,
+    **payload: object,
 ) -> str:
-    return deterministic_uuid5(
-        SEMAPACT_CONTRACT_RELEASE_RECORD_NAMESPACE,
-        {
-            "contract_id": contract_id,
-            "contract_version": contract_version,
-            "decision_id": decision_id,
-            "change_set_id": change_set_id,
-            "release_plan_id": release_plan_id,
-            "version_resolution_id": version_resolution_id,
-            "release_snapshot_id": release_snapshot_id,
-            "revision_ref": revision_ref,
-            "released_contract_json": released_contract_json,
-        },
-    )
+    """Compatibility wrapper around canonical ContractOps release identity."""
+    return compute_contract_release_id(**payload)
 
 
 def validate_contract_release_record_identity(
-    record: ContractReleaseRecord,
+    record: ContractRelease,
 ) -> None:
-    expected = compute_contract_release_record_id(
-        contract_id=record.contract_id,
-        contract_version=record.contract_version,
-        decision_id=record.decision_id,
-        change_set_id=record.change_set_id,
-        release_plan_id=record.release_plan_id,
-        version_resolution_id=record.version_resolution_id,
-        release_snapshot_id=record.release_snapshot_id,
-        revision_ref=record.revision_ref,
-        released_contract_json=record.released_contract_json,
-    )
-    if record.contract_release_id != expected:
-        raise ValueError(
-            "ContractReleaseRecord deterministic identity does not match content"
-        )
+    """Compatibility wrapper around canonical ContractOps release validation."""
+    validate_contract_release_identity(record)
 
 
 def compute_deployment_record_id(
