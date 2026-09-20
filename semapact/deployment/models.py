@@ -400,8 +400,16 @@ def compute_deployment_plan_id(
     release: bool = True,
     target: DeploymentTarget,
     actions: Sequence[DeploymentAction],
-    plan_version: str = "3",
+    plan_version: str | None = None,
 ) -> str:
+    if plan_version is None:
+        if applied_release_id is not None:
+            plan_version = "2"
+        elif source_snapshot_id is not None and release is False:
+            plan_version = "4"
+        else:
+            plan_version = "3"
+
     legacy_release_id = _resolve_optional_legacy_release_id(
         release_id=release_id,
         applied_release_id=applied_release_id,
@@ -478,8 +486,16 @@ def compute_deployment_authorization_id(
     allowed: bool,
     contract_ops_authorization_id: str | None = None,
     applied_release_id: str | None = None,
-    authorization_version: str = "2",
+    authorization_version: str | None = None,
 ) -> str:
+    if authorization_version is None:
+        authorization_version = (
+            "1"
+            if contract_ops_authorization_id is not None
+            or applied_release_id is not None
+            else "2"
+        )
+
     if authorization_version == "1":
         contractops_id = _resolve_text_pair(
             authorization_reference,
