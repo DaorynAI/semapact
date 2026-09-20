@@ -11,6 +11,108 @@ from semapact.interfaces.commands.utils import (
 )
 
 
+
+def run_release_assess(args: argparse.Namespace) -> dict[str, Any]:
+    """Build one immutable target-neutral ReleaseBundle."""
+    from semapact.application.services.release_workflow import ReleaseWorkflowService
+    from semapact.core.loader import ContractLoader
+
+    loader = ContractLoader(runtime_context=args.runtime_context)
+    base_contract = loader.load(args.base)
+    candidate_contract = loader.load(args.candidate)
+    bundle = ReleaseWorkflowService().assess(
+        base_contract,
+        candidate_contract,
+        effective_date=args.effective_date,
+        base_revision_ref=args.base_revision_ref,
+        candidate_revision_ref=args.candidate_revision_ref,
+        authority_reference=args.authority_reference,
+    )
+    if args.bundle_out:
+        _write_model_artifact(args.bundle_out, bundle)
+    return bundle.model_dump(mode="json")
+
+
+def run_release_approve(args: argparse.Namespace) -> dict[str, Any]:
+    """Record explicit REVIEW approval for one exact ReleaseBundle."""
+    from semapact.application.models.release import ReleaseBundle
+    from semapact.application.services.release_workflow import ReleaseWorkflowService
+    from semapact.interfaces.parsing import parse_iso_timestamp
+    from semapact.platforms.git import GitWorkingTreeHistoryRepository
+
+    bundle = _load_model(args.bundle, ReleaseBundle)
+    approval = ReleaseWorkflowService().approve(
+        bundle,
+        actor_reference=args.actor_reference,
+        recorded_at=parse_iso_timestamp(args.recorded_at),
+        comment=args.comment,
+    )
+    GitWorkingTreeHistoryRepository(args.repository_root).put_approval_record(approval)
+    if args.approval_out:
+        _write_model_artifact(args.approval_out, approval)
+    return approval.model_dump(mode="json")
+
+
+def run_release_finalize(args: argparse.Namespace) -> dict[str, Any]:
+    """Finalize one exact release, persist ledger fact, and materialize versioned ODCS."""
+    from semapact.application.models.release import ReleaseBundle
+    from semapact.application.services.contract_release_history import (
+        ContractReleaseHistoryService,
+    )
+    from semapact.application.services.release_approval import ReleaseApprovalResolver
+    from semapact.application.services.release_workflow import ReleaseWorkflowService
+    from semapact.governance import DecisionResult
+    from semapact.platforms.git import GitWorkingTreeHistoryRepository
+    from semapact.utils.yaml_utils import dump_yaml
+
+    bundle = _load_model(args.bundle, ReleaseBundle)
+    repository = GitWorkingTreeHistoryRepository(args.repository_root)
+    approval = None
+    if bundle.decision.decision is DecisionResult.REVIEW:
+        approval = ReleaseApprovalResolver(repository).resolve(bundle)
+
+    record = ReleaseWorkflowService().finalize(
+        bundle,
+        release_history=ContractReleaseHistoryService(repository),
+        approval=approval,
+    )
+    output_path = dump_yaml(bundle.release_snapshot.to_contract(), args.output_contract)
+    return {
+        "contractReleaseId": record.contract_release_id,
+        "contractId": record.contract_id,
+        "contractVersion": record.contract_version,
+        "releaseBundleDigest": bundle.bundle_digest,
+        "outputContract": str(output_path),
+    }
+
+
+def _load_model(path: str, model_type):
+    from pydantic import ValidationError as PydanticValidationError
+
+    from semapact.exceptions import ValidationError
+
+    try:
+        return model_type.model_validate_json(Path(path).read_text(encoding="utf-8"))
+    except (OSError, PydanticValidationError) as exc:
+        raise ValidationError(
+            f"Invalid {model_type.__name__} artifact '{path}': {exc}"
+        ) from exc
+
+
+def _write_model_artifact(path: str, model) -> None:
+    artifact_path = Path(path)
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        json.dumps(
+            model.model_dump(mode="json"),
+            indent=2,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
 def run_release_classify(args: argparse.Namespace) -> dict[str, Any]:
     """Analyze one change without creating canonical release artifacts."""
     from dataclasses import asdict
