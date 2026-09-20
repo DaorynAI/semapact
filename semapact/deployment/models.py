@@ -215,12 +215,18 @@ class DeploymentPlan(DeploymentModel):
         if len(governed_assets) != len(set(governed_assets)):
             raise ValueError("DeploymentPlan cannot contain duplicate governed assets")
 
-        has_release_id = self.release_id is not None
-        has_release_plan = self.release_plan_id is not None
-        if has_release_id != has_release_plan:
-            raise ValueError(
-                "DeploymentPlan release_id and release_plan_id must be provided together"
-            )
+        if self.plan_version == "5":
+            if self.release_plan_id is not None:
+                raise ValueError(
+                    "Canonical DeploymentPlan must not duplicate release_plan_id"
+                )
+        else:
+            has_release_id = self.release_id is not None
+            has_release_plan = self.release_plan_id is not None
+            if has_release_id != has_release_plan:
+                raise ValueError(
+                    "Legacy DeploymentPlan release_id and release_plan_id must be provided together"
+                )
 
         validate_deployment_plan_identity(self)
         return self
@@ -474,9 +480,13 @@ def compute_deployment_plan_id(
 
     has_release_id = release_id is not None
     has_release_plan = release_plan_id is not None
-    if has_release_id != has_release_plan:
+    if plan_version == "4" and has_release_id != has_release_plan:
         raise ValueError(
-            "DeploymentPlan release_id and release_plan_id must be provided together"
+            "Legacy DeploymentPlan release_id and release_plan_id must be provided together"
+        )
+    if plan_version == "5" and release_plan_id is not None:
+        raise ValueError(
+            "Canonical DeploymentPlan must not duplicate release_plan_id"
         )
     derived_release = has_release_id
     if plan_version == "4" and release is not None and bool(release) != derived_release:
@@ -490,7 +500,7 @@ def compute_deployment_plan_id(
         "revision_ref": resolved_revision,
         "contract_version": resolved_version,
         "release_id": release_id,
-        "release_plan_id": release_plan_id,
+        "release_plan_id": release_plan_id if plan_version == "4" else None,
         "target": target.model_dump(mode="json"),
         "actions": [action.model_dump(mode="json") for action in actions],
         "plan_version": plan_version,
