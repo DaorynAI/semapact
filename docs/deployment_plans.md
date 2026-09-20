@@ -175,7 +175,7 @@ The previous candidate-specific `DeploymentAssessment` artifact is intentionally
 
 ## CLI workflow
 
-The deployment CLI exposes a high-level bundle workflow plus low-level compatibility/debugging commands. `assess` is the canonical CI/manual planning surface; `deploy` is the canonical CD/manual execution surface.
+The deployment CLI exposes one bundle workflow: `assess` for CI/manual planning, `approve` for explicit REVIEW approval, and `deploy` for CD/manual execution.
 
 ### Assess
 
@@ -272,71 +272,6 @@ load + validate exact DeploymentBundle
 If runtime changed between CI and CD, the fresh preview may differ. A CI-time ALTER can become NO_OP; a newly unsafe or conflicting transition fails closed. Provider execution success is not sufficient: the command returns reconciliation semantics after a separate fresh verify.
 
 For governance-ALLOW deployments, `--approval` may be omitted.
-
-### Low-level artifact commands
-
-The following commands remain available for compatibility, diagnostics, and explicit artifact workflows. They are not the recommended CI/CD happy path.
-
-### Plan
-
-```bash
-semapact deployment plan \
-  --release ./artifacts/release-snapshot.json \
-  --platform databricks \
-  --runtime main.sales \
-  --source-reference https://dbc-example.cloud.databricks.com
-```
-
-`--source-reference` must match the stable source identity reported by the runtime provider. Optional `--server` preserves the selected contract-server reference as target provenance.
-
-The output is the canonical `DeploymentPlan` JSON.
-
-### Preview
-
-```bash
-semapact deployment preview \
-  --plan ./artifacts/deployment-plan.json
-```
-
-Preview observes the exact target scope and derives a canonical `DeploymentPreview`. It does not mutate runtime and does not require a Databricks SQL warehouse merely to inspect provider-native operations.
-
-### Execute (low-level compatibility)
-
-For a preview containing CREATE or ALTER operations, provide the SQL warehouse used for mutation:
-
-```bash
-semapact deployment execute \
-  --plan ./artifacts/deployment-plan.json \
-  --preview ./artifacts/deployment-preview.json \
-  --authorization ./artifacts/deployment-authorization.json \
-  --warehouse-id <databricks-sql-warehouse-id>
-```
-
-For an all-`NO_OP` preview, `--warehouse-id` may be omitted because no native mutation is executed. Any CREATE/ALTER attempt without a warehouse fails closed.
-
-Execution requires the exact plan, exact preview, and exact `DeploymentAuthorization`. The adapter re-observes the target, validates the authorized runtime source and observation fingerprint, re-derives the expected preview for integrity/freshness validation, and executes only the supplied operations when the artifacts still match.
-
-Provider execution success is not convergence proof.
-
-Complete DDL export remains a useful inspection or integration utility, especially for creating new assets, but export is not a lifecycle phase. Exported SQL is derived output; deployment planning remains responsible for comparing the exact released contract with fresh runtime evidence before any mutation is authorized.
-
-### Verify
-
-```bash
-semapact deployment verify \
-  --plan ./artifacts/deployment-plan.json \
-  --output json
-```
-
-Verification enters through the same DeploymentAdapter / DeploymentOrchestrator boundary, performs fresh runtime observation, and reuses the normal reconciliation semantics with the same platform schema mapper used by preview:
-
-| Runtime status | Exit code |
-| --- | ---: |
-| `IN_SYNC` | `0` |
-| `DRIFT` | `6` |
-| `INDETERMINATE` | `7` |
-
-This keeps execution status separate from convergence evidence. VERIFY is assurance/read-side behavior: provider mutation restrictions such as Databricks MANAGED-only writes do not prevent SemaPact from verifying an observable non-managed asset.
 
 ## Databricks deployment capability
 
