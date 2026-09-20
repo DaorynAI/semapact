@@ -291,6 +291,37 @@ def test_cd_uses_fresh_preview_not_ci_review_preview() -> None:
     assert result.status is RuntimeDriftStatus.IN_SYNC
 
 
+def test_workflow_approval_is_derived_from_exact_review_bundle() -> None:
+    target = DeploymentTarget(
+        platform="fake",
+        runtime_target="main.sales",
+        source_reference="runtime:test",
+    )
+    service = DeploymentWorkflowService()
+    bundle = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders", include_created_at=True),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=target,
+        adapter=_PreviewAdapter(),
+    )
+
+    approval = service.approve(
+        bundle,
+        actor_reference="human:reviewer",
+        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
+        comment="Approved for production",
+    )
+
+    assert approval.operation is GovernanceOperation.DEPLOY
+    assert approval.action is ReviewEvidenceAction.APPROVE
+    assert approval.scope_reference == bundle.deployment_plan.deployment_plan_id
+    assert approval.evidence_references == (bundle.bundle_digest,)
+    assert approval.decision_id == bundle.decision.decision_id
+
+
 def test_review_deployment_requires_approval_bound_to_plan_and_bundle_digest() -> None:
     target = DeploymentTarget(
         platform="fake",
