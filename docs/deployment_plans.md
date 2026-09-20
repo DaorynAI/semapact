@@ -365,6 +365,8 @@ semapact deployment deploy \
 
 Supported operational history backends in this slice are SQLite and Delta. The Delta backend is lazy and requires the `delta` optional extra.
 
+Legacy Git-backed deployment/runtime history artifacts remain readable for compatibility, but the canonical bundle workflow does not create new operational records in Git.
+
 Operational events record concrete deployment occurrence facts including success/failure, exact bundle/plan/source provenance, target, timestamps, and reconciliation status when available.
 
 ## Databricks deployment capability
