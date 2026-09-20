@@ -44,8 +44,8 @@ def test_deployment_parser_exposes_candidate_and_finalized_release_modes() -> No
         [
             "deployment",
             "assess",
-            "--release-id",
-            "release-1",
+            "--release",
+            "contract-release.json",
             "--server",
             "production",
             "--bundle-out",
@@ -73,7 +73,8 @@ def test_deployment_parser_exposes_candidate_and_finalized_release_modes() -> No
     assert candidate.bundle_out == "candidate.bundle.json"
 
     assert release.deployment_command == "assess"
-    assert release.release_id == "release-1"
+    assert release.release == "contract-release.json"
+    assert release.release_id is None
     assert release.repository_root == "."
     assert release.server == "production"
 
