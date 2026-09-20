@@ -57,7 +57,6 @@ OperationalHistoryConfig = Annotated[
 ]
 
 
-
 class HistoryConfig(BaseModel):
     """Typed history configuration while unrelated legacy config remains extensible."""
 
