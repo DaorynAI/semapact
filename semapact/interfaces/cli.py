@@ -479,6 +479,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     deployment_assess_parser.add_argument("--runtime-context", default="auto")
     deployment_assess_parser.add_argument(
+        "--bundle-out",
+        help="Write the immutable DeploymentBundle JSON artifact to this path",
+    )
+    deployment_assess_parser.add_argument(
         "--output",
         choices=["text", "json"],
         default="text",
@@ -487,7 +491,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_effective_date_argument(deployment_assess_parser)
 
     deployment_plan_parser = deployment_subparsers.add_parser(
-        "plan", help="Build a DeploymentPlan from an exact AppliedContractRelease"
+        "plan", help="Build a DeploymentPlan from an exact ReleaseSnapshot or legacy applied release"
     )
     deployment_plan_parser.add_argument("--release", required=True)
     deployment_plan_parser.add_argument("--platform", required=True)
