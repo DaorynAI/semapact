@@ -463,6 +463,61 @@ def test_review_release_requires_approval_and_records_formal_release(tmp_path) -
     assert record.revision_ref == bundle.release_snapshot.release_revision_ref
 
 
+def test_contract_release_identity_is_target_neutral(tmp_path) -> None:
+    service = DeploymentWorkflowService()
+    base = _contract(name="Orders")
+    candidate = _contract(name="Orders", include_created_at=True)
+
+    dev = service.assess(
+        base,
+        candidate,
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=DeploymentTarget(
+            platform="fake",
+            runtime_target="main.dev",
+            source_reference="runtime:dev",
+        ),
+        adapter=_PreviewAdapter(),
+        release=True,
+    )
+    prod = service.assess(
+        base,
+        candidate,
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=DeploymentTarget(
+            platform="fake",
+            runtime_target="main.prod",
+            source_reference="runtime:prod",
+        ),
+        adapter=_PreviewAdapter(),
+        release=True,
+    )
+    assert dev.bundle_digest != prod.bundle_digest
+    assert dev.deployment_plan.deployment_plan_id != prod.deployment_plan.deployment_plan_id
+
+    history = _release_history(tmp_path)
+    dev_approval = service.approve(
+        dev,
+        actor_reference="human:reviewer",
+        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
+    )
+    prod_approval = service.approve(
+        prod,
+        actor_reference="human:reviewer",
+        recorded_at=datetime(2026, 9, 20, 2, 1, tzinfo=timezone.utc),
+    )
+
+    first = history.record_release(dev, approval=dev_approval)
+    second = history.record_release(prod, approval=prod_approval)
+
+    assert first == second
+    assert first.contract_release_id == second.contract_release_id
+
+
 def test_release_projects_metadata_only_after_in_sync(tmp_path) -> None:
     service = DeploymentWorkflowService()
     bundle = _review_release_bundle()
