@@ -188,15 +188,16 @@ assess
 → read-only / no execution authority
 
 approve
-→ explicit ApprovalRecord for REVIEW decisions
+→ optional explicit ApprovalRecord hook for custom/manual workflows
 
 deploy
-→ exact DeploymentBundle + approval when REVIEW
+→ exact DeploymentBundle
+→ resolve Git-backed approval history for REVIEW, unless explicit approval is supplied
 → fresh preview → execute → fresh verify
 → IN_SYNC / DRIFT / INDETERMINATE
 ```
 
-`assess` is the CI/manual planning boundary, `approve` records explicit review when required, and `deploy` is the CD/manual execution boundary. Internal planning, preview, execution, and verification primitives remain application/domain APIs rather than separate Data Engineer CLI phases.
+`assess` is the CI/manual planning boundary and `deploy` is the CD/manual execution boundary. `approve` is optional: standard GitOps/CD flows can record provider approval events into Git-backed approval history and let `deploy` resolve the exact matching record automatically. Internal planning, preview, execution, and verification primitives remain application/domain APIs rather than separate Data Engineer CLI phases.
 
 The first Databricks write capability is intentionally narrow: create a missing managed Delta table, add missing nullable governed columns to an existing managed table, or perform NO_OP when the governed shape is already satisfied. Rename, existing-column type/nullability mutation, required-column addition without a safe migration strategy, DROP, and existing external/non-managed asset mutation fail closed.
 
@@ -347,11 +348,10 @@ CD then consumes that exact artifact:
 ```bash
 semapact deployment deploy \
   --bundle ./artifacts/orders-prod.bundle.json \
-  --approval ./artifacts/orders-prod.approval.json \
   --warehouse-id <databricks-sql-warehouse-id>
 ```
 
-The approval is required only for REVIEW decisions and must bind the exact deployment plan and bundle digest. The deploy command re-observes runtime, derives a fresh preview, executes only that fresh plan, then performs a separate fresh convergence verification.
+For REVIEW decisions, the command resolves an exact matching DEPLOY approval from Git-backed `.semapact/history` by default. Custom workflows may pass `--approval ./approval.json` explicitly instead. The approval evidence must bind the exact deployment plan and bundle digest. The deploy command re-observes runtime, derives a fresh preview, executes only that fresh plan, then performs a separate fresh convergence verification.
 
 ## Optional Dependencies
 
