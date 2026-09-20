@@ -12,6 +12,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
+from semapact.approval import ApprovalRecord
 from semapact.application.models.deployment_workflow import DeploymentBundle
 from semapact.application.services.deployment import DeploymentService
 from semapact.contractops import AppliedContractRelease, ReleaseSnapshot
@@ -102,6 +103,54 @@ def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
         output=rendered,
         outcome=outcome_from_gate_result(gate),
     )
+
+def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
+    """Consume one exact DeploymentBundle and run the canonical CD workflow."""
+    from semapact.application.services.deployment_workflow import (
+        DeploymentWorkflowService,
+    )
+    from semapact.platforms.runtime_registry import create_deployment_adapter
+
+    bundle = _load_model(args.bundle, DeploymentBundle)
+    approval = (
+        _load_model(args.approval, ApprovalRecord)
+        if args.approval is not None
+        else None
+    )
+
+    execution_config = None
+    if bundle.deployment_plan.target.platform == "databricks":
+        from semapact.platforms.databricks.deployment import (
+            DatabricksDeploymentExecutionConfig,
+        )
+
+        execution_config = DatabricksDeploymentExecutionConfig(
+            warehouse_id=args.warehouse_id,
+        )
+    elif args.warehouse_id is not None:
+        raise ValidationError(
+            "--warehouse-id is only supported for Databricks deployment"
+        )
+
+    adapter = create_deployment_adapter(
+        bundle.deployment_plan.target.platform,
+        execution_config=execution_config,
+    )
+    result = DeploymentWorkflowService().deploy(
+        bundle,
+        adapter=adapter,
+        approval=approval,
+    )
+    rendered = (
+        _model_json(result)
+        if args.output == "json"
+        else _deployment_result_text(result)
+    )
+    return DeploymentCommandResult(
+        output=rendered,
+        outcome=outcome_from_reconciliation_status(result.status),
+    )
+
 
 def run_deployment_plan(args: argparse.Namespace) -> DeploymentCommandResult:
     """Build one provider-neutral DeploymentPlan from an exact release artifact."""
@@ -354,4 +403,28 @@ def _bundle_text(
     )
     if artifact_path:
         lines.append(f"Bundle artifact: {artifact_path}")
+    return "\n".join(lines)
+
+
+
+def _deployment_result_text(result) -> str:
+    lines = [
+        f"Bundle digest: {result.bundle_digest}",
+        f"Deployment plan: {result.deployment_plan_id}",
+        f"Authorization: {result.authorization_id}",
+        "Provider execution: SUCCEEDED",
+        f"Verification: {result.status.value}",
+        (
+            "CI review preview changed: "
+            f"{'yes' if result.review_preview_changed else 'no'}"
+        ),
+        "Fresh operations:",
+    ]
+    for operation in result.fresh_preview.operations:
+        detail = f"  - {operation.kind.value} {operation.governed_asset}"
+        if operation.statement is not None:
+            detail += f": {operation.statement}"
+        lines.append(detail)
+    if not result.fresh_preview.operations:
+        lines.append("  - none")
     return "\n".join(lines)
