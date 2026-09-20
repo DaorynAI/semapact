@@ -158,7 +158,7 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
         metadata: RuntimeReleaseMetadata,
     ) -> None:
         """Project SemaPact release provenance into Unity Catalog table tags."""
-        if not plan.release:
+        if not plan.is_release:
             raise ValidationError(
                 "Release metadata projection requires a formal release DeploymentPlan"
             )
