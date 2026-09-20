@@ -117,6 +117,9 @@ def test_release_snapshot_produces_v3_plan_without_apply_authorization() -> None
     assert plan.plan_version == "3"
     assert plan.contract_id == snapshot.contract_id
     assert plan.selected_version == snapshot.selected_version
+    payload = plan.model_dump(mode="json")
+    assert payload["release_id"] == snapshot.release_snapshot_id
+    assert "applied_release_id" not in payload
 
 
 def test_same_exact_release_and_target_produce_same_plan() -> None:
@@ -143,6 +146,9 @@ def test_plan_preserves_exact_applied_release_provenance() -> None:
     assert plan.selected_version == release.selected_version
     assert plan.plan_version == "2"
     assert plan.target.source_reference == "https://workspace.example"
+    payload = plan.model_dump(mode="json")
+    assert payload["applied_release_id"] == release.applied_release_id
+    assert "release_id" not in payload
 
 
 def test_actions_are_provider_neutral_ensure_state_intents() -> None:
