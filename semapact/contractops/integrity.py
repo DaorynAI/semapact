@@ -13,7 +13,11 @@ import uuid
 from collections.abc import Sequence
 
 from semapact.change_context import ChangeContext
-from semapact.contractops.execution_models import AppliedContractRelease, PublicationResult
+from semapact.contractops.execution_models import (
+    AppliedContractRelease,
+    PublicationResult,
+    ReleaseSnapshot,
+)
 from semapact.contractops.models import (
     ChangeSet,
     ContractOpsAuthorization,
@@ -36,6 +40,9 @@ SEMAPACT_VERSION_RESOLUTION_NAMESPACE = uuid.UUID(
 )
 SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE = uuid.UUID(
     "b6218d0c-3f9d-44a2-8d68-e3b0ee170948"
+)
+SEMAPACT_RELEASE_SNAPSHOT_NAMESPACE = uuid.UUID(
+    "d4248396-5ec7-4e6a-a238-b2db1abf76e8"
 )
 SEMAPACT_APPLIED_RELEASE_NAMESPACE = uuid.UUID(
     "a5de2e65-aee7-48ac-9cb6-6a785f4cdf33"
@@ -60,6 +67,8 @@ def validate_contractops_artifact_identity(artifact: object) -> None:
         validate_version_resolution_identity(artifact)
     elif isinstance(artifact, ContractOpsAuthorization):
         validate_contractops_authorization_identity(artifact)
+    elif isinstance(artifact, ReleaseSnapshot):
+        validate_release_snapshot_identity(artifact)
     elif isinstance(artifact, AppliedContractRelease):
         validate_applied_release_identity(artifact)
     elif isinstance(artifact, PublicationResult):
@@ -233,6 +242,45 @@ def validate_contractops_authorization_identity(
         expected,
         "ContractOpsAuthorization",
     )
+
+
+def compute_release_snapshot_id(
+    *,
+    contract_id: str,
+    decision_id: str,
+    change_set_id: str,
+    release_plan_id: str,
+    version_resolution_id: str,
+    release_revision_ref: str,
+    selected_version: str,
+    released_contract_json: str,
+) -> str:
+    payload = {
+        "contract_id": contract_id,
+        "decision_id": decision_id,
+        "change_set_id": change_set_id,
+        "release_plan_id": release_plan_id,
+        "version_resolution_id": version_resolution_id,
+        "release_revision_ref": release_revision_ref,
+        "selected_version": selected_version,
+        "released_contract_json": released_contract_json,
+    }
+    return deterministic_uuid5(SEMAPACT_RELEASE_SNAPSHOT_NAMESPACE, payload)
+
+
+def validate_release_snapshot_identity(snapshot: ReleaseSnapshot) -> None:
+    _require_canonical_json(snapshot.released_contract_json, "ReleaseSnapshot snapshot")
+    expected = compute_release_snapshot_id(
+        contract_id=snapshot.contract_id,
+        decision_id=snapshot.decision_id,
+        change_set_id=snapshot.change_set_id,
+        release_plan_id=snapshot.release_plan_id,
+        version_resolution_id=snapshot.version_resolution_id,
+        release_revision_ref=snapshot.release_revision_ref,
+        selected_version=snapshot.selected_version,
+        released_contract_json=snapshot.released_contract_json,
+    )
+    _require_identity(snapshot.release_snapshot_id, expected, "ReleaseSnapshot")
 
 
 def compute_applied_release_id(
