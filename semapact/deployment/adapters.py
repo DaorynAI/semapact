@@ -24,7 +24,7 @@ class RuntimeReleaseMetadata:
     contract_id: str
     contract_version: str
     contract_release_id: str
-    revision_ref: str
+    source_revision_ref: str
 
 
 @runtime_checkable
