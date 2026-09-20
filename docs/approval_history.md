@@ -102,6 +102,26 @@ record = service.record_review_action(
 Callers using another future persistence backend can provide the same
 `ApprovalHistoryRepository` capability without changing `ApprovalRecordService`.
 
+## Deployment approval resolution
+
+For bundle-driven deployment, callers do not have to pass an approval file explicitly.
+
+When `semapact deployment deploy --bundle ...` receives a REVIEW bundle without `--approval`, the CLI queries Git-backed approval history under `.semapact/history/approval_records` and resolves only records that match all of the following:
+
+- exact `decisionId`;
+- exact `changeSetId`;
+- exact `releasePlanId`;
+- exact `versionResolutionId`;
+- operation `DEPLOY`;
+- exact `deploymentPlanId` as scope;
+- exact `bundleDigest` in evidence references.
+
+A matching `APPROVE` record can therefore be recorded by a trusted GitHub/Azure DevOps/GitLab integration before CD begins, while `deployment deploy` consumes it automatically.
+
+If exact scoped history contains conflicting review actions such as `REQUEST_CHANGES` or `REJECT`, resolution fails closed. SemaPact does not apply a hidden "latest review wins" rule.
+
+Passing `--approval <record.json>` remains supported for custom/manual workflows and takes precedence over Git-history lookup.
+
 ## Trust boundary
 
 `ApprovalRecord` preserves review evidence; it is not an authentication credential.
