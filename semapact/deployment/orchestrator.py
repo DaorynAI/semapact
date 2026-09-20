@@ -113,9 +113,9 @@ class DeploymentOrchestrator(DeploymentAdapter):
             raise ContractOpsAuthorizationError(
                 "DeploymentAuthorization is not bound to this DeploymentPlan"
             )
-        if authorization.applied_release_id != plan.applied_release_id:
+        if authorization.source_snapshot_id != plan.source_snapshot_id:
             raise ContractOpsAuthorizationError(
-                "DeploymentAuthorization release does not match DeploymentPlan"
+                "DeploymentAuthorization source does not match DeploymentPlan"
             )
         if preview.deployment_plan_id != plan.deployment_plan_id:
             raise ValidationError(
