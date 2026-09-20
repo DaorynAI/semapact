@@ -133,10 +133,10 @@ def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
     from semapact.platforms.runtime_registry import create_deployment_adapter
 
     bundle = _load_model(args.bundle, DeploymentBundle)
-    approval = (
-        _load_model(args.approval, ApprovalRecord)
-        if args.approval is not None
-        else None
+    approval = _resolve_deployment_approval(
+        bundle,
+        approval_path=args.approval,
+        repository_root=args.repository_root,
     )
 
     execution_config = None
@@ -171,6 +171,29 @@ def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
         output=rendered,
         outcome=outcome_from_reconciliation_status(result.status),
     )
+
+
+def _resolve_deployment_approval(
+    bundle: DeploymentBundle,
+    *,
+    approval_path: str | None,
+    repository_root: str,
+) -> ApprovalRecord | None:
+    if approval_path is not None:
+        return _load_model(approval_path, ApprovalRecord)
+
+    from semapact.application.services.deployment_approval import (
+        DeploymentApprovalResolver,
+    )
+    from semapact.governance import DecisionResult
+    from semapact.platforms.git import GitWorkingTreeHistoryRepository
+
+    if bundle.decision.decision is not DecisionResult.REVIEW:
+        return None
+
+    return DeploymentApprovalResolver(
+        GitWorkingTreeHistoryRepository(repository_root),
+    ).resolve(bundle)
 
 
 def _load_model(path: str, model_type: type[_ModelT]) -> _ModelT:
