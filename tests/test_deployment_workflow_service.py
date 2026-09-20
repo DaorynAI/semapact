@@ -459,8 +459,8 @@ def test_review_release_requires_approval_and_records_formal_release(tmp_path) -
     repository = GitWorkingTreeHistoryRepository(tmp_path)
     record = repository.get_contract_release(result.release_record_id)
     assert record.contract_version == bundle.version_resolution.selected_version
-    assert record.bundle_digest == bundle.bundle_digest
-    assert record.approval_id == approval.approval_id
+    assert record.release_snapshot_id == bundle.release_snapshot.release_snapshot_id
+    assert record.revision_ref == bundle.release_snapshot.release_revision_ref
 
 
 def test_release_projects_metadata_only_after_in_sync(tmp_path) -> None:
