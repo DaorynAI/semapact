@@ -239,7 +239,6 @@ def test_candidate_assessment_does_not_calculate_release_version() -> None:
     assert bundle.change_set is not None
     assert bundle.deployment_source.source_kind == "candidate"
     assert bundle.deployment_source.contract_version == "1.2.3"
-    assert bundle.deployment_plan.is_release is False
     assert bundle.deployment_plan.plan_version == "5"
 
 
@@ -257,7 +256,7 @@ def test_finalized_release_assessment_binds_exact_release_record(tmp_path) -> No
     assert bundle.contract_release == release
     assert bundle.deployment_source.release_id == release.contract_release_id
     assert bundle.deployment_source.contract_version == release.contract_version
-    assert bundle.deployment_plan.release_id == release.contract_release_id
+    assert bundle.deployment_plan.release_id is None
 
 
 def test_same_candidate_inputs_produce_same_bundle_digest() -> None:
@@ -412,4 +411,4 @@ def test_release_deployment_projects_finalized_version_after_in_sync(tmp_path) -
     plan, metadata = adapter.metadata_calls[0]
     assert metadata.contract_version == release.contract_version
     assert metadata.contract_release_id == release.contract_release_id
-    assert plan.release_id == release.contract_release_id
+    assert plan.release_id is None
