@@ -187,6 +187,10 @@ assess
 → content-addressed DeploymentBundle
 → read-only / no execution authority
 
+deploy
+→ exact DeploymentBundle + approval when REVIEW
+→ fresh preview → execute → fresh verify
+
 plan
 → DeploymentPlan
 
@@ -348,6 +352,17 @@ semapact deployment assess \
 ```
 
 The bundle contains the exact reviewed `ReleaseSnapshot`, v3 `DeploymentPlan`, CI-time review preview, and a SHA-256 content digest. CI publishes this file using its normal artifact mechanism; the preview remains review evidence only and must be refreshed at CD execution time.
+
+CD then consumes that exact artifact:
+
+```bash
+semapact deployment deploy \
+  --bundle ./artifacts/orders-prod.bundle.json \
+  --approval ./artifacts/orders-prod.approval.json \
+  --warehouse-id <databricks-sql-warehouse-id>
+```
+
+The approval is required only for REVIEW decisions and must bind the exact deployment plan and bundle digest. The deploy command re-observes runtime, derives a fresh preview, executes only that fresh plan, then performs a separate fresh convergence verification.
 
 Low-level deployment commands remain available for explicit artifact workflows and compatibility:
 
