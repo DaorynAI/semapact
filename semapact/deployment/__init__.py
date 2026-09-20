@@ -6,7 +6,6 @@ from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
     DeploymentAction,
     DeploymentActionKind,
-    DeploymentAssessment,
     DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
@@ -30,7 +29,6 @@ __all__ = [
     "DeploymentAction",
     "DeploymentActionKind",
     "DeploymentAdapter",
-    "DeploymentAssessment",
     "DeploymentAuthorization",
     "DeploymentExecutionConfig",
     "DeploymentOrchestrator",
