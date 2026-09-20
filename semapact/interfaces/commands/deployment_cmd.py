@@ -322,8 +322,8 @@ def _deployment_result_text(result) -> str:
         f"Deployment plan: {result.deployment_plan_id}",
         f"Authorization: {result.authorization_id}",
         *(
-            [f"Contract release: {result.release_record_id}"]
-            if result.release_record_id is not None
+            [f"Contract release: {result.contract_release_id}"]
+            if result.contract_release_id is not None
             else []
         ),
         "Provider execution: SUCCEEDED",
