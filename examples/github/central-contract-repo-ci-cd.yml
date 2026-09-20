@@ -209,8 +209,6 @@ jobs:
       - release-assess
     runs-on: ubuntu-latest
     environment: contract-release
-    outputs:
-      manifest_artifact: finalized-release-manifest
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -236,7 +234,7 @@ jobs:
         env:
           MATRIX: ${{ needs.detect-contracts.outputs.matrix }}
         run: |
-          echo '[]' > artifacts/finalized-release-manifest.json
+          mkdir -p artifacts/finalized
           echo "${MATRIX}" | jq -c '.include[]' | while read -r ITEM; do
             CONTRACT_PATH=$(echo "${ITEM}" | jq -r '.contract_path')
             ARTIFACT=$(echo "${ITEM}" | jq -r '.artifact')
@@ -252,15 +250,8 @@ jobs:
             semapact release finalize \
               --bundle "${BUNDLE}" \
               --output-contract "${CONTRACT_ROOT}/${CONTRACT_PATH}" \
-              > /tmp/finalize.json
-
-            RELEASE_ID=$(jq -r '.contractReleaseId' /tmp/finalize.json)
-            jq --arg artifact "${ARTIFACT}" \
-               --arg contract_path "${CONTRACT_PATH}" \
-               --arg release_id "${RELEASE_ID}" \
-               '. + [{artifact: $artifact, contract_path: $contract_path, release_id: $release_id}]' \
-               artifacts/finalized-release-manifest.json > /tmp/manifest.json
-            mv /tmp/manifest.json artifacts/finalized-release-manifest.json
+              --release-out "artifacts/finalized/${ARTIFACT}.contract-release.json" \
+              > "/tmp/${ARTIFACT}.finalize.json"
           done
 
       - name: Commit all released contracts and governance facts once
@@ -274,11 +265,11 @@ jobs:
             git push origin HEAD:main
           fi
 
-      - name: Upload finalized release manifest
+      - name: Upload finalized ContractRelease artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: finalized-release-manifest
-          path: artifacts/finalized-release-manifest.json
+          name: semapact-finalized-releases
+          path: artifacts/finalized/
 
   deploy-production:
     needs:
@@ -307,20 +298,11 @@ jobs:
       - name: Install SemaPact
         run: pip install "semapact[databricks]"
 
-      - name: Download finalized release manifest
+      - name: Download finalized ContractRelease artifacts
         uses: actions/download-artifact@v4
         with:
-          name: finalized-release-manifest
-          path: artifacts
-
-      - name: Resolve finalized release identity
-        id: release
-        env:
-          ARTIFACT: ${{ matrix.artifact }}
-        run: |
-          RELEASE_ID=$(jq -r --arg artifact "${ARTIFACT}" '.[] | select(.artifact == $artifact) | .release_id' artifacts/finalized-release-manifest.json)
-          test -n "${RELEASE_ID}" && test "${RELEASE_ID}" != "null"
-          echo "release_id=${RELEASE_ID}" >> "${GITHUB_OUTPUT}"
+          name: semapact-finalized-releases
+          path: artifacts/releases
 
       - name: Assess finalized release against production
         env:
@@ -328,7 +310,7 @@ jobs:
         run: |
           mkdir -p artifacts/deploy
           semapact deployment assess \
-            --release-id "${{ steps.release.outputs.release_id }}" \
+            --release "artifacts/releases/${ARTIFACT}.contract-release.json" \
             --server "${PROD_SERVER}" \
             --bundle-out "artifacts/deploy/${ARTIFACT}.production.deployment.bundle.json"
 
