@@ -146,7 +146,21 @@ class DeploymentPlan(DeploymentModel):
         if not isinstance(value, dict):
             return value
         payload = dict(value)
-        version = str(payload.get("plan_version", "3"))
+        raw_version = payload.get("plan_version")
+        if raw_version is None:
+            if "applied_release_id" in payload:
+                version = "2"
+            elif (
+                "release_id" in payload
+                or "released_revision_ref" in payload
+                or "selected_version" in payload
+            ):
+                version = "3"
+            else:
+                return payload
+            payload["plan_version"] = version
+        else:
+            version = str(raw_version)
         if version not in {"2", "3"}:
             return payload
 
@@ -386,7 +400,7 @@ def compute_deployment_plan_id(
     release: bool = True,
     target: DeploymentTarget,
     actions: Sequence[DeploymentAction],
-    plan_version: str = "4",
+    plan_version: str = "3",
 ) -> str:
     legacy_release_id = _resolve_optional_legacy_release_id(
         release_id=release_id,
