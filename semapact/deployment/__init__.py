@@ -1,6 +1,10 @@
 """Provider-neutral deployment planning, orchestration and authorization boundary."""
 
-from semapact.deployment.adapters import DeploymentAdapter
+from semapact.deployment.adapters import (
+    DeploymentAdapter,
+    RuntimeReleaseMetadata,
+    RuntimeReleaseMetadataProjector,
+)
 from semapact.deployment.authorization import (
     authorize_candidate_deployment,
     authorize_deployment,
@@ -41,6 +45,8 @@ __all__ = [
     "DeploymentAction",
     "DeploymentActionKind",
     "DeploymentAdapter",
+    "RuntimeReleaseMetadata",
+    "RuntimeReleaseMetadataProjector",
     "DeploymentAuthorization",
     "DeploymentExecutionConfig",
     "DeploymentOrchestrator",
