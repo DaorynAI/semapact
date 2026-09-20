@@ -28,16 +28,14 @@ class OperationalDeploymentEvent(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     event_id: str
-    event_version: Literal["1"] = "1"
+    event_version: Literal["2"] = "2"
     bundle_digest: str
-    release: bool
     contract_release_id: str | None = None
     contract_id: str
     contract_version: str
     revision_ref: str
     deployment_plan_id: str
     deployment_preview_id: str | None = None
-    deployment_authorization_id: str | None = None
     platform: str
     runtime_target: str
     source_reference: str
@@ -68,7 +66,6 @@ class OperationalDeploymentEvent(BaseModel):
     @field_validator(
         "contract_release_id",
         "deployment_preview_id",
-        "deployment_authorization_id",
         "error_message",
     )
     @classmethod
@@ -101,14 +98,12 @@ class OperationalDeploymentEvent(BaseModel):
         expected = compute_operational_deployment_event_id(
             event_version=self.event_version,
             bundle_digest=self.bundle_digest,
-            release=self.release,
             contract_release_id=self.contract_release_id,
             contract_id=self.contract_id,
             contract_version=self.contract_version,
             revision_ref=self.revision_ref,
             deployment_plan_id=self.deployment_plan_id,
             deployment_preview_id=self.deployment_preview_id,
-            deployment_authorization_id=self.deployment_authorization_id,
             platform=self.platform,
             runtime_target=self.runtime_target,
             source_reference=self.source_reference,
@@ -138,14 +133,12 @@ class OperationalHistorySink(Protocol):
 def build_operational_deployment_event(
     *,
     bundle_digest: str,
-    release: bool,
     contract_release_id: str | None,
     contract_id: str,
     contract_version: str,
     revision_ref: str,
     deployment_plan_id: str,
     deployment_preview_id: str | None,
-    deployment_authorization_id: str | None,
     platform: str,
     runtime_target: str,
     source_reference: str,
@@ -157,16 +150,14 @@ def build_operational_deployment_event(
 ) -> OperationalDeploymentEvent:
     normalized_platform = platform.strip().casefold()
     event_id = compute_operational_deployment_event_id(
-        event_version="1",
+        event_version="2",
         bundle_digest=bundle_digest,
-        release=release,
         contract_release_id=contract_release_id,
         contract_id=contract_id,
         contract_version=contract_version,
         revision_ref=revision_ref,
         deployment_plan_id=deployment_plan_id,
         deployment_preview_id=deployment_preview_id,
-        deployment_authorization_id=deployment_authorization_id,
         platform=normalized_platform,
         runtime_target=runtime_target,
         source_reference=source_reference,
@@ -180,16 +171,14 @@ def build_operational_deployment_event(
     )
     return OperationalDeploymentEvent(
         event_id=event_id,
-        event_version="1",
+        event_version="2",
         bundle_digest=bundle_digest,
-        release=release,
         contract_release_id=contract_release_id,
         contract_id=contract_id,
         contract_version=contract_version,
         revision_ref=revision_ref,
         deployment_plan_id=deployment_plan_id,
         deployment_preview_id=deployment_preview_id,
-        deployment_authorization_id=deployment_authorization_id,
         platform=normalized_platform,
         runtime_target=runtime_target,
         source_reference=source_reference,
