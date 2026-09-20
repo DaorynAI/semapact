@@ -83,7 +83,7 @@ GovernanceDecision
         → ReleaseSnapshot
         → DeploymentPlan
         → DeploymentBundle
-        → ContractReleaseRecord
+        → ContractRelease
 ```
 
 Release approval and runtime authorization remain explicit side-effect boundaries.
@@ -202,11 +202,11 @@ release assess
 REVIEW → exact release approval
         ↓
 release finalize
-→ ContractReleaseRecord
+→ ContractRelease
 → materialize the selected version back to ODCS
 ```
 
-The selected version is calculated once. The resulting `ContractReleaseRecord` can then be deployed to any number of runtime targets without another version bump:
+The selected version is calculated once. The resulting `ContractRelease` can then be deployed to any number of runtime targets without another version bump:
 
 ```text
 orders@1.4.0
@@ -408,7 +408,7 @@ semapact release finalize \
   --output-contract ./contracts/orders.yaml
 ```
 
-Finalization writes the selected semantic version back to the ODCS contract and records the immutable `ContractReleaseRecord` in the Git governance ledger. The release records the source revision from which it was derived; the finalized release identity is the immutable released-contract snapshot, not a claim that the source revision already contained the materialized version bump.
+Finalization writes the selected semantic version back to the ODCS contract and records the immutable `ContractRelease` in the Git governance ledger. The release records the source revision from which it was derived; the finalized release identity is the immutable released-contract snapshot, not a claim that the source revision already contained the materialized version bump.
 
 Deployment then consumes that finalized release identity:
 
