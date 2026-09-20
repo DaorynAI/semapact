@@ -340,7 +340,7 @@ def compute_contract_release_id(
     release_plan_id: str,
     version_resolution_id: str,
     release_snapshot_id: str,
-    revision_ref: str,
+    source_revision_ref: str,
     released_contract_json: str,
 ) -> str:
     """Derive deterministic identity for one finalized formal contract release."""
@@ -354,7 +354,7 @@ def compute_contract_release_id(
             "release_plan_id": release_plan_id,
             "version_resolution_id": version_resolution_id,
             "release_snapshot_id": release_snapshot_id,
-            "revision_ref": revision_ref,
+            "source_revision_ref": source_revision_ref,
             "released_contract_json": released_contract_json,
         },
     )
@@ -374,7 +374,7 @@ def validate_contract_release_identity(release: ContractRelease) -> None:
         release_plan_id=release.release_plan_id,
         version_resolution_id=release.version_resolution_id,
         release_snapshot_id=release.release_snapshot_id,
-        revision_ref=release.revision_ref,
+        source_revision_ref=release.source_revision_ref,
         released_contract_json=release.released_contract_json,
     )
     _require_identity(release.contract_release_id, expected, "ContractRelease")
