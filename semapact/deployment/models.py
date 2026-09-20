@@ -135,10 +135,9 @@ class DeploymentPlan(DeploymentModel):
     contract_version: str
     target: DeploymentTarget
     actions: tuple[DeploymentAction, ...]
-    release: bool = Field(strict=True)
     release_id: str | None = None
     release_plan_id: str | None = None
-    plan_version: Literal["2", "3", "4"] = "4"
+    plan_version: Literal["2", "3", "4", "5"] = "5"
 
     @model_validator(mode="before")
     @classmethod
@@ -161,6 +160,16 @@ class DeploymentPlan(DeploymentModel):
             payload["plan_version"] = version
         else:
             version = str(raw_version)
+        if version == "4":
+            legacy_release = payload.pop("release", None)
+            has_release_provenance = bool(
+                payload.get("release_id") or payload.get("release_plan_id")
+            )
+            if legacy_release is not None and bool(legacy_release) != has_release_provenance:
+                raise ValueError(
+                    "Legacy DeploymentPlan release flag conflicts with release provenance"
+                )
+            return payload
         if version not in {"2", "3"}:
             return payload
 
@@ -170,7 +179,6 @@ class DeploymentPlan(DeploymentModel):
         payload.setdefault("source_snapshot_id", legacy_release_id)
         payload.setdefault("revision_ref", payload.get("released_revision_ref"))
         payload.setdefault("contract_version", payload.get("selected_version"))
-        payload.setdefault("release", True)
         payload.setdefault("release_id", legacy_release_id)
         payload.pop("applied_release_id", None)
         payload.pop("released_revision_ref", None)
@@ -207,14 +215,11 @@ class DeploymentPlan(DeploymentModel):
         if len(governed_assets) != len(set(governed_assets)):
             raise ValueError("DeploymentPlan cannot contain duplicate governed assets")
 
-        if self.release:
-            if self.release_id is None or self.release_plan_id is None:
-                raise ValueError(
-                    "Release DeploymentPlan requires release_id and release_plan_id"
-                )
-        elif self.release_id is not None or self.release_plan_id is not None:
+        has_release_id = self.release_id is not None
+        has_release_plan = self.release_plan_id is not None
+        if has_release_id != has_release_plan:
             raise ValueError(
-                "Non-release DeploymentPlan must not contain release provenance"
+                "DeploymentPlan release_id and release_plan_id must be provided together"
             )
 
         validate_deployment_plan_identity(self)
@@ -223,16 +228,27 @@ class DeploymentPlan(DeploymentModel):
     @model_serializer(mode="wrap")
     def _serialize_legacy_plan(self, handler):
         payload = handler(self)
+        if self.plan_version == "4":
+            payload["release"] = self.is_release
+            return payload
         if self.plan_version not in {"2", "3"}:
             return payload
 
         payload["released_revision_ref"] = payload.pop("revision_ref")
         payload["selected_version"] = payload.pop("contract_version")
         payload.pop("source_snapshot_id", None)
-        payload.pop("release", None)
         if self.plan_version == "2":
             payload["applied_release_id"] = payload.pop("release_id")
         return payload
+
+    @property
+    def is_release(self) -> bool:
+        return self.release_id is not None
+
+    @property
+    def release(self) -> bool:
+        """Compatibility accessor; canonical state is release provenance."""
+        return self.is_release
 
     @property
     def applied_release_id(self) -> str:
@@ -397,7 +413,7 @@ def compute_deployment_plan_id(
     contract_version: str | None = None,
     selected_version: str | None = None,
     release_plan_id: str | None = None,
-    release: bool = True,
+    release: bool | None = None,
     target: DeploymentTarget,
     actions: Sequence[DeploymentAction],
     plan_version: str | None = None,
@@ -405,8 +421,8 @@ def compute_deployment_plan_id(
     if plan_version is None:
         if applied_release_id is not None:
             plan_version = "2"
-        elif source_snapshot_id is not None and release is False:
-            plan_version = "4"
+        elif source_snapshot_id is not None:
+            plan_version = "5"
         else:
             plan_version = "3"
 
@@ -453,27 +469,37 @@ def compute_deployment_plan_id(
             },
         )
 
-    if plan_version != "4":
+    if plan_version not in {"4", "5"}:
         raise ValueError(f"Unsupported DeploymentPlan version: {plan_version}")
-    if release and (release_id is None or release_plan_id is None):
-        raise ValueError("Release DeploymentPlan requires release provenance")
-    if not release and (release_id is not None or release_plan_id is not None):
-        raise ValueError("Non-release DeploymentPlan cannot contain release provenance")
 
+    has_release_id = release_id is not None
+    has_release_plan = release_plan_id is not None
+    if has_release_id != has_release_plan:
+        raise ValueError(
+            "DeploymentPlan release_id and release_plan_id must be provided together"
+        )
+    derived_release = has_release_id
+    if plan_version == "4" and release is not None and bool(release) != derived_release:
+        raise ValueError(
+            "Legacy DeploymentPlan release flag conflicts with release provenance"
+        )
+
+    payload = {
+        "source_snapshot_id": resolved_source_id,
+        "contract_id": contract_id,
+        "revision_ref": resolved_revision,
+        "contract_version": resolved_version,
+        "release_id": release_id,
+        "release_plan_id": release_plan_id,
+        "target": target.model_dump(mode="json"),
+        "actions": [action.model_dump(mode="json") for action in actions],
+        "plan_version": plan_version,
+    }
+    if plan_version == "4":
+        payload["release"] = derived_release
     return deterministic_uuid5(
         SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
-        {
-            "source_snapshot_id": resolved_source_id,
-            "contract_id": contract_id,
-            "revision_ref": resolved_revision,
-            "contract_version": resolved_version,
-            "release": release,
-            "release_id": release_id,
-            "release_plan_id": release_plan_id,
-            "target": target.model_dump(mode="json"),
-            "actions": [action.model_dump(mode="json") for action in actions],
-            "plan_version": plan_version,
-        },
+        payload,
     )
 
 
@@ -612,7 +638,7 @@ def validate_deployment_plan_identity(plan: DeploymentPlan) -> None:
         release_plan_id=plan.release_plan_id,
         revision_ref=plan.revision_ref,
         contract_version=plan.contract_version,
-        release=plan.release,
+        release=plan.is_release if plan.plan_version == "4" else None,
         target=plan.target,
         actions=plan.actions,
         plan_version=plan.plan_version,
