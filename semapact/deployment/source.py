@@ -8,6 +8,7 @@ from open_data_contract_standard.model import OpenDataContractStandard
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from semapact.contractops import ReleaseSnapshot
+from semapact.history.models import ContractReleaseRecord
 from semapact.utils.deterministic import canonical_compact_json, deterministic_uuid5
 
 
@@ -142,6 +143,37 @@ def build_release_deployment_source(
         release=True,
         release_id=snapshot.release_snapshot_id,
         release_plan_id=snapshot.release_plan_id,
+    )
+
+
+def build_contract_release_deployment_source(
+    release: ContractReleaseRecord,
+) -> DeploymentSourceSnapshot:
+    """Project one finalized ContractReleaseRecord into deployment desired state."""
+    if not isinstance(release, ContractReleaseRecord):
+        raise TypeError(
+            "release must be ContractReleaseRecord, "
+            f"got {type(release).__name__}"
+        )
+    contract_json = release.released_contract_json
+    source_id = compute_deployment_source_id(
+        contract_id=release.contract_id,
+        revision_ref=release.revision_ref,
+        contract_version=release.contract_version,
+        contract_json=contract_json,
+        release=True,
+        release_id=release.contract_release_id,
+        release_plan_id=release.release_plan_id,
+    )
+    return DeploymentSourceSnapshot(
+        source_snapshot_id=source_id,
+        contract_id=release.contract_id,
+        revision_ref=release.revision_ref,
+        contract_version=release.contract_version,
+        contract_json=contract_json,
+        release=True,
+        release_id=release.contract_release_id,
+        release_plan_id=release.release_plan_id,
     )
 
 
