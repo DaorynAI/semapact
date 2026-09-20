@@ -23,6 +23,10 @@ class DeploymentApprovalResolver:
         self._approvals = approvals
 
     def resolve(self, bundle: DeploymentBundle) -> ApprovalRecord | None:
+        if not bundle.release:
+            return None
+        if bundle.release_plan is None or bundle.version_resolution is None:
+            return None
         records = self._approvals.list_approval_records_for_context(
             decision_id=bundle.decision.decision_id,
             change_set_id=bundle.change_set.change_set_id,
