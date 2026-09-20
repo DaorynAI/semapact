@@ -464,3 +464,46 @@ def test_deployment_approval_resolver_ignores_non_exact_records(tmp_path) -> Non
     repository.put_approval_record(wrong_digest)
 
     assert DeploymentApprovalResolver(repository).resolve(bundle) is None
+
+
+def test_deployment_approval_resolver_fails_closed_on_conflicting_exact_history(
+    tmp_path,
+) -> None:
+    target = DeploymentTarget(
+        platform="fake",
+        runtime_target="main.sales",
+        source_reference="runtime:test",
+    )
+    service = DeploymentWorkflowService()
+    bundle = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders", include_created_at=True),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=target,
+        adapter=_PreviewAdapter(),
+    )
+    repository = GitWorkingTreeHistoryRepository(tmp_path)
+
+    approved = service.approve(
+        bundle,
+        actor_reference="github:user:alice",
+        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
+    )
+    request_changes = build_approval_record(
+        decision_id=bundle.decision.decision_id,
+        change_set_id=bundle.change_set.change_set_id,
+        release_plan_id=bundle.release_plan.release_plan_id,
+        version_resolution_id=bundle.version_resolution.version_resolution_id,
+        operation=GovernanceOperation.DEPLOY,
+        action=ReviewEvidenceAction.REQUEST_CHANGES,
+        actor_reference="github:user:bob",
+        recorded_at=datetime(2026, 9, 20, 2, 1, tzinfo=timezone.utc),
+        scope_reference=bundle.deployment_plan.deployment_plan_id,
+        evidence_references=(bundle.bundle_digest,),
+    )
+    repository.put_approval_record(approved)
+    repository.put_approval_record(request_changes)
+
+    assert DeploymentApprovalResolver(repository).resolve(bundle) is None
