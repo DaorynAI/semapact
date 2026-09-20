@@ -15,7 +15,10 @@ from semapact.contractops.integrity import (
     compute_applied_release_id,
     compute_release_snapshot_id,
 )
-from semapact.deployment.compatibility import serialize_deployment_plan_payload
+from semapact.deployment.compatibility import (
+    parse_deployment_plan_payload,
+    serialize_deployment_plan_payload,
+)
 from semapact.deployment import (
     DeploymentAction,
     DeploymentActionKind,
@@ -121,6 +124,7 @@ def test_release_snapshot_produces_v3_plan_without_apply_authorization() -> None
     payload = serialize_deployment_plan_payload(plan)
     assert payload["release_id"] == snapshot.release_snapshot_id
     assert "applied_release_id" not in payload
+    assert parse_deployment_plan_payload(payload) == plan
 
 
 def test_same_exact_release_and_target_produce_same_plan() -> None:
@@ -150,6 +154,7 @@ def test_plan_preserves_exact_applied_release_provenance() -> None:
     payload = serialize_deployment_plan_payload(plan)
     assert payload["applied_release_id"] == release.applied_release_id
     assert "release_id" not in payload
+    assert parse_deployment_plan_payload(payload) == plan
 
 
 def test_actions_are_provider_neutral_ensure_state_intents() -> None:
