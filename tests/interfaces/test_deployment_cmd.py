@@ -93,6 +93,8 @@ def test_deployment_parser_exposes_read_only_assessment_and_explicit_phases() ->
             "2026-09-20",
             "--server",
             "production",
+            "--bundle-out",
+            "bundle.json",
             "--output",
             "json",
         ]
@@ -133,6 +135,7 @@ def test_deployment_parser_exposes_read_only_assessment_and_explicit_phases() ->
     assert assess.deployment_command == "assess"
     assert assess.output == "json"
     assert assess.server == "production"
+    assert assess.bundle_out == "bundle.json"
     assert plan.deployment_command == "plan"
     assert plan.source_reference == SOURCE_REFERENCE
     assert preview.deployment_command == "preview"
@@ -168,7 +171,7 @@ def test_plan_command_outputs_canonical_deployment_plan(tmp_path) -> None:
     payload = json.loads(result.output)
 
     assert result.outcome is ProcessOutcome.SUCCESS
-    assert payload["applied_release_id"] == release.applied_release_id
+    assert payload["release_id"] == release.applied_release_id
     assert payload["target"] == {
         "platform": "databricks",
         "runtime_target": "main.silver",
