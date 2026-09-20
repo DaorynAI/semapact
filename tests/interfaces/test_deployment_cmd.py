@@ -84,6 +84,7 @@ def test_deployment_parser_exposes_only_bundle_workflow() -> None:
     assert deploy.deployment_command == "deploy"
     assert deploy.bundle == "bundle.json"
     assert deploy.approval == "approval.json"
+    assert deploy.repository_root == "."
     assert deploy.warehouse_id == "warehouse-1"
     assert deploy.output == "json"
 
