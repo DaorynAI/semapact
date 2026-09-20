@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 from semapact.deployment.models import (
     DeploymentAuthorization,
@@ -11,6 +13,29 @@ from semapact.deployment.models import (
 )
 from semapact.reconciliation import ReconciliationResult
 
+
+
+
+
+@dataclass(frozen=True)
+class RuntimeReleaseMetadata:
+    """Release provenance projected into a runtime provider after convergence."""
+
+    contract_id: str
+    contract_version: str
+    contract_release_id: str
+    revision_ref: str
+
+
+@runtime_checkable
+class RuntimeReleaseMetadataProjector(Protocol):
+    """Optional provider capability for projecting formal release provenance."""
+
+    def project_release_metadata(
+        self,
+        plan: DeploymentPlan,
+        metadata: RuntimeReleaseMetadata,
+    ) -> None: ...
 
 class DeploymentAdapter(ABC):
     """Own the complete provider-neutral deployment lifecycle entrypoints."""
