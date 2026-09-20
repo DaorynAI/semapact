@@ -49,7 +49,7 @@ class ContractReleaseHistoryService:
             release_plan_id=bundle.release_plan.release_plan_id,
             version_resolution_id=resolution.version_resolution_id,
             release_snapshot_id=snapshot.release_snapshot_id,
-            revision_ref=snapshot.release_revision_ref,
+            source_revision_ref=snapshot.release_revision_ref,
             released_contract_json=snapshot.released_contract_json,
         )
         record = ContractRelease(
@@ -61,7 +61,7 @@ class ContractReleaseHistoryService:
             release_plan_id=bundle.release_plan.release_plan_id,
             version_resolution_id=resolution.version_resolution_id,
             release_snapshot_id=snapshot.release_snapshot_id,
-            revision_ref=snapshot.release_revision_ref,
+            source_revision_ref=snapshot.release_revision_ref,
             released_contract_json=snapshot.released_contract_json,
         )
         self._releases.put_contract_release(record)
