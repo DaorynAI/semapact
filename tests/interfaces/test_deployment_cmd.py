@@ -99,6 +99,20 @@ def test_deployment_parser_exposes_read_only_assessment_and_explicit_phases() ->
             "json",
         ]
     )
+    deploy = parser.parse_args(
+        [
+            "deployment",
+            "deploy",
+            "--bundle",
+            "bundle.json",
+            "--approval",
+            "approval.json",
+            "--warehouse-id",
+            "warehouse-1",
+            "--output",
+            "json",
+        ]
+    )
     plan = parser.parse_args(
         [
             "deployment",
@@ -136,6 +150,11 @@ def test_deployment_parser_exposes_read_only_assessment_and_explicit_phases() ->
     assert assess.output == "json"
     assert assess.server == "production"
     assert assess.bundle_out == "bundle.json"
+    assert deploy.deployment_command == "deploy"
+    assert deploy.bundle == "bundle.json"
+    assert deploy.approval == "approval.json"
+    assert deploy.warehouse_id == "warehouse-1"
+    assert deploy.output == "json"
     assert plan.deployment_command == "plan"
     assert plan.source_reference == SOURCE_REFERENCE
     assert preview.deployment_command == "preview"
