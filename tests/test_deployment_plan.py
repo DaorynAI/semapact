@@ -10,8 +10,11 @@ from open_data_contract_standard.model import (
 )
 from pydantic import ValidationError as PydanticValidationError
 
-from semapact.contractops import AppliedContractRelease
-from semapact.contractops.integrity import compute_applied_release_id
+from semapact.contractops import AppliedContractRelease, ReleaseSnapshot
+from semapact.contractops.integrity import (
+    compute_applied_release_id,
+    compute_release_snapshot_id,
+)
 from semapact.deployment import (
     DeploymentAction,
     DeploymentActionKind,
@@ -75,6 +78,27 @@ def _release(
     )
 
 
+def _snapshot(
+    *,
+    schemas: list[SchemaObject] | None = None,
+) -> ReleaseSnapshot:
+    applied = _release(schemas=schemas)
+    fields = {
+        "contract_id": applied.contract_id,
+        "decision_id": applied.decision_id,
+        "change_set_id": applied.change_set_id,
+        "release_plan_id": applied.release_plan_id,
+        "version_resolution_id": applied.version_resolution_id,
+        "release_revision_ref": applied.release_revision_ref,
+        "selected_version": applied.selected_version,
+        "released_contract_json": applied.released_contract_json,
+    }
+    return ReleaseSnapshot(
+        release_snapshot_id=compute_release_snapshot_id(**fields),
+        **fields,
+    )
+
+
 def _target() -> DeploymentTarget:
     return DeploymentTarget(
         platform="Databricks",
@@ -82,6 +106,17 @@ def _target() -> DeploymentTarget:
         source_reference="https://workspace.example",
         server_name="production",
     )
+
+
+def test_release_snapshot_produces_v3_plan_without_apply_authorization() -> None:
+    snapshot = _snapshot()
+
+    plan = build_deployment_plan(snapshot, _target())
+
+    assert plan.release_id == snapshot.release_snapshot_id
+    assert plan.plan_version == "3"
+    assert plan.contract_id == snapshot.contract_id
+    assert plan.selected_version == snapshot.selected_version
 
 
 def test_same_exact_release_and_target_produce_same_plan() -> None:
