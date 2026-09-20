@@ -120,6 +120,7 @@ def test_review_release_finalize_requires_exact_approval(tmp_path) -> None:
 
     assert record.contract_version == "1.3.0"
     assert record.release_snapshot_id == bundle.release_snapshot.release_snapshot_id
+    assert record.source_revision_ref == "git:candidate"
     assert (
         repository.get_contract_release(record.contract_release_id)
         == record
