@@ -82,7 +82,7 @@ def build_deployment_plan_from_source(
     source: DeploymentSourceSnapshot,
     target: DeploymentTarget,
 ) -> DeploymentPlan:
-    """Build a v4 plan from an exact candidate or release deployment source."""
+    """Build a v5 plan from one exact deployment source snapshot."""
     if not isinstance(source, DeploymentSourceSnapshot):
         raise TypeError(
             "source must be DeploymentSourceSnapshot, "
@@ -100,12 +100,11 @@ def build_deployment_plan_from_source(
         contract_id=source.contract_id,
         revision_ref=source.revision_ref,
         contract_version=source.contract_version,
-        release=source.release,
         release_id=source.release_id,
         release_plan_id=source.release_plan_id,
         target=target,
         actions=ordered_actions,
-        plan_version="4",
+        plan_version="5",
     )
     return DeploymentPlan(
         deployment_plan_id=deployment_plan_id,
@@ -115,10 +114,9 @@ def build_deployment_plan_from_source(
         contract_version=source.contract_version,
         target=target,
         actions=ordered_actions,
-        release=source.release,
         release_id=source.release_id,
         release_plan_id=source.release_plan_id,
-        plan_version="4",
+        plan_version="5",
     )
 
 def build_deployment_actions(
