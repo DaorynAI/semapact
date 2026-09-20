@@ -334,7 +334,7 @@ class DeploymentAuthorization(DeploymentModel):
     deployment_plan_id: str
     source_snapshot_id: str
     allowed: bool = Field(strict=True)
-    authorization_kind: Literal["contractops", "governance", "contract_release"] = "contractops"
+    authorization_kind: Literal["contractops", "governance"] = "contractops"
     authorization_reference: str
     authorization_version: Literal["1", "2"] = "2"
 
@@ -547,7 +547,7 @@ def compute_deployment_authorization_id(
         raise ValueError(
             f"Unsupported DeploymentAuthorization version: {authorization_version}"
         )
-    if authorization_kind not in {"contractops", "governance", "contract_release"}:
+    if authorization_kind not in {"contractops", "governance"}:
         raise ValueError("Unsupported deployment authorization kind")
     source_id = _resolve_text_pair(
         source_snapshot_id,
