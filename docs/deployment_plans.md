@@ -397,6 +397,8 @@ For example, a released `orders@1.4.0` table is tagged with version `1.4.0` and 
 
 This projection is deliberately limited to SemaPact provenance. ODCS business tags, classifications, PII labels, or governed ABAC tags are **not** automatically mapped to Unity Catalog tags; those require a separate explicit mapping policy.
 
+The Databricks principal running CD must have the Unity Catalog privileges needed to apply table tags, including `APPLY TAG` on the target object plus `USE CATALOG` and `USE SCHEMA` on its parents. SemaPact uses `ALTER TABLE ... SET TAGS`, supported by current Unity Catalog SQL surfaces.
+
 Tag mutation is a provider side effect and therefore requires a Databricks SQL warehouse even when the schema deployment itself resolves to `NO_OP`. A tag-write failure fails the release deployment command rather than silently claiming the runtime is fully projected.
 
 ## Authorization scope
