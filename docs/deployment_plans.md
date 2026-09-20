@@ -5,8 +5,8 @@ SemaPact treats a released ODCS contract as governed desired state, not as an ex
 The released contract is the authoritative artifact. SemaPact does **not** require a separate DDL build artifact before deployment. SQL and other provider-native commands are derived only after an exact released desired state is compared with an exact runtime target.
 
 ```text
-AppliedContractRelease
-        = governed desired state
+ReleaseSnapshot
+        = exact governed desired state
                 +
 ObservedPlatformState
         = point-in-time runtime state
@@ -23,7 +23,7 @@ This matters because one release may require different native operations in diff
 The deployment planning boundary is therefore:
 
 ```text
-AppliedContractRelease
+ReleaseSnapshot
 + DeploymentTarget
         ↓
 DeploymentPlan
@@ -55,9 +55,9 @@ The orchestration above is provider-neutral. Platform packages configure or impl
 
 ## What a DeploymentPlan means
 
-A `DeploymentPlan` is a deterministic, provider-neutral statement of the runtime state that an exact applied contract release intends to converge toward.
+A `DeploymentPlan` is a deterministic, provider-neutral statement of the runtime state that one exact release snapshot intends to converge toward.
 
-It is built only from `AppliedContractRelease`; drafts and raw candidate contracts are not deployment authority.
+The canonical CI path builds it from a pure `ReleaseSnapshot`, which freezes the selected contract revision/version without requiring side-effect authorization. Legacy `AppliedContractRelease` inputs remain readable for v2-plan compatibility, but new CI bundles use v3 plans bound to `releaseId`.
 
 The initial action vocabulary deliberately contains only:
 
@@ -144,26 +144,34 @@ Preview, execution, and verification fail closed when fresh runtime evidence com
 
 The plan does not contain credentials, workspace clients, SQL connections, or provider sessions.
 
-## Candidate assessment before approval
+## CI assessment and the DeploymentBundle boundary
 
-A Data Engineer or CI job can assess a proposed contract revision against fresh runtime state before any release or deployment authority exists:
+CI must produce a stable artifact that CD can consume after approval. SemaPact packages the exact planning material into a content-addressed `DeploymentBundle`:
 
 ```text
-base contract + candidate contract
-        ↓
+base + candidate
+    ↓
 GovernanceDecision
 → ChangeSet
 → ReleasePlan
 → VersionResolution
+→ ReleaseSnapshot
+→ DeploymentPlan
         +
 fresh runtime observation
         ↓
-DeploymentAssessment
+DeploymentPreview   # review evidence only
+        ↓
+DeploymentBundle
+        ↓
+sha256 content digest
 ```
 
-`DeploymentAssessment` is deliberately non-executable. It binds the candidate revision, deployment target, fresh observation fingerprint, and provider-native CREATE / ALTER / NO_OP operations for review, but it contains no `AppliedContractRelease`, `DeploymentPlan`, or authorization identity.
+`DeploymentBundle` is a transport and integrity boundary, not another governance authority. It contains the canonical decision/planning artifacts, the exact release snapshot, the target-specific deployment plan, and the runtime preview that CI showed to reviewers.
 
-The assessment path reuses the same schema mapper, comparator, transition planner, and provider compiler as executable deployment preview. Approval does not promote the assessment itself into execution authority; post-approval deployment builds the canonical release/deployment artifacts and obtains fresh runtime evidence again.
+The bundle contains **no execution authorization**. The CI preview is also not a future SQL script: CD must re-observe runtime and re-derive provider operations at the mutation boundary. The bundle digest lets CI publish one immutable artifact and lets approval/CD pin the exact reviewed material.
+
+The previous candidate-specific `DeploymentAssessment` artifact is intentionally not part of this model. CI uses the same canonical `DeploymentPlan → preview` path as later deployment rather than maintaining a second desired-vs-runtime workflow.
 
 ## CLI workflow
 
@@ -179,18 +187,19 @@ semapact deployment assess \
   --candidate-revision-ref git:def456 \
   --effective-date 2026-09-20 \
   --server production \
-  --output json
+  --bundle-out ./artifacts/orders-prod.bundle.json \
+  --output text
 ```
 
 When the candidate contract defines the selected server, its platform, catalog/schema target, and host are authoritative. For contracts without servers, provide `--platform`, `--runtime`, and `--source-reference`.
 
-The JSON output contains canonical release-planning artifacts plus `deploymentAssessment` and explicitly reports `"executable": false`. This surface is suitable for local review and CI; it does not create runtime mutation authority.
+The bundle file contains the canonical planning artifacts, `ReleaseSnapshot`, v3 `DeploymentPlan`, and CI-time `reviewPreview`, protected by `bundleDigest`. Use `--output json` to emit that same bundle on stdout instead. CI can publish the file using its normal pipeline-artifact mechanism; SemaPact does not couple this package to one CI vendor.
 
 ### Plan
 
 ```bash
 semapact deployment plan \
-  --release ./artifacts/applied-release.json \
+  --release ./artifacts/release-snapshot.json \
   --platform databricks \
   --runtime main.sales \
   --source-reference https://dbc-example.cloud.databricks.com
@@ -288,14 +297,14 @@ A PUBLISH authorization cannot authorize DEPLOY.
 
 `deploymentPlanId` is UUID5-derived from the full stable plan record:
 
-- exact `AppliedContractRelease` identity and provenance;
+- exact release identity and provenance (`ReleaseSnapshot` for v3 plans; legacy applied-release identity for v2 compatibility);
 - exact deployment target, including runtime source reference;
 - canonical actions ordered by governed asset identity;
 - plan schema version.
 
-The same exact applied release and target therefore produce the same DeploymentPlan.
+The same exact release and target therefore produce the same DeploymentPlan.
 
-Action ordering is canonical even when schemas appear in a different order in source ODCS. However, DeploymentPlan does not redefine release identity: two distinct `AppliedContractRelease` artifacts remain distinct authorities even if their projected actions happen to be equivalent.
+Action ordering is canonical even when schemas appear in a different order in source ODCS. However, DeploymentPlan does not redefine release identity: two distinct exact release artifacts remain distinct plan inputs even if their projected actions happen to be equivalent.
 
 `DeploymentPreview` is likewise deterministic for the same plan and observed runtime evidence, but deterministic IDs provide artifact consistency rather than cryptographic authenticity. Execution still validates exact binding and fresh runtime evidence at the side-effect boundary.
 
