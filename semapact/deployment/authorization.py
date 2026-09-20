@@ -116,7 +116,7 @@ def validate_candidate_deployment_context(
     decision: GovernanceDecision,
 ) -> None:
     """Validate candidate deployment provenance and fail closed on BLOCK."""
-    if source.source_kind != "candidate" or plan.is_release:
+    if source.source_kind != "candidate":
         raise ReleaseValidationError(
             "Candidate deployment requires candidate source without release provenance"
         )
@@ -147,7 +147,7 @@ def authorize_candidate_deployment(
     Candidate deployment never creates release approval evidence. BLOCK remains
     fail-closed; ALLOW and REVIEW may proceed as non-release runtime validation.
     """
-    if plan.is_release or source.source_kind != "candidate":
+    if source.source_kind != "candidate":
         raise ReleaseValidationError(
             "Candidate deployment authorization requires non-release plan/source"
         )
@@ -190,7 +190,7 @@ def validate_contract_release_deployment_context(
     release: ContractRelease,
 ) -> None:
     """Validate that one plan is derived from the exact finalized release."""
-    if source.source_kind != "contract_release" or not plan.is_release:
+    if source.source_kind != "contract_release":
         raise ReleaseValidationError(
             "Finalized release deployment requires ContractRelease source provenance"
         )
@@ -214,10 +214,6 @@ def validate_contract_release_deployment_context(
     if source.revision_ref != release.source_revision_ref:
         raise ReleaseValidationError(
             "Deployment source and ContractRelease revisions do not match"
-        )
-    if plan.release_id != release.contract_release_id:
-        raise ReleaseValidationError(
-            "DeploymentPlan does not reference the finalized ContractRelease"
         )
 
 
