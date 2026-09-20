@@ -479,6 +479,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     deployment_assess_parser.add_argument("--runtime-context", default="auto")
     deployment_assess_parser.add_argument(
+        "--release",
+        action="store_true",
+        help=(
+            "Create a formal contract release: resolve a new semantic version, "
+            "require release approval when governance is REVIEW, and record release history"
+        ),
+    )
+    deployment_assess_parser.add_argument(
         "--bundle-out",
         help="Write the immutable DeploymentBundle JSON artifact to this path",
     )
@@ -539,6 +547,13 @@ def _build_parser() -> argparse.ArgumentParser:
     deployment_deploy_parser.add_argument(
         "--warehouse-id",
         help="Databricks SQL warehouse required when fresh operations mutate runtime",
+    )
+    deployment_deploy_parser.add_argument(
+        "--operational-history",
+        help=(
+            "Optional operational history backend URI: sqlite:///path/to/history.db "
+            "or delta:///path/to/table. Omit to disable deployment telemetry persistence."
+        ),
     )
     deployment_deploy_parser.add_argument(
         "--output",
