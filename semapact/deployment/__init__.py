@@ -1,7 +1,10 @@
 """Provider-neutral deployment planning, orchestration and authorization boundary."""
 
 from semapact.deployment.adapters import DeploymentAdapter
-from semapact.deployment.authorization import authorize_deployment
+from semapact.deployment.authorization import (
+    authorize_candidate_deployment,
+    authorize_deployment,
+)
 from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
     DeploymentAction,
@@ -14,7 +17,16 @@ from semapact.deployment.models import (
     NativeOperationKind,
 )
 from semapact.deployment.orchestrator import DeploymentOrchestrator
-from semapact.deployment.planner import build_deployment_actions, build_deployment_plan
+from semapact.deployment.planner import (
+    build_deployment_actions,
+    build_deployment_plan,
+    build_deployment_plan_from_source,
+)
+from semapact.deployment.source import (
+    DeploymentSourceSnapshot,
+    build_candidate_deployment_source,
+    build_release_deployment_source,
+)
 from semapact.deployment.providers import (
     DeploymentExecutionConfig,
     NativeOperationExecutor,
@@ -41,8 +53,13 @@ __all__ = [
     "NativeOperationKind",
     "TransitionCompiler",
     "SchemaTransitionPlanner",
+    "authorize_candidate_deployment",
     "authorize_deployment",
     "build_deployment_actions",
     "build_deployment_plan",
+    "build_deployment_plan_from_source",
+    "build_candidate_deployment_source",
+    "build_release_deployment_source",
+    "DeploymentSourceSnapshot",
     "verify_deployment_convergence",
 ]
