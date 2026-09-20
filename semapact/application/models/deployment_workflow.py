@@ -25,7 +25,6 @@ class DeploymentExecutionResult(BaseModel):
 
     bundle_digest: str
     deployment_plan_id: str
-    authorization_id: str
     contract_release_id: str | None = None
     fresh_preview: DeploymentPreview
     reconciliation: ReconciliationResult
@@ -34,29 +33,38 @@ class DeploymentExecutionResult(BaseModel):
 
 
 class DeploymentBundle(BaseModel):
-    """Immutable target-specific CI-to-CD deployment package."""
+    """Immutable target-specific CI-to-CD deployment package.
+
+    Candidate versus formal-release mode is derived from deployment_source.
+    The bundle never stores a second mode flag.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     bundle_digest: str
-    release: bool
     deployment_source: DeploymentSourceSnapshot
     deployment_plan: DeploymentPlan
     review_preview: DeploymentPreview
     decision: GovernanceDecision | None = None
     change_set: ChangeSet | None = None
     contract_release: ContractRelease | None = None
-    bundle_version: Literal["3"] = "3"
+    bundle_version: Literal["4"] = "4"
+
+    @property
+    def is_release(self) -> bool:
+        return self.deployment_source.source_kind == "contract_release"
+
+    @property
+    def release(self) -> bool:
+        """Compatibility accessor; canonical mode lives in deployment_source."""
+        return self.is_release
 
     @model_validator(mode="after")
     def _validate_bundle_links(self) -> "DeploymentBundle":
         source = self.deployment_source
         plan = self.deployment_plan
 
-        if source.release is not self.release or plan.release is not self.release:
-            raise ValueError("DeploymentBundle release mode mismatch")
-
-        if self.release:
+        if self.is_release:
             if self.contract_release is None:
                 raise ValueError(
                     "Release DeploymentBundle requires finalized ContractRelease"
@@ -83,6 +91,10 @@ class DeploymentBundle(BaseModel):
                     "DeploymentBundle source/release revision mismatch"
                 )
         else:
+            if source.source_kind != "candidate":
+                raise ValueError(
+                    "Canonical DeploymentBundle supports candidate or finalized ContractRelease sources"
+                )
             if self.decision is None or self.change_set is None:
                 raise ValueError(
                     "Candidate DeploymentBundle requires decision and ChangeSet"
@@ -110,11 +122,16 @@ class DeploymentBundle(BaseModel):
             raise ValueError("DeploymentBundle plan/source revision mismatch")
         if plan.contract_version != source.contract_version:
             raise ValueError("DeploymentBundle plan/source version mismatch")
+        if plan.release_id != source.release_id:
+            raise ValueError("DeploymentBundle plan/source release provenance mismatch")
+        if plan.release_plan_id != source.release_plan_id:
+            raise ValueError(
+                "DeploymentBundle plan/source release-plan provenance mismatch"
+            )
         if self.review_preview.deployment_plan_id != plan.deployment_plan_id:
             raise ValueError("DeploymentBundle preview does not match DeploymentPlan")
 
         expected = compute_deployment_bundle_digest(
-            release=self.release,
             deployment_source=source,
             deployment_plan=plan,
             review_preview=self.review_preview,
@@ -130,7 +147,6 @@ class DeploymentBundle(BaseModel):
 
 def build_deployment_bundle(
     *,
-    release: bool,
     deployment_source: DeploymentSourceSnapshot,
     deployment_plan: DeploymentPlan,
     review_preview: DeploymentPreview,
@@ -140,7 +156,6 @@ def build_deployment_bundle(
 ) -> DeploymentBundle:
     """Package exact target-specific deployment material without release planning."""
     digest = compute_deployment_bundle_digest(
-        release=release,
         deployment_source=deployment_source,
         deployment_plan=deployment_plan,
         review_preview=review_preview,
@@ -150,7 +165,6 @@ def build_deployment_bundle(
     )
     return DeploymentBundle(
         bundle_digest=digest,
-        release=release,
         deployment_source=deployment_source,
         deployment_plan=deployment_plan,
         review_preview=review_preview,
@@ -162,19 +176,17 @@ def build_deployment_bundle(
 
 def compute_deployment_bundle_digest(
     *,
-    release: bool,
     deployment_source: DeploymentSourceSnapshot,
     deployment_plan: DeploymentPlan,
     review_preview: DeploymentPreview,
     decision: GovernanceDecision | None = None,
     change_set: ChangeSet | None = None,
     contract_release: ContractRelease | None = None,
-    bundle_version: str = "3",
+    bundle_version: str = "4",
 ) -> str:
     """Return the immutable digest for one target-specific deployment bundle."""
     payload = {
         "bundle_version": bundle_version,
-        "release": release,
         "deployment_source": deployment_source.model_dump(mode="json"),
         "deployment_plan": deployment_plan.model_dump(mode="json"),
         "review_preview": review_preview.model_dump(mode="json"),
