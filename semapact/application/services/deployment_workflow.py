@@ -164,7 +164,7 @@ class DeploymentWorkflowService:
                         contract_id=release_record.contract_id,
                         contract_version=release_record.contract_version,
                         contract_release_id=release_record.contract_release_id,
-                        revision_ref=release_record.revision_ref,
+                        source_revision_ref=release_record.source_revision_ref,
                     ),
                 )
         except Exception as exc:
