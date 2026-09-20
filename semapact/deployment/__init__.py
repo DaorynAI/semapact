@@ -9,6 +9,8 @@ from semapact.deployment.authorization import (
     authorize_candidate_deployment,
     authorize_contract_release_deployment,
     authorize_deployment,
+    validate_candidate_deployment_context,
+    validate_contract_release_deployment_context,
 )
 from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
@@ -64,6 +66,8 @@ __all__ = [
     "authorize_candidate_deployment",
     "authorize_contract_release_deployment",
     "authorize_deployment",
+    "validate_candidate_deployment_context",
+    "validate_contract_release_deployment_context",
     "build_deployment_actions",
     "build_deployment_plan",
     "build_deployment_plan_from_source",
