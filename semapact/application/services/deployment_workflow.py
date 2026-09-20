@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from typing import Literal
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
@@ -216,7 +217,7 @@ def _record_operational_event(
     bundle: DeploymentBundle,
     contract_release: ContractRelease | None,
     deployment_preview_id: str | None,
-    status: str,
+    status: Literal["SUCCEEDED", "FAILED"],
     reconciliation_status: RuntimeDriftStatus | None,
     started_at: datetime,
     error_message: str | None,
