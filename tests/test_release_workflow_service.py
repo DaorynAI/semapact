@@ -11,9 +11,6 @@ from open_data_contract_standard.model import (
 from pydantic import ValidationError as PydanticValidationError
 
 from semapact.application.models.release import ReleaseBundle
-from semapact.application.services.contract_release_history import (
-    ContractReleaseHistoryService,
-)
 from semapact.application.services.release_approval import ReleaseApprovalResolver
 from semapact.application.services.release_workflow import ReleaseWorkflowService
 from semapact.exceptions import ContractOpsAuthorizationError
@@ -103,7 +100,7 @@ def test_review_release_finalize_requires_exact_approval(tmp_path) -> None:
     with pytest.raises(ContractOpsAuthorizationError, match="requires approval"):
         workflow.finalize(
             bundle,
-            release_history=ContractReleaseHistoryService(repository),
+            release_history=repository,
         )
 
     approval = workflow.approve(
@@ -114,7 +111,7 @@ def test_review_release_finalize_requires_exact_approval(tmp_path) -> None:
     repository.put_approval_record(approval)
     record = workflow.finalize(
         bundle,
-        release_history=ContractReleaseHistoryService(repository),
+        release_history=repository,
         approval=approval,
     )
 
