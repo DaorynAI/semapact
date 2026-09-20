@@ -59,6 +59,10 @@ class FakeDeploymentAdapter(DeploymentAdapter):
         self.verify_calls += 1
         return self.verification_result
 
+    def apply(self, plan, preview) -> None:
+        self.execute_calls += 1
+        self.executed = (plan, preview, None)
+
     def execute(self, plan, preview, authorization) -> None:
         self.execute_calls += 1
         self.executed = (plan, preview, authorization)
@@ -195,6 +199,21 @@ def test_preview_delegates_to_unified_adapter_entrypoint() -> None:
     assert adapter.execute_calls == 0
 
 
+def test_apply_delegates_exact_plan_and_preview_without_internal_authorization() -> None:
+    plan = _plan()
+    preview = _preview(plan)
+    adapter = _adapter(plan)
+
+    DeploymentService().apply(
+        plan,
+        preview,
+        adapter=adapter,
+    )
+
+    assert adapter.execute_calls == 1
+    assert adapter.executed == (plan, preview, None)
+
+
 def test_execute_delegates_exact_canonical_artifacts() -> None:
     plan = _plan()
     preview = _preview(plan)
@@ -222,7 +241,7 @@ def test_verify_delegates_to_same_adapter_entrypoint() -> None:
     assert adapter.verify_calls == 1
 
 
-@pytest.mark.parametrize("operation", ["preview", "verify", "execute"])
+@pytest.mark.parametrize("operation", ["preview", "verify", "apply", "execute"])
 def test_service_rejects_adapter_platform_mismatch(operation: str) -> None:
     plan = _plan()
     adapter = _adapter(plan)
@@ -233,6 +252,8 @@ def test_service_rejects_adapter_platform_mismatch(operation: str) -> None:
             DeploymentService().preview(plan, adapter=adapter)
         elif operation == "verify":
             DeploymentService().verify(plan, adapter=adapter)
+        elif operation == "apply":
+            DeploymentService().apply(plan, _preview(plan), adapter=adapter)
         else:
             DeploymentService().execute(
                 plan,
