@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
@@ -66,3 +68,14 @@ def test_root_config_schema_exposes_operational_backend_discriminator() -> None:
     assert "sqlite" in rendered
     assert "delta" in rendered
     assert "discriminator" in rendered
+
+
+def test_published_config_json_schema_covers_operational_history() -> None:
+    schema = json.loads(
+        Path("schemas/semapact-config.schema.json").read_text(encoding="utf-8")
+    )
+
+    operational = schema["properties"]["history"]["properties"]["operational"]
+    assert len(operational["oneOf"]) == 3
+    assert "SQLiteOperationalHistoryConfig" in schema["$defs"]
+    assert "DeltaOperationalHistoryConfig" in schema["$defs"]
