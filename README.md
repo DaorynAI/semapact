@@ -417,7 +417,7 @@ history:
     table_uri: s3://governance/semapact/operational-history
 ```
 
-The config is fail-closed against the typed `SemaPactConfigSchema`. `--operational-history` remains available only as a per-invocation override. If neither config nor override is present, operational persistence stays disabled.
+The config is fail-closed against the typed `SemaPactConfigSchema`. `--operational-history` remains available only as a per-invocation override. If neither config nor override is present, operational persistence stays disabled. See [`docs/configuration.md`](docs/configuration.md) for precedence and schema details.
 
 ## Optional Dependencies
 
