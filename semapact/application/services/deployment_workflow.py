@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
@@ -13,8 +13,13 @@ from semapact.application.models.deployment_workflow import (
 )
 from semapact.application.services.deployment import DeploymentService
 from semapact.application.services.release_planning import ReleasePlanningService
-from semapact.approval import ApprovalRecord, project_review_authorization_evidence
+from semapact.approval import (
+    ApprovalRecord,
+    build_approval_record,
+    project_review_authorization_evidence,
+)
 from semapact.contractops import (
+    ReviewEvidenceAction,
     authorize_contract_operation,
     build_release_snapshot,
 )
@@ -79,6 +84,33 @@ class DeploymentWorkflowService:
             release_snapshot=snapshot,
             deployment_plan=plan,
             review_preview=preview,
+        )
+
+    def approve(
+        self,
+        bundle: DeploymentBundle,
+        *,
+        actor_reference: str,
+        recorded_at: datetime,
+        comment: str | None = None,
+    ) -> ApprovalRecord:
+        """Record an explicit human DEPLOY approval for one exact bundle."""
+        if bundle.decision.decision is not DecisionResult.REVIEW:
+            raise ValidationError(
+                "Explicit deployment approval is only required for REVIEW decisions"
+            )
+        return build_approval_record(
+            decision_id=bundle.decision.decision_id,
+            change_set_id=bundle.change_set.change_set_id,
+            release_plan_id=bundle.release_plan.release_plan_id,
+            version_resolution_id=bundle.version_resolution.version_resolution_id,
+            operation=GovernanceOperation.DEPLOY,
+            action=ReviewEvidenceAction.APPROVE,
+            actor_reference=actor_reference,
+            recorded_at=recorded_at,
+            scope_reference=bundle.deployment_plan.deployment_plan_id,
+            comment=comment,
+            evidence_references=(bundle.bundle_digest,),
         )
 
     def deploy(
