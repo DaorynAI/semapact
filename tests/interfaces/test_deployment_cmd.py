@@ -171,7 +171,7 @@ def test_plan_command_outputs_canonical_deployment_plan(tmp_path) -> None:
     payload = json.loads(result.output)
 
     assert result.outcome is ProcessOutcome.SUCCESS
-    assert payload["release_id"] == release.applied_release_id
+    assert payload["applied_release_id"] == release.applied_release_id
     assert payload["target"] == {
         "platform": "databricks",
         "runtime_target": "main.silver",
