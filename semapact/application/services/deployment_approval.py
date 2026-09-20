@@ -13,9 +13,10 @@ class DeploymentApprovalResolver:
     """Select exact APPROVE evidence for one immutable DeploymentBundle.
 
     History persistence remains storage-only. This resolver owns the deployment-specific
-    selection rule: an approval must match the exact ContractOps context, DEPLOY scope,
-    deployment plan, and bundle digest. Multiple exact approvals are equivalent for
-    authorization; selection is deterministic by canonical approval identity.
+    selection rule: evidence must match the exact ContractOps context, DEPLOY scope,
+    deployment plan, and bundle digest. Conflicting exact review actions fail closed.
+    Multiple exact APPROVE records are equivalent for authorization; selection is
+    deterministic by canonical approval identity.
     """
 
     def __init__(self, approvals: ApprovalHistoryRepository) -> None:
@@ -29,14 +30,18 @@ class DeploymentApprovalResolver:
             version_resolution_id=bundle.version_resolution.version_resolution_id,
             operation=GovernanceOperation.DEPLOY,
         )
-        matches = tuple(
+        scoped = tuple(
             record
             for record in records
-            if record.action is ReviewEvidenceAction.APPROVE
-            and record.scope_reference
+            if record.scope_reference
             == bundle.deployment_plan.deployment_plan_id
             and bundle.bundle_digest in record.evidence_references
         )
-        if not matches:
+        if not scoped:
             return None
-        return min(matches, key=lambda record: record.approval_id)
+        if any(
+            record.action is not ReviewEvidenceAction.APPROVE
+            for record in scoped
+        ):
+            return None
+        return min(scoped, key=lambda record: record.approval_id)
