@@ -111,9 +111,7 @@ def compute_contract_release_record_id(
     version_resolution_id: str,
     release_snapshot_id: str,
     revision_ref: str,
-    bundle_digest: str,
     released_contract_json: str,
-    approval_id: str | None,
 ) -> str:
     return deterministic_uuid5(
         SEMAPACT_CONTRACT_RELEASE_RECORD_NAMESPACE,
@@ -126,9 +124,7 @@ def compute_contract_release_record_id(
             "version_resolution_id": version_resolution_id,
             "release_snapshot_id": release_snapshot_id,
             "revision_ref": revision_ref,
-            "bundle_digest": bundle_digest,
             "released_contract_json": released_contract_json,
-            "approval_id": approval_id,
         },
     )
 
@@ -145,9 +141,7 @@ def validate_contract_release_record_identity(
         version_resolution_id=record.version_resolution_id,
         release_snapshot_id=record.release_snapshot_id,
         revision_ref=record.revision_ref,
-        bundle_digest=record.bundle_digest,
         released_contract_json=record.released_contract_json,
-        approval_id=record.approval_id,
     )
     if record.contract_release_id != expected:
         raise ValueError(
