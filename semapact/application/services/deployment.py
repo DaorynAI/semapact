@@ -12,8 +12,8 @@ from semapact.deployment import (
     DeploymentTarget,
     build_deployment_plan,
     build_deployment_plan_from_source,
-    validate_deployment_authorization_identity,
 )
+from semapact.deployment.models import validate_deployment_authorization_identity
 from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
 from semapact.reconciliation import ReconciliationResult
 
