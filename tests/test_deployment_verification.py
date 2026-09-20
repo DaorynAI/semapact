@@ -194,7 +194,7 @@ def test_runtime_source_mismatch_fails_closed() -> None:
 
 
 def test_tampered_deployment_plan_identity_fails_closed() -> None:
-    plan = _plan().model_copy(update={"selected_version": "9.9.9"})
+    plan = _plan().model_copy(update={"contract_version": "9.9.9"})
 
     with pytest.raises(ValueError, match="deterministic identity"):
         verify_deployment_convergence(plan, FakeRuntimeProvider(_observation()))
