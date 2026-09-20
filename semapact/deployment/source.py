@@ -69,10 +69,20 @@ class DeploymentSourceSnapshot(BaseModel):
                 raise ValueError(
                     "Candidate deployment source cannot contain release provenance"
                 )
-        elif self.release_id is None or self.release_plan_id is None:
-            raise ValueError(
-                "Released deployment source requires release provenance"
-            )
+        elif self.source_kind == "release_snapshot":
+            if self.release_id is None or self.release_plan_id is None:
+                raise ValueError(
+                    "Legacy ReleaseSnapshot source requires release provenance"
+                )
+        else:
+            if self.release_id is None:
+                raise ValueError(
+                    "ContractRelease source requires contract_release_id provenance"
+                )
+            if self.release_plan_id is not None:
+                raise ValueError(
+                    "Canonical ContractRelease source must not duplicate release_plan_id"
+                )
 
         expected = compute_deployment_source_id(
             source_kind=self.source_kind,
@@ -185,7 +195,7 @@ def build_contract_release_deployment_source(
         contract_version=release.contract_version,
         contract_json=contract_json,
         release_id=release.contract_release_id,
-        release_plan_id=release.release_plan_id,
+        release_plan_id=None,
     )
     return DeploymentSourceSnapshot(
         source_snapshot_id=source_id,
@@ -195,7 +205,7 @@ def build_contract_release_deployment_source(
         contract_version=release.contract_version,
         contract_json=contract_json,
         release_id=release.contract_release_id,
-        release_plan_id=release.release_plan_id,
+        release_plan_id=None,
     )
 
 
