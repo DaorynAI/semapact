@@ -36,6 +36,7 @@ def test_deployment_parser_exposes_only_bundle_workflow() -> None:
             "production",
             "--bundle-out",
             "bundle.json",
+            "--release",
             "--output",
             "json",
         ]
@@ -66,6 +67,8 @@ def test_deployment_parser_exposes_only_bundle_workflow() -> None:
             "approval.json",
             "--warehouse-id",
             "warehouse-1",
+            "--operational-history",
+            "sqlite:///history.db",
             "--output",
             "json",
         ]
@@ -74,6 +77,7 @@ def test_deployment_parser_exposes_only_bundle_workflow() -> None:
     assert assess.deployment_command == "assess"
     assert assess.server == "production"
     assert assess.bundle_out == "bundle.json"
+    assert assess.release is True
     assert assess.output == "json"
 
     assert approve.deployment_command == "approve"
@@ -86,6 +90,7 @@ def test_deployment_parser_exposes_only_bundle_workflow() -> None:
     assert deploy.approval == "approval.json"
     assert deploy.repository_root == "."
     assert deploy.warehouse_id == "warehouse-1"
+    assert deploy.operational_history == "sqlite:///history.db"
     assert deploy.output == "json"
 
 
