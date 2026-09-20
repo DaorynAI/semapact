@@ -165,36 +165,20 @@ class DeploymentWorkflowService:
                     ),
                 )
         except Exception as exc:
-            if operational_history is not None:
-                operational_history.record_deployment(
-                    build_operational_deployment_event(
-                        bundle_digest=bundle.bundle_digest,
-                        release=bundle.is_release,
-                        contract_release_id=(
-                            release_record.contract_release_id
-                            if release_record is not None
-                            else None
-                        ),
-                        contract_id=bundle.deployment_plan.contract_id,
-                        contract_version=bundle.deployment_plan.contract_version,
-                        revision_ref=bundle.deployment_plan.revision_ref,
-                        deployment_plan_id=bundle.deployment_plan.deployment_plan_id,
-                        deployment_preview_id=(
-                            fresh_preview.deployment_preview_id
-                            if fresh_preview is not None
-                            else None
-                        ),
-                        deployment_authorization_id=None,
-                        platform=bundle.deployment_plan.target.platform,
-                        runtime_target=bundle.deployment_plan.target.runtime_target,
-                        source_reference=bundle.deployment_plan.target.source_reference,
-                        status="FAILED",
-                        reconciliation_status=status,
-                        started_at=started_at,
-                        completed_at=datetime.now(timezone.utc),
-                        error_message=str(exc) or type(exc).__name__,
-                    )
-                )
+            _record_operational_event(
+                operational_history,
+                bundle=bundle,
+                contract_release=release_record,
+                deployment_preview_id=(
+                    fresh_preview.deployment_preview_id
+                    if fresh_preview is not None
+                    else None
+                ),
+                status="FAILED",
+                reconciliation_status=status,
+                started_at=started_at,
+                error_message=str(exc) or type(exc).__name__,
+            )
             raise
 
         assert fresh_preview is not None
@@ -213,26 +197,54 @@ class DeploymentWorkflowService:
             status=status,
             review_preview_changed=fresh_preview != bundle.review_preview,
         )
-        if operational_history is not None:
-            operational_history.record_deployment(
-                build_operational_deployment_event(
-                    bundle_digest=bundle.bundle_digest,
-                    release=bundle.is_release,
-                    contract_release_id=result.contract_release_id,
-                    contract_id=bundle.deployment_plan.contract_id,
-                    contract_version=bundle.deployment_plan.contract_version,
-                    revision_ref=bundle.deployment_plan.revision_ref,
-                    deployment_plan_id=bundle.deployment_plan.deployment_plan_id,
-                    deployment_preview_id=fresh_preview.deployment_preview_id,
-                    deployment_authorization_id=None,
-                    platform=bundle.deployment_plan.target.platform,
-                    runtime_target=bundle.deployment_plan.target.runtime_target,
-                    source_reference=bundle.deployment_plan.target.source_reference,
-                    status="SUCCEEDED",
-                    reconciliation_status=status,
-                    started_at=started_at,
-                    completed_at=datetime.now(timezone.utc),
-                    error_message=None,
-                )
-            )
+        _record_operational_event(
+            operational_history,
+            bundle=bundle,
+            contract_release=release_record,
+            deployment_preview_id=fresh_preview.deployment_preview_id,
+            status="SUCCEEDED",
+            reconciliation_status=status,
+            started_at=started_at,
+            error_message=None,
+        )
         return result
+
+
+def _record_operational_event(
+    sink: OperationalHistorySink | None,
+    *,
+    bundle: DeploymentBundle,
+    contract_release: ContractRelease | None,
+    deployment_preview_id: str | None,
+    status: str,
+    reconciliation_status: RuntimeDriftStatus | None,
+    started_at: datetime,
+    error_message: str | None,
+) -> None:
+    """Persist optional deployment telemetry without influencing execution semantics."""
+    if sink is None:
+        return
+    plan = bundle.deployment_plan
+    sink.record_deployment(
+        build_operational_deployment_event(
+            bundle_digest=bundle.bundle_digest,
+            contract_release_id=(
+                contract_release.contract_release_id
+                if contract_release is not None
+                else None
+            ),
+            contract_id=plan.contract_id,
+            contract_version=plan.contract_version,
+            revision_ref=plan.revision_ref,
+            deployment_plan_id=plan.deployment_plan_id,
+            deployment_preview_id=deployment_preview_id,
+            platform=plan.target.platform,
+            runtime_target=plan.target.runtime_target,
+            source_reference=plan.target.source_reference,
+            status=status,
+            reconciliation_status=reconciliation_status,
+            started_at=started_at,
+            completed_at=datetime.now(timezone.utc),
+            error_message=error_message,
+        )
+    )
