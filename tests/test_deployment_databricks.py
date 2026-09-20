@@ -75,7 +75,7 @@ def _plan(*properties: SchemaProperty, source_reference: str = SOURCE_REFERENCE)
         applied_release_id="applied:test",
         contract_id="orders-product",
         release_plan_id="release-plan:test",
-        released_revision_ref="rev:released",
+        released_source_revision_ref="rev:released",
         selected_version="1.2.0",
         target=target,
         actions=(action,),
@@ -85,7 +85,7 @@ def _plan(*properties: SchemaProperty, source_reference: str = SOURCE_REFERENCE)
         applied_release_id="applied:test",
         contract_id="orders-product",
         release_plan_id="release-plan:test",
-        released_revision_ref="rev:released",
+        released_source_revision_ref="rev:released",
         selected_version="1.2.0",
         target=target,
         actions=(action,),
@@ -365,7 +365,7 @@ def test_release_metadata_projects_version_and_provenance_as_uc_tags() -> None:
             contract_id="orders-product",
             contract_version="1.2.0",
             contract_release_id="release-record-1",
-            revision_ref="rev:released",
+            source_revision_ref="rev:released",
         ),
     )
 
@@ -374,7 +374,7 @@ def test_release_metadata_projects_version_and_provenance_as_uc_tags() -> None:
         "('semapact_contract_id' = 'orders-product', "
         "'semapact_contract_version' = '1.2.0', "
         "'semapact_release_id' = 'release-record-1', "
-        "'semapact_revision' = 'rev:released')"
+        "'semapact_source_revision' = 'rev:released')"
     ]
 
 
@@ -390,7 +390,7 @@ def test_release_metadata_projection_requires_warehouse() -> None:
                 contract_id="orders-product",
                 contract_version="1.2.0",
                 contract_release_id="release-record-1",
-                revision_ref="rev:released",
+                source_revision_ref="rev:released",
             ),
         )
 
