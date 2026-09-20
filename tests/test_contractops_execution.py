@@ -18,6 +18,7 @@ from semapact.contractops import (
     authorize_contract_operation,
     build_change_set_from_decision,
     build_release_plan,
+    build_release_snapshot,
     publish_contract_release,
     resolve_release_version,
 )
@@ -143,6 +144,36 @@ class RecordingPublisher:
     def publish(self, release) -> str:
         self.calls.append(release)
         return f"published:{release.applied_release_id}"
+
+
+def test_release_snapshot_is_pure_and_requires_no_apply_authorization() -> None:
+    candidate, decision, change_set, release_plan, version_resolution = _release_context(
+        "review"
+    )
+
+    first = build_release_snapshot(
+        candidate,
+        candidate_revision_ref="rev:candidate",
+        decision=decision,
+        change_set=change_set,
+        release_plan=release_plan,
+        version_resolution=version_resolution,
+    )
+    second = build_release_snapshot(
+        candidate,
+        candidate_revision_ref="rev:candidate",
+        decision=decision,
+        change_set=change_set,
+        release_plan=release_plan,
+        version_resolution=version_resolution,
+    )
+
+    assert first == second
+    assert first.release_snapshot_id == second.release_snapshot_id
+    assert first.selected_version == "1.1.0"
+    assert first.to_contract().version == "1.1.0"
+    assert candidate.version == "1.0.0"
+    assert not hasattr(first, "authorization_id")
 
 
 def test_apply_metadata_only_release_uses_selected_patch_without_mutating_candidate() -> None:
