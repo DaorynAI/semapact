@@ -3,45 +3,37 @@
 from __future__ import annotations
 
 from semapact.approval import ApprovalRecord
-from semapact.application.models.deployment_workflow import DeploymentBundle
+from semapact.application.models.release import ReleaseBundle
 from semapact.governance import DecisionResult, GovernanceOperation
 from semapact.history import ContractReleaseHistoryRepository, ContractReleaseRecord
 from semapact.history.integrity import compute_contract_release_record_id
 
 
 class ContractReleaseHistoryService:
-    """Persist one formal release fact without coupling release to runtime telemetry."""
+    """Persist one target-neutral formal release fact."""
 
     def __init__(self, releases: ContractReleaseHistoryRepository) -> None:
         self._releases = releases
 
     def record_release(
         self,
-        bundle: DeploymentBundle,
+        bundle: ReleaseBundle,
         *,
         approval: ApprovalRecord | None,
     ) -> ContractReleaseRecord:
-        if not bundle.release:
-            raise ValueError("Non-release bundle cannot create contract release history")
-        if (
-            bundle.release_plan is None
-            or bundle.version_resolution is None
-            or bundle.release_snapshot is None
-        ):
-            raise ValueError("Release bundle is missing release planning artifacts")
-
+        """Persist one finalized release, idempotently, after exact review validation."""
         if bundle.decision.decision is DecisionResult.REVIEW:
             if approval is None:
                 raise ValueError("REVIEW release history requires exact approval")
-            if approval.operation is not GovernanceOperation.DEPLOY:
-                raise ValueError("Release approval must be DEPLOY-scoped")
-            if approval.scope_reference != bundle.deployment_plan.deployment_plan_id:
+            if approval.operation is not GovernanceOperation.PUBLISH:
+                raise ValueError("Release approval must be PUBLISH-scoped")
+            if approval.scope_reference != bundle.release_snapshot.release_snapshot_id:
                 raise ValueError(
-                    "Release approval is not scoped to exact DeploymentPlan"
+                    "Release approval is not scoped to exact ReleaseSnapshot"
                 )
             if bundle.bundle_digest not in approval.evidence_references:
                 raise ValueError(
-                    "Release approval does not reference exact bundle digest"
+                    "Release approval does not reference exact ReleaseBundle digest"
                 )
         elif approval is not None:
             raise ValueError("ALLOW release does not require ApprovalRecord")
