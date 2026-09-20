@@ -48,7 +48,6 @@ class ContractReleaseHistoryService:
 
         snapshot = bundle.release_snapshot
         resolution = bundle.version_resolution
-        approval_id = approval.approval_id if approval is not None else None
         record_id = compute_contract_release_record_id(
             contract_id=snapshot.contract_id,
             contract_version=snapshot.selected_version,
@@ -58,9 +57,7 @@ class ContractReleaseHistoryService:
             version_resolution_id=resolution.version_resolution_id,
             release_snapshot_id=snapshot.release_snapshot_id,
             revision_ref=snapshot.release_revision_ref,
-            bundle_digest=bundle.bundle_digest,
             released_contract_json=snapshot.released_contract_json,
-            approval_id=approval_id,
         )
         record = ContractReleaseRecord(
             contract_release_id=record_id,
@@ -72,9 +69,7 @@ class ContractReleaseHistoryService:
             version_resolution_id=resolution.version_resolution_id,
             release_snapshot_id=snapshot.release_snapshot_id,
             revision_ref=snapshot.release_revision_ref,
-            bundle_digest=bundle.bundle_digest,
             released_contract_json=snapshot.released_contract_json,
-            approval_id=approval_id,
         )
         self._releases.put_contract_release(record)
         return record
