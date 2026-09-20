@@ -15,6 +15,8 @@ from semapact.deployment.models import (
     compute_deployment_authorization_id,
     validate_deployment_plan_identity,
 )
+from semapact.deployment.source import DeploymentSourceSnapshot
+from semapact.governance import DecisionResult, GovernanceDecision
 from semapact.exceptions import ReleaseValidationError
 from semapact.governance.gate import GovernanceOperation
 
@@ -64,18 +66,71 @@ def authorize_deployment(
             "Review-based DEPLOY authorization is not scoped to this DeploymentPlan"
         )
 
+    source_snapshot_id = plan.source_snapshot_id
     deployment_authorization_id = compute_deployment_authorization_id(
-        contract_ops_authorization_id=authorization.authorization_id,
         deployment_plan_id=plan.deployment_plan_id,
-        applied_release_id=release_id,
+        source_snapshot_id=source_snapshot_id,
+        authorization_kind="contractops",
+        authorization_reference=authorization.authorization_id,
         allowed=authorization.allowed,
+        authorization_version="2",
     )
     return DeploymentAuthorization(
         deployment_authorization_id=deployment_authorization_id,
-        contract_ops_authorization_id=authorization.authorization_id,
         deployment_plan_id=plan.deployment_plan_id,
-        applied_release_id=release_id,
+        source_snapshot_id=source_snapshot_id,
         allowed=authorization.allowed,
+        authorization_kind="contractops",
+        authorization_reference=authorization.authorization_id,
+        authorization_version="2",
+    )
+
+
+
+def authorize_candidate_deployment(
+    plan: DeploymentPlan,
+    source: DeploymentSourceSnapshot,
+    decision: GovernanceDecision,
+) -> DeploymentAuthorization:
+    """Authorize a non-release deployment directly from governance outcome.
+
+    Candidate deployment never creates release approval evidence. BLOCK remains
+    fail-closed; ALLOW and REVIEW may proceed as non-release runtime validation.
+    """
+    if plan.release or source.release:
+        raise ReleaseValidationError(
+            "Candidate deployment authorization requires non-release plan/source"
+        )
+    validate_deployment_plan_identity(plan)
+    if plan.source_snapshot_id != source.source_snapshot_id:
+        raise ReleaseValidationError(
+            "DeploymentPlan does not reference the supplied candidate source"
+        )
+    if plan.contract_id != source.contract_id:
+        raise ReleaseValidationError(
+            "DeploymentPlan and candidate source contract IDs do not match"
+        )
+    if decision.contract_id != source.contract_id:
+        raise ReleaseValidationError(
+            "GovernanceDecision does not match candidate deployment contract"
+        )
+    allowed = decision.decision is not DecisionResult.BLOCK
+    authorization_id = compute_deployment_authorization_id(
+        deployment_plan_id=plan.deployment_plan_id,
+        source_snapshot_id=source.source_snapshot_id,
+        authorization_kind="governance",
+        authorization_reference=decision.decision_id,
+        allowed=allowed,
+        authorization_version="2",
+    )
+    return DeploymentAuthorization(
+        deployment_authorization_id=authorization_id,
+        deployment_plan_id=plan.deployment_plan_id,
+        source_snapshot_id=source.source_snapshot_id,
+        allowed=allowed,
+        authorization_kind="governance",
+        authorization_reference=decision.decision_id,
+        authorization_version="2",
     )
 
 
