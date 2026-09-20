@@ -13,18 +13,17 @@ from semapact.application.models.deployment_workflow import (
 )
 from semapact.application.services.deployment import DeploymentService
 from semapact.application.services.governance import GovernanceService
+from semapact.contractops import ContractRelease
 from semapact.deployment import (
     DeploymentAdapter,
     DeploymentTarget,
     RuntimeReleaseMetadata,
     RuntimeReleaseMetadataProjector,
-    authorize_candidate_deployment,
-    authorize_contract_release_deployment,
     build_candidate_deployment_source,
     build_contract_release_deployment_source,
+    validate_candidate_deployment_context,
+    validate_contract_release_deployment_context,
 )
-from semapact.exceptions import ContractOpsAuthorizationError
-from semapact.contractops import ContractRelease
 from semapact.history import (
     OperationalHistorySink,
     build_operational_deployment_event,
@@ -33,7 +32,7 @@ from semapact.reconciliation import RuntimeDriftStatus, classify_reconciliation_
 
 
 class DeploymentWorkflowService:
-    """Assess candidate/finalized-release desired state and converge one runtime target."""
+    """Assess desired state and converge one target after the external CD gate runs."""
 
     def __init__(
         self,
@@ -55,7 +54,7 @@ class DeploymentWorkflowService:
         target: DeploymentTarget,
         adapter: DeploymentAdapter,
     ) -> DeploymentBundle:
-        """Build an immutable non-release candidate deployment bundle."""
+        """Build an immutable candidate deployment bundle."""
         proposal = self._governance.evaluate_proposal(
             base_contract,
             candidate_contract,
@@ -70,7 +69,6 @@ class DeploymentWorkflowService:
         plan = self._deployment.plan(source, target)
         preview = self._deployment.preview(plan, adapter=adapter)
         return build_deployment_bundle(
-            release=False,
             decision=proposal.decision,
             change_set=proposal.change_set,
             deployment_source=source,
@@ -90,7 +88,6 @@ class DeploymentWorkflowService:
         plan = self._deployment.plan(source, target)
         preview = self._deployment.preview(plan, adapter=adapter)
         return build_deployment_bundle(
-            release=True,
             contract_release=release,
             deployment_source=source,
             deployment_plan=plan,
@@ -103,17 +100,23 @@ class DeploymentWorkflowService:
         *,
         adapter: DeploymentAdapter,
         operational_history: OperationalHistorySink | None = None,
-        metadata_projector: RuntimeReleaseMetadataProjector | None = None,
     ) -> DeploymentExecutionResult:
-        """Consume one exact target bundle, deploy from fresh runtime evidence, and verify."""
+        """Apply one exact bundle after the caller's execution boundary allows CD.
+
+        SemaPact validates governance/release provenance, runtime freshness and
+        deterministic operations. It does not turn ContractRelease into DEPLOY
+        authorization; protected CI/CD environments control whether this operation
+        may be invoked.
+        """
         if not isinstance(bundle, DeploymentBundle):
             raise TypeError(
                 f"bundle must be DeploymentBundle, got {type(bundle).__name__}"
             )
 
-        if bundle.release:
+        release_record = None
+        if bundle.is_release:
             assert bundle.contract_release is not None
-            deployment_authorization = authorize_contract_release_deployment(
+            validate_contract_release_deployment_context(
                 bundle.deployment_plan,
                 bundle.deployment_source,
                 bundle.contract_release,
@@ -121,16 +124,11 @@ class DeploymentWorkflowService:
             release_record = bundle.contract_release
         else:
             assert bundle.decision is not None
-            deployment_authorization = authorize_candidate_deployment(
+            validate_candidate_deployment_context(
                 bundle.deployment_plan,
                 bundle.deployment_source,
                 bundle.decision,
             )
-            if not deployment_authorization.allowed:
-                raise ContractOpsAuthorizationError(
-                    "Candidate deployment is blocked by governance"
-                )
-            release_record = None
 
         started_at = datetime.now(timezone.utc)
         fresh_preview = None
@@ -141,10 +139,9 @@ class DeploymentWorkflowService:
                 bundle.deployment_plan,
                 adapter=adapter,
             )
-            self._deployment.execute(
+            self._deployment.apply(
                 bundle.deployment_plan,
                 fresh_preview,
-                deployment_authorization,
                 adapter=adapter,
             )
             reconciliation = self._deployment.verify(
@@ -156,9 +153,9 @@ class DeploymentWorkflowService:
             if (
                 release_record is not None
                 and status is RuntimeDriftStatus.IN_SYNC
-                and metadata_projector is not None
+                and isinstance(adapter, RuntimeReleaseMetadataProjector)
             ):
-                metadata_projector.project_release_metadata(
+                adapter.project_release_metadata(
                     bundle.deployment_plan,
                     RuntimeReleaseMetadata(
                         contract_id=release_record.contract_id,
@@ -172,7 +169,7 @@ class DeploymentWorkflowService:
                 operational_history.record_deployment(
                     build_operational_deployment_event(
                         bundle_digest=bundle.bundle_digest,
-                        release=bundle.release,
+                        release=bundle.is_release,
                         contract_release_id=(
                             release_record.contract_release_id
                             if release_record is not None
@@ -187,9 +184,7 @@ class DeploymentWorkflowService:
                             if fresh_preview is not None
                             else None
                         ),
-                        deployment_authorization_id=(
-                            deployment_authorization.deployment_authorization_id
-                        ),
+                        deployment_authorization_id=None,
                         platform=bundle.deployment_plan.target.platform,
                         runtime_target=bundle.deployment_plan.target.runtime_target,
                         source_reference=bundle.deployment_plan.target.source_reference,
@@ -208,7 +203,6 @@ class DeploymentWorkflowService:
         result = DeploymentExecutionResult(
             bundle_digest=bundle.bundle_digest,
             deployment_plan_id=bundle.deployment_plan.deployment_plan_id,
-            authorization_id=deployment_authorization.deployment_authorization_id,
             contract_release_id=(
                 release_record.contract_release_id
                 if release_record is not None
@@ -223,16 +217,14 @@ class DeploymentWorkflowService:
             operational_history.record_deployment(
                 build_operational_deployment_event(
                     bundle_digest=bundle.bundle_digest,
-                    release=bundle.release,
+                    release=bundle.is_release,
                     contract_release_id=result.contract_release_id,
                     contract_id=bundle.deployment_plan.contract_id,
                     contract_version=bundle.deployment_plan.contract_version,
                     revision_ref=bundle.deployment_plan.revision_ref,
                     deployment_plan_id=bundle.deployment_plan.deployment_plan_id,
                     deployment_preview_id=fresh_preview.deployment_preview_id,
-                    deployment_authorization_id=(
-                        deployment_authorization.deployment_authorization_id
-                    ),
+                    deployment_authorization_id=None,
                     platform=bundle.deployment_plan.target.platform,
                     runtime_target=bundle.deployment_plan.target.runtime_target,
                     source_reference=bundle.deployment_plan.target.source_reference,
