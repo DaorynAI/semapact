@@ -2,6 +2,7 @@
 
 from semapact.application.models.deployment_workflow import (
     DeploymentBundle,
+    DeploymentExecutionResult,
     build_deployment_bundle,
     compute_deployment_bundle_digest,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "ContractEvolution",
     "DeploymentEvolution",
     "DeploymentBundle",
+    "DeploymentExecutionResult",
     "build_deployment_bundle",
     "compute_deployment_bundle_digest",
     "GovernanceAnalysis",
