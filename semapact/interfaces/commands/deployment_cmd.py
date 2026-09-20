@@ -1,4 +1,4 @@
-"""CLI adapter for the bundle-driven deployment workflow."""
+"""CLI adapter for target-specific deployment workflows."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from typing import TypeVar
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
-from semapact.approval import ApprovalRecord
 from semapact.application.models.deployment_workflow import DeploymentBundle
 from semapact.deployment import DeploymentTarget
 from semapact.exceptions import ValidationError
@@ -21,7 +20,6 @@ from semapact.interfaces.outcomes import (
     outcome_from_gate_result,
     outcome_from_reconciliation_status,
 )
-from semapact.interfaces.parsing import parse_iso_timestamp
 
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
@@ -29,101 +27,107 @@ _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 @dataclass(frozen=True)
 class DeploymentCommandResult:
-    """Rendered CLI output plus its existing semantic process outcome."""
+    """Rendered CLI output plus its semantic process outcome."""
 
     output: str
     outcome: ProcessOutcome
 
 
 def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
-    """Build one immutable CI/manual deployment bundle without runtime mutation."""
+    """Build one target-specific candidate or finalized-release deployment bundle."""
+    from open_data_contract_standard.model import OpenDataContractStandard
+
     from semapact.application.services.deployment_workflow import (
         DeploymentWorkflowService,
     )
     from semapact.core.loader import ContractLoader
     from semapact.governance import GovernanceOperation, evaluate_governance_gate
+    from semapact.platforms.git import GitWorkingTreeHistoryRepository
     from semapact.platforms.runtime_registry import (
         create_deployment_adapter,
         resolve_runtime_location,
     )
 
+    service = DeploymentWorkflowService()
     loader = ContractLoader(runtime_context=args.runtime_context)
-    base_contract = loader.load(args.base)
-    candidate_contract = loader.load(args.candidate)
-    location = resolve_runtime_location(
-        candidate_contract,
-        server_name=args.server,
-        fallback_platform=args.platform,
-        fallback_runtime_target=args.runtime,
-    )
-    source_reference = _assessment_source_reference(
-        location.contract_server,
-        args.source_reference,
-    )
-    target = DeploymentTarget(
-        platform=location.platform,
-        runtime_target=location.runtime_target,
-        source_reference=source_reference,
-        server_name=location.server_name,
-    )
-    adapter = create_deployment_adapter(
-        location.platform,
-        contract_server=location.contract_server,
-    )
-    bundle = DeploymentWorkflowService().assess(
-        base_contract,
-        candidate_contract,
-        effective_date=args.effective_date,
-        base_revision_ref=args.base_revision_ref,
-        candidate_revision_ref=args.candidate_revision_ref,
-        authority_reference=args.authority_reference,
-        target=target,
-        adapter=adapter,
-        release=args.release,
-    )
+
+    if args.release_id:
+        _reject_candidate_args_for_release(args)
+        release = GitWorkingTreeHistoryRepository(
+            args.repository_root
+        ).get_contract_release(args.release_id)
+        source_contract = OpenDataContractStandard.model_validate_json(
+            release.released_contract_json
+        )
+        location = resolve_runtime_location(
+            source_contract,
+            server_name=args.server,
+            fallback_platform=args.platform,
+            fallback_runtime_target=args.runtime,
+        )
+        target = _deployment_target(
+            location,
+            source_reference=_assessment_source_reference(
+                location.contract_server,
+                args.source_reference,
+            ),
+        )
+        adapter = create_deployment_adapter(
+            location.platform,
+            contract_server=location.contract_server,
+        )
+        bundle = service.assess_release(
+            release,
+            target=target,
+            adapter=adapter,
+        )
+        outcome = ProcessOutcome.SUCCESS
+    else:
+        _require_candidate_args(args)
+        base_contract = loader.load(args.base)
+        candidate_contract = loader.load(args.candidate)
+        location = resolve_runtime_location(
+            candidate_contract,
+            server_name=args.server,
+            fallback_platform=args.platform,
+            fallback_runtime_target=args.runtime,
+        )
+        target = _deployment_target(
+            location,
+            source_reference=_assessment_source_reference(
+                location.contract_server,
+                args.source_reference,
+            ),
+        )
+        adapter = create_deployment_adapter(
+            location.platform,
+            contract_server=location.contract_server,
+        )
+        bundle = service.assess(
+            base_contract,
+            candidate_contract,
+            effective_date=args.effective_date,
+            base_revision_ref=args.base_revision_ref,
+            candidate_revision_ref=args.candidate_revision_ref,
+            target=target,
+            adapter=adapter,
+        )
+        assert bundle.decision is not None
+        gate = evaluate_governance_gate(
+            bundle.decision,
+            GovernanceOperation.PROPOSE,
+        )
+        outcome = outcome_from_gate_result(gate)
+
     if args.bundle_out:
         _write_model_artifact(args.bundle_out, bundle)
 
-    gate = evaluate_governance_gate(
-        bundle.decision,
-        GovernanceOperation.PROPOSE,
-    )
     rendered = (
         _model_json(bundle)
         if args.output == "json"
         else _bundle_text(bundle, artifact_path=args.bundle_out)
     )
-    return DeploymentCommandResult(
-        output=rendered,
-        outcome=outcome_from_gate_result(gate),
-    )
-
-
-def run_deployment_approve(args: argparse.Namespace) -> DeploymentCommandResult:
-    """Create one exact DEPLOY ApprovalRecord from a REVIEW DeploymentBundle."""
-    from semapact.application.services.deployment_workflow import (
-        DeploymentWorkflowService,
-    )
-
-    bundle = _load_model(args.bundle, DeploymentBundle)
-    approval = DeploymentWorkflowService().approve(
-        bundle,
-        actor_reference=args.actor_reference,
-        recorded_at=parse_iso_timestamp(args.recorded_at),
-        comment=args.comment,
-    )
-    if args.approval_out:
-        _write_model_artifact(args.approval_out, approval)
-
-    rendered = (
-        _model_json(approval)
-        if args.output == "json"
-        else _approval_text(approval, artifact_path=args.approval_out)
-    )
-    return DeploymentCommandResult(
-        output=rendered,
-        outcome=ProcessOutcome.SUCCESS,
-    )
+    return DeploymentCommandResult(output=rendered, outcome=outcome)
 
 
 def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
@@ -134,11 +138,6 @@ def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
     from semapact.platforms.runtime_registry import create_deployment_adapter
 
     bundle = _load_model(args.bundle, DeploymentBundle)
-    approval = _resolve_deployment_approval(
-        bundle,
-        approval_path=args.approval,
-        repository_root=args.repository_root,
-    )
 
     execution_config = None
     if bundle.deployment_plan.target.platform == "databricks":
@@ -159,20 +158,9 @@ def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
         execution_config=execution_config,
     )
 
-    from semapact.application.services.contract_release_history import (
-        ContractReleaseHistoryService,
-    )
     from semapact.deployment import RuntimeReleaseMetadataProjector
     from semapact.history import create_operational_history_sink
-    from semapact.platforms.git import GitWorkingTreeHistoryRepository
 
-    release_history = (
-        ContractReleaseHistoryService(
-            GitWorkingTreeHistoryRepository(args.repository_root)
-        )
-        if bundle.release
-        else None
-    )
     operational_history = create_operational_history_sink(
         _resolve_operational_history_uri(args.operational_history)
     )
@@ -185,8 +173,6 @@ def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
     result = DeploymentWorkflowService().deploy(
         bundle,
         adapter=adapter,
-        approval=approval,
-        release_history=release_history,
         operational_history=operational_history,
         metadata_projector=metadata_projector,
     )
@@ -198,6 +184,49 @@ def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
     return DeploymentCommandResult(
         output=rendered,
         outcome=outcome_from_reconciliation_status(result.status),
+    )
+
+
+def _require_candidate_args(args: argparse.Namespace) -> None:
+    required = {
+        "--base": args.base,
+        "--candidate": args.candidate,
+        "--base-revision-ref": args.base_revision_ref,
+        "--candidate-revision-ref": args.candidate_revision_ref,
+        "--effective-date": args.effective_date,
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        raise ValidationError(
+            "Candidate deployment assessment requires " + ", ".join(missing)
+        )
+
+
+def _reject_candidate_args_for_release(args: argparse.Namespace) -> None:
+    supplied = [
+        name
+        for name, value in (
+            ("--base", args.base),
+            ("--candidate", args.candidate),
+            ("--base-revision-ref", args.base_revision_ref),
+            ("--candidate-revision-ref", args.candidate_revision_ref),
+            ("--effective-date", args.effective_date),
+        )
+        if value
+    ]
+    if supplied:
+        raise ValidationError(
+            "--release-id cannot be combined with candidate assessment arguments: "
+            + ", ".join(supplied)
+        )
+
+
+def _deployment_target(location, *, source_reference: str) -> DeploymentTarget:
+    return DeploymentTarget(
+        platform=location.platform,
+        runtime_target=location.runtime_target,
+        source_reference=source_reference,
+        server_name=location.server_name,
     )
 
 
@@ -218,29 +247,6 @@ def _resolve_operational_history_uri(cli_override: str | None) -> str | None:
         raise ValidationError(
             f"Invalid history.operational configuration: {exc}"
         ) from exc
-
-
-def _resolve_deployment_approval(
-    bundle: DeploymentBundle,
-    *,
-    approval_path: str | None,
-    repository_root: str,
-) -> ApprovalRecord | None:
-    if approval_path is not None:
-        return _load_model(approval_path, ApprovalRecord)
-
-    from semapact.application.services.deployment_approval import (
-        DeploymentApprovalResolver,
-    )
-    from semapact.governance import DecisionResult
-    from semapact.platforms.git import GitWorkingTreeHistoryRepository
-
-    if not bundle.release or bundle.decision.decision is not DecisionResult.REVIEW:
-        return None
-
-    return DeploymentApprovalResolver(
-        GitWorkingTreeHistoryRepository(repository_root),
-    ).resolve(bundle)
 
 
 def _load_model(path: str, model_type: type[_ModelT]) -> _ModelT:
@@ -304,18 +310,20 @@ def _bundle_text(
         f"Contract: {bundle.deployment_source.contract_id}@"
         f"{bundle.deployment_source.contract_version}",
         f"Mode: {'release' if bundle.release else 'candidate'}",
-        f"Governance: {bundle.decision.decision.value}",
-        (
-            f"Required bump: {bundle.decision.required_version_bump}"
-            if bundle.release
-            else "Required bump: not calculated"
-        ),
         f"Target: {plan.target.platform}/{plan.target.runtime_target}",
         f"Deployment plan: {plan.deployment_plan_id}",
         f"Bundle digest: {bundle.bundle_digest}",
         "Execution authority: none (CI/read-only bundle)",
-        "Review operations:",
     ]
+    if bundle.release:
+        assert bundle.contract_release is not None
+        lines.append(
+            f"Contract release: {bundle.contract_release.contract_release_id}"
+        )
+    else:
+        assert bundle.decision is not None
+        lines.append(f"Governance: {bundle.decision.decision.value}")
+    lines.append("Review operations:")
     for operation in preview.operations:
         detail = f"  - {operation.kind.value} {operation.governed_asset}"
         if operation.statement is not None:
@@ -332,7 +340,6 @@ def _bundle_text(
     if artifact_path:
         lines.append(f"Bundle artifact: {artifact_path}")
     return "\n".join(lines)
-
 
 
 def _deployment_result_text(result) -> str:
@@ -360,26 +367,4 @@ def _deployment_result_text(result) -> str:
         lines.append(detail)
     if not result.fresh_preview.operations:
         lines.append("  - none")
-    return "\n".join(lines)
-
-
-
-def _approval_text(
-    approval: ApprovalRecord,
-    *,
-    artifact_path: str | None,
-) -> str:
-    lines = [
-        f"Approval: {approval.approval_id}",
-        f"Actor: {approval.actor_reference}",
-        f"Operation: {approval.operation.value}",
-        f"Action: {approval.action.value}",
-        f"Deployment plan: {approval.scope_reference}",
-    ]
-    if approval.evidence_references:
-        lines.append(
-            "Evidence: " + ", ".join(approval.evidence_references)
-        )
-    if artifact_path:
-        lines.append(f"Approval artifact: {artifact_path}")
     return "\n".join(lines)
