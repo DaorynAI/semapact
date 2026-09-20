@@ -13,6 +13,7 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -165,9 +166,17 @@ class DeploymentPlan(DeploymentModel):
         validate_deployment_plan_identity(self)
         return self
 
+    @model_serializer(mode="wrap")
+    def _serialize_release_identity(self, handler):
+        """Preserve the persisted v2 field name while v3 uses release_id."""
+        payload = handler(self)
+        if self.plan_version == "2":
+            payload["applied_release_id"] = payload.pop("release_id")
+        return payload
+
     @property
     def applied_release_id(self) -> str:
-        """Compatibility alias for serialized v2 deployment plans."""
+        """Compatibility alias for callers using the v2 release field."""
         return self.release_id
 
 
