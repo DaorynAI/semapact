@@ -15,7 +15,22 @@ from semapact.contractops import (
 )
 from semapact.deployment import DeploymentPlan, DeploymentPreview
 from semapact.governance import GovernanceDecision
+from semapact.reconciliation import ReconciliationResult, RuntimeDriftStatus
 from semapact.utils.deterministic import canonical_compact_json
+
+
+class DeploymentExecutionResult(BaseModel):
+    """Application result for one bundle-driven CD execution."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    bundle_digest: str
+    deployment_plan_id: str
+    authorization_id: str
+    fresh_preview: DeploymentPreview
+    reconciliation: ReconciliationResult
+    status: RuntimeDriftStatus
+    review_preview_changed: bool
 
 
 class DeploymentBundle(BaseModel):
