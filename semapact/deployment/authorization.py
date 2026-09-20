@@ -67,6 +67,22 @@ def authorize_deployment(
         )
 
     source_snapshot_id = plan.source_snapshot_id
+    if plan.plan_version in {"2", "3"}:
+        deployment_authorization_id = compute_deployment_authorization_id(
+            contract_ops_authorization_id=authorization.authorization_id,
+            deployment_plan_id=plan.deployment_plan_id,
+            applied_release_id=source_snapshot_id,
+            allowed=authorization.allowed,
+            authorization_version="1",
+        )
+        return DeploymentAuthorization(
+            deployment_authorization_id=deployment_authorization_id,
+            contract_ops_authorization_id=authorization.authorization_id,
+            deployment_plan_id=plan.deployment_plan_id,
+            applied_release_id=source_snapshot_id,
+            allowed=authorization.allowed,
+        )
+
     deployment_authorization_id = compute_deployment_authorization_id(
         deployment_plan_id=plan.deployment_plan_id,
         source_snapshot_id=source_snapshot_id,
