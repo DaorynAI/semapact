@@ -122,12 +122,6 @@ class DeploymentBundle(BaseModel):
             raise ValueError("DeploymentBundle plan/source revision mismatch")
         if plan.contract_version != source.contract_version:
             raise ValueError("DeploymentBundle plan/source version mismatch")
-        if plan.release_id != source.release_id:
-            raise ValueError("DeploymentBundle plan/source release provenance mismatch")
-        if plan.release_plan_id != source.release_plan_id:
-            raise ValueError(
-                "DeploymentBundle plan/source release-plan provenance mismatch"
-            )
         if self.review_preview.deployment_plan_id != plan.deployment_plan_id:
             raise ValueError("DeploymentBundle preview does not match DeploymentPlan")
 
