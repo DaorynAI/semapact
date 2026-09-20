@@ -92,13 +92,15 @@ def _plan() -> DeploymentPlan:
     )
     return DeploymentPlan(
         deployment_plan_id=plan_id,
-        applied_release_id="release-1",
+        source_snapshot_id="release-1",
+        release_id="release-1",
         contract_id="orders-contract",
         release_plan_id="release-plan-1",
-        released_revision_ref="abc123",
-        selected_version="1.2.3",
+        revision_ref="abc123",
+        contract_version="1.2.3",
         target=target,
         actions=(action,),
+        plan_version="2",
     )
 
 
