@@ -15,10 +15,10 @@ from semapact.interfaces.outcomes import ProcessOutcome
 SOURCE_REFERENCE = "https://workspace.example"
 
 
-def test_deployment_parser_exposes_only_bundle_workflow() -> None:
+def test_deployment_parser_exposes_candidate_and_finalized_release_modes() -> None:
     parser = cli._build_parser()
 
-    assess = parser.parse_args(
+    candidate = parser.parse_args(
         [
             "deployment",
             "assess",
@@ -33,28 +33,23 @@ def test_deployment_parser_exposes_only_bundle_workflow() -> None:
             "--effective-date",
             "2026-09-20",
             "--server",
-            "production",
+            "development",
             "--bundle-out",
-            "bundle.json",
-            "--release",
+            "candidate.bundle.json",
             "--output",
             "json",
         ]
     )
-    approve = parser.parse_args(
+    release = parser.parse_args(
         [
             "deployment",
-            "approve",
-            "--bundle",
-            "bundle.json",
-            "--actor-reference",
-            "human:reviewer",
-            "--recorded-at",
-            "2026-09-20T10:00:00+10:00",
-            "--approval-out",
-            "approval.json",
-            "--output",
-            "json",
+            "assess",
+            "--release-id",
+            "release-1",
+            "--server",
+            "production",
+            "--bundle-out",
+            "release.bundle.json",
         ]
     )
     deploy = parser.parse_args(
@@ -63,8 +58,6 @@ def test_deployment_parser_exposes_only_bundle_workflow() -> None:
             "deploy",
             "--bundle",
             "bundle.json",
-            "--approval",
-            "approval.json",
             "--warehouse-id",
             "warehouse-1",
             "--operational-history",
@@ -74,34 +67,39 @@ def test_deployment_parser_exposes_only_bundle_workflow() -> None:
         ]
     )
 
-    assert assess.deployment_command == "assess"
-    assert assess.server == "production"
-    assert assess.bundle_out == "bundle.json"
-    assert assess.release is True
-    assert assess.output == "json"
+    assert candidate.deployment_command == "assess"
+    assert candidate.release_id is None
+    assert candidate.server == "development"
+    assert candidate.bundle_out == "candidate.bundle.json"
 
-    assert approve.deployment_command == "approve"
-    assert approve.bundle == "bundle.json"
-    assert approve.actor_reference == "human:reviewer"
-    assert approve.approval_out == "approval.json"
+    assert release.deployment_command == "assess"
+    assert release.release_id == "release-1"
+    assert release.repository_root == "."
+    assert release.server == "production"
 
     assert deploy.deployment_command == "deploy"
     assert deploy.bundle == "bundle.json"
-    assert deploy.approval == "approval.json"
-    assert deploy.repository_root == "."
     assert deploy.warehouse_id == "warehouse-1"
     assert deploy.operational_history == "sqlite:///history.db"
     assert deploy.output == "json"
 
 
-@pytest.mark.parametrize("legacy_command", ["plan", "preview", "execute", "verify"])
-def test_legacy_deployment_commands_are_not_public_cli(
-    legacy_command: str,
-) -> None:
+@pytest.mark.parametrize(
+    "legacy_args",
+    [
+        ["deployment", "plan"],
+        ["deployment", "preview"],
+        ["deployment", "execute"],
+        ["deployment", "verify"],
+        ["deployment", "approve"],
+        ["deployment", "assess", "--release"],
+    ],
+)
+def test_legacy_deployment_cli_surfaces_are_not_public(legacy_args) -> None:
     parser = cli._build_parser()
 
     with pytest.raises(SystemExit) as exc:
-        parser.parse_args(["deployment", legacy_command])
+        parser.parse_args(legacy_args)
 
     assert exc.value.code == 2
 
@@ -133,6 +131,40 @@ def test_main_preserves_bundle_deploy_outcome_semantics(
 
     assert cli.main() == expected_exit
     assert capsys.readouterr().out.strip() == "deployment"
+
+
+def test_candidate_assessment_requires_candidate_arguments() -> None:
+    args = type(
+        "Args",
+        (),
+        {
+            "base": None,
+            "candidate": None,
+            "base_revision_ref": None,
+            "candidate_revision_ref": None,
+            "effective_date": None,
+        },
+    )()
+
+    with pytest.raises(ValidationError, match="Candidate deployment assessment"):
+        deployment_cmd._require_candidate_args(args)
+
+
+def test_release_assessment_rejects_candidate_arguments() -> None:
+    args = type(
+        "Args",
+        (),
+        {
+            "base": "base.yaml",
+            "candidate": None,
+            "base_revision_ref": None,
+            "candidate_revision_ref": None,
+            "effective_date": None,
+        },
+    )()
+
+    with pytest.raises(ValidationError, match="cannot be combined"):
+        deployment_cmd._reject_candidate_args_for_release(args)
 
 
 def test_assessment_source_reference_prefers_contract_server_host() -> None:
