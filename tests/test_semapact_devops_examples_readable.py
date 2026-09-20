@@ -58,7 +58,7 @@ def test_data_product_github_example_uses_bundle_driven_ci_cd() -> None:
     assert "environment: contract-release" in workflow
     assert "environment: production" in workflow
     assert "--operational-history" not in workflow
-    assert "deployment assess \\\n            --release" not in workflow
+    assert "\n            --release \\" not in workflow
 
 
 def test_central_contract_repo_github_example_fans_out_and_commits_ledger_once() -> None:
