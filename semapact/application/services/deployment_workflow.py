@@ -8,12 +8,24 @@ from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.application.models.deployment_workflow import (
     DeploymentBundle,
+    DeploymentExecutionResult,
     build_deployment_bundle,
 )
 from semapact.application.services.deployment import DeploymentService
 from semapact.application.services.release_planning import ReleasePlanningService
-from semapact.contractops import build_release_snapshot
-from semapact.deployment import DeploymentAdapter, DeploymentTarget
+from semapact.approval import ApprovalRecord, project_review_authorization_evidence
+from semapact.contractops import (
+    authorize_contract_operation,
+    build_release_snapshot,
+)
+from semapact.deployment import (
+    DeploymentAdapter,
+    DeploymentTarget,
+    authorize_deployment,
+)
+from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
+from semapact.governance import DecisionResult, GovernanceOperation
+from semapact.reconciliation import classify_reconciliation_status
 
 
 class DeploymentWorkflowService:
@@ -68,3 +80,76 @@ class DeploymentWorkflowService:
             deployment_plan=plan,
             review_preview=preview,
         )
+
+    def deploy(
+        self,
+        bundle: DeploymentBundle,
+        *,
+        adapter: DeploymentAdapter,
+        approval: ApprovalRecord | None = None,
+    ) -> DeploymentExecutionResult:
+        """Consume one exact bundle, authorize, fresh-preview, execute, and verify."""
+        if not isinstance(bundle, DeploymentBundle):
+            raise TypeError(
+                f"bundle must be DeploymentBundle, got {type(bundle).__name__}"
+            )
+
+        evidence = None
+        if bundle.decision.decision is DecisionResult.REVIEW:
+            if approval is None:
+                raise ContractOpsAuthorizationError(
+                    "Deployment requires approval for a REVIEW governance decision"
+                )
+            if bundle.bundle_digest not in approval.evidence_references:
+                raise ValidationError(
+                    "ApprovalRecord does not reference the exact DeploymentBundle digest"
+                )
+            evidence = project_review_authorization_evidence(approval)
+
+        contract_authorization = authorize_contract_operation(
+            bundle.decision,
+            bundle.change_set,
+            bundle.release_plan,
+            bundle.version_resolution,
+            GovernanceOperation.DEPLOY,
+            evidence=evidence,
+        )
+        if not contract_authorization.allowed:
+            raise ContractOpsAuthorizationError(
+                "Deployment is not authorized: "
+                f"{contract_authorization.reason.value}"
+            )
+
+        deployment_authorization = authorize_deployment(
+            bundle.deployment_plan,
+            bundle.release_snapshot,
+            contract_authorization,
+        )
+
+        # CI-time review preview is evidence only. CD always derives a fresh preview.
+        fresh_preview = self._deployment.preview(
+            bundle.deployment_plan,
+            adapter=adapter,
+        )
+        self._deployment.execute(
+            bundle.deployment_plan,
+            fresh_preview,
+            deployment_authorization,
+            adapter=adapter,
+        )
+        reconciliation = self._deployment.verify(
+            bundle.deployment_plan,
+            adapter=adapter,
+        )
+        status = classify_reconciliation_status(reconciliation)
+
+        return DeploymentExecutionResult(
+            bundle_digest=bundle.bundle_digest,
+            deployment_plan_id=bundle.deployment_plan.deployment_plan_id,
+            authorization_id=contract_authorization.authorization_id,
+            fresh_preview=fresh_preview,
+            reconciliation=reconciliation,
+            status=status,
+            review_preview_changed=fresh_preview != bundle.review_preview,
+        )
+
