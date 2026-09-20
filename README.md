@@ -405,16 +405,17 @@ semapact release approve \
 
 semapact release finalize \
   --bundle ./artifacts/orders.release.bundle.json \
-  --output-contract ./contracts/orders.yaml
+  --output-contract ./contracts/orders.yaml \
+  --release-out ./artifacts/orders.contract-release.json
 ```
 
 Finalization writes the selected semantic version back to the ODCS contract and records the immutable `ContractRelease` in the Git governance ledger. The release records the source revision from which it was derived; the finalized release identity is the immutable released-contract snapshot, not a claim that the source revision already contained the materialized version bump.
 
-Deployment then consumes that finalized release identity:
+Deployment then consumes the finalized release artifact directly:
 
 ```bash
 semapact deployment assess \
-  --release-id <contract-release-id> \
+  --release ./artifacts/orders.contract-release.json \
   --server production \
   --bundle-out ./artifacts/orders-prod.deployment.bundle.json
 
