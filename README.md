@@ -74,11 +74,11 @@ GovernanceDecision
 → ChangeSet
 → ReleasePlan
 → VersionResolution
-→ ContractOpsAuthorization
-→ AppliedContractRelease
+→ ReleaseSnapshot
 → DeploymentPlan
-→ DeploymentAuthorization
-→ runtime mutation
+→ DeploymentBundle (CI artifact)
+
+Approval / authorization remains a separate side-effect boundary before runtime mutation.
 ```
 
 For production assurance:
@@ -183,8 +183,9 @@ See [`docs/contractops_phases.md`](docs/contractops_phases.md) and [`docs/versio
 
 ```text
 assess
-→ base/candidate governance + fresh runtime DeploymentAssessment
-→ read-only / non-executable
+→ governance + ReleaseSnapshot + DeploymentPlan + fresh review preview
+→ content-addressed DeploymentBundle
+→ read-only / no execution authority
 
 plan
 → DeploymentPlan
@@ -202,7 +203,7 @@ verify
 → IN_SYNC / DRIFT / INDETERMINATE
 ```
 
-Planning and preview are read-only. Runtime mutation occurs only through `deployment execute`, and provider execution success is not treated as convergence proof.
+Assessment, planning, and preview are read-only. The CI assessment path writes a content-addressed `DeploymentBundle` that can be published as a pipeline artifact for later CD consumption. Runtime mutation occurs only through the execution boundary, and provider execution success is not treated as convergence proof.
 
 The first Databricks write capability is intentionally narrow: create a missing managed Delta table, add missing nullable governed columns to an existing managed table, or perform NO_OP when the governed shape is already satisfied. Rename, existing-column type/nullability mutation, required-column addition without a safe migration strategy, DROP, and existing external/non-managed asset mutation fail closed.
 
@@ -342,10 +343,13 @@ semapact deployment assess \
   --base-revision-ref git:abc123 \
   --candidate-revision-ref git:def456 \
   --effective-date 2026-09-20 \
-  --server production
+  --server production \
+  --bundle-out ./artifacts/orders-prod.bundle.json
 ```
 
-After an exact `AppliedContractRelease` and deployment authorization have been produced, the canonical runtime path remains:
+The bundle contains the exact reviewed `ReleaseSnapshot`, v3 `DeploymentPlan`, CI-time review preview, and a SHA-256 content digest. CI publishes this file using its normal artifact mechanism; the preview remains review evidence only and must be refreshed at CD execution time.
+
+Low-level deployment commands remain available for explicit artifact workflows and compatibility:
 
 ```bash
 semapact deployment plan --help
