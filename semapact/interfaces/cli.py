@@ -520,7 +520,18 @@ def _build_parser() -> argparse.ArgumentParser:
     deployment_deploy_parser.add_argument("--bundle", required=True)
     deployment_deploy_parser.add_argument(
         "--approval",
-        help="ApprovalRecord JSON required when governance decision is REVIEW",
+        help=(
+            "Optional ApprovalRecord JSON. When omitted for REVIEW, SemaPact "
+            "resolves an exact matching approval from Git-backed history."
+        ),
+    )
+    deployment_deploy_parser.add_argument(
+        "--repository-root",
+        default=".",
+        help=(
+            "Repository root containing .semapact/history approval records "
+            "(default: current directory)"
+        ),
     )
     deployment_deploy_parser.add_argument(
         "--warehouse-id",
