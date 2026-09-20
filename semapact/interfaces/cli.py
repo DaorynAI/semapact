@@ -492,7 +492,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     deployment_approve_parser = deployment_subparsers.add_parser(
         "approve",
-        help="Create an exact DEPLOY ApprovalRecord from a REVIEW DeploymentBundle",
+        help=(
+            "Create an explicit DEPLOY ApprovalRecord for a custom/manual workflow; "
+            "standard CD can resolve Git-backed approval history automatically"
+        ),
     )
     deployment_approve_parser.add_argument("--bundle", required=True)
     deployment_approve_parser.add_argument("--actor-reference", required=True)
