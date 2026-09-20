@@ -12,19 +12,21 @@ PLAN
 → ChangeSet
 → ReleasePlan
 → VersionResolution
+→ ReleaseSnapshot
+
+CI DEPLOYMENT PLANNING
+→ DeploymentPlan
+→ DeploymentPreview
+→ DeploymentBundle
 
 AUTHORIZE
-→ ContractOpsAuthorization
+→ operation-scoped authorization
 
-APPLY
+PUBLISH / DEPLOY
+→ external side effects
+
+Legacy APPLY compatibility
 → AppliedContractRelease
-
-PUBLISH
-→ PublicationResult
-
-DEPLOY
-→ DeploymentPlan + DeploymentAuthorization
-→ runtime mutation through a platform adapter
 ```
 
 Each phase consumes artifacts from the previous phases. Later phases do not recalculate earlier decisions.
@@ -37,11 +39,13 @@ The governed contract remains the model of desired state throughout the lifecycl
 
 ```text
 candidate ODCS
-    ↓ ANALYZE / PLAN / AUTHORIZE / APPLY
-AppliedContractRelease
-= immutable governed desired state
-    ↓ DEPLOY planning against one runtime target
-provider-native operations
+    ↓ ANALYZE / PLAN
+ReleaseSnapshot
+= immutable selected governed desired state
+    ↓ target-specific DeploymentPlan
+fresh runtime observation
+    ↓
+provider-native preview operations
 ```
 
 A SQL or provider-specific export is a **derived compilation output**, not a second source of truth and not deployment authority. It may be regenerated from the exact governed contract state whenever required.
@@ -54,7 +58,7 @@ base contract ↔ candidate contract
 → governance changes, breaking classification, version requirements
 
 Runtime deployment comparison
-AppliedContractRelease ↔ observed runtime state
+ReleaseSnapshot / DeploymentPlan ↔ observed runtime state
 → CREATE / ALTER / NO_OP or an explicit unsupported transition
 ```
 
@@ -140,24 +144,28 @@ scopeReference?
 
 `GovernanceDecision(REVIEW)` remains `REVIEW` after approval. Matching explicit review evidence produces an allowed `ContractOpsAuthorization`; it does not rewrite governance history.
 
-APPLY, PUBLISH, and DEPLOY are distinct operation scopes. Runtime DEPLOY additionally binds authorization to the exact `DeploymentPlan` before mutation.
+PUBLISH and DEPLOY are the external side-effect scopes that matter to the new workflow. The historical APPLY authorization remains supported for compatibility while callers migrate to pure `ReleaseSnapshot` materialization. Runtime DEPLOY remains scoped to the exact `DeploymentPlan` before mutation.
 
-## APPLY
+## RELEASE SNAPSHOT
 
-APPLY materializes the exact released ODCS state from the planned candidate and `VersionResolution.selectedVersion`.
+Release snapshot construction is pure. It materializes the exact selected ODCS state from the planned candidate and `VersionResolution.selectedVersion` without crossing an external side-effect boundary.
 
-The canonical APPLY path:
+`build_release_snapshot(...)`:
 
-- requires an allowed `ContractOpsAuthorization(operation=APPLY)`;
 - requires the supplied candidate revision reference to match the planned revision;
 - validates contract identity and the expected current version;
 - copies the candidate and synchronizes only the selected release version;
 - does not mutate the input candidate;
-- does not rerun diffing, lifecycle policy, breaking-change classification, or version authority.
+- does not rerun governance or version authority;
+- produces a deterministic `ReleaseSnapshot` with no authorization ID.
 
-The output is an immutable `AppliedContractRelease` containing provenance IDs and a canonical JSON snapshot of the released ODCS state. Consumers can materialize a fresh ODCS model from that snapshot.
+This pure snapshot is what CI uses to build a v3 `DeploymentPlan` and content-addressed `DeploymentBundle` before human approval.
 
-This also covers metadata-only governed releases: `requiredVersionBump=none` may have been resolved by SemaPact version authority to an actual patch release, and APPLY uses that already-selected version directly.
+## APPLY compatibility
+
+`apply_contract_release(...)` remains available for existing callers. It validates the historical `ContractOpsAuthorization(operation=APPLY)`, builds the same pure `ReleaseSnapshot`, and wraps that snapshot into the legacy `AppliedContractRelease` artifact.
+
+New CI deployment workflows must not require APPLY authorization merely to plan or preview a deployment. The compatibility wrapper exists to preserve current publication/history integrations while the authorization surface is simplified.
 
 ## PUBLISH
 
