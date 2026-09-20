@@ -5,7 +5,7 @@ SemaPact treats a released ODCS contract as governed desired state, not as an ex
 The released contract is the authoritative artifact. SemaPact does **not** require a separate DDL build artifact before deployment. SQL and other provider-native commands are derived only after an exact released desired state is compared with an exact runtime target.
 
 ```text
-ReleaseSnapshot
+Candidate contract or finalized ContractRelease
         = exact governed desired state
                 +
 ObservedPlatformState
@@ -23,12 +23,10 @@ This matters because one release may require different native operations in diff
 The deployment planning boundary is therefore:
 
 ```text
-ReleaseSnapshot
+DeploymentSourceSnapshot
 + DeploymentTarget
         ↓
 DeploymentPlan
-        ↓
-DeploymentAuthorization
         ↓
 DeploymentService
         ↓
@@ -42,8 +40,8 @@ DeploymentOrchestrator
   → transition
   → compile
   → preview
-  → freshness / exact authorization
-  → execute
+  → freshness validation
+  → apply
   → verify
         ↓
 provider NativeOperationExecutor / RuntimeProvider
@@ -55,9 +53,9 @@ The orchestration above is provider-neutral. Platform packages configure or impl
 
 ## What a DeploymentPlan means
 
-A `DeploymentPlan` is a deterministic, provider-neutral statement of the runtime state that one exact release snapshot intends to converge toward.
+A `DeploymentPlan` is a deterministic, provider-neutral statement of the runtime state that one exact deployment source intends to converge toward.
 
-The canonical CI path builds it from a pure `ReleaseSnapshot`, which freezes the selected contract revision/version without requiring side-effect authorization. Legacy `AppliedContractRelease` inputs remain readable for v2-plan compatibility, but new CI bundles use v3 plans bound to `releaseId`.
+Canonical plans are v5 and bind only the immutable source snapshot plus optional release provenance. Candidate versus release mode is not stored as another boolean: it is derived from the source provenance. Legacy `AppliedContractRelease` / `ReleaseSnapshot` plan payloads remain readable behind compatibility seams.
 
 The initial action vocabulary deliberately contains only:
 
@@ -199,7 +197,7 @@ Candidate deployment:
 ```text
 base + candidate
 → GovernanceDecision + ChangeSet
-→ DeploymentSourceSnapshot(release=false)
+→ DeploymentSourceSnapshot(source_kind=candidate)
 → target-specific DeploymentPlan
 → fresh DeploymentPreview
 → DeploymentBundle
@@ -209,7 +207,7 @@ Finalized-release deployment:
 
 ```text
 ContractRelease
-→ DeploymentSourceSnapshot(release=true)
+→ DeploymentSourceSnapshot(source_kind=contract_release)
 → target-specific DeploymentPlan
 → fresh DeploymentPreview
 → DeploymentBundle
@@ -270,7 +268,8 @@ Finalize exactly once:
 ```bash
 semapact release finalize \
   --bundle ./artifacts/orders.release.bundle.json \
-  --output-contract ./contracts/orders.yaml
+  --output-contract ./contracts/orders.yaml \
+  --release-out ./artifacts/orders.contract-release.json
 ```
 
 Finalization:
@@ -279,16 +278,16 @@ Finalization:
 - writes one immutable `ContractRelease` to the Git governance ledger;
 - writes the selected version back to the ODCS contract file.
 
-After finalization, build any target-specific deployment bundle from the release identity:
+After finalization, hand the immutable ContractRelease artifact directly to target-specific deployment:
 
 ```bash
 semapact deployment assess \
-  --release-id <contract-release-id> \
+  --release ./artifacts/orders.contract-release.json \
   --server production \
   --bundle-out ./artifacts/orders-prod.deployment.bundle.json
 ```
 
-The same `contract-release-id` may be assessed/deployed against dev, test, prod, or another runtime target.
+The same ContractRelease artifact may be assessed/deployed against dev, test, prod, or another runtime target. `--release-id` remains a convenience fallback for resolving the same artifact from the Git governance ledger; Git history is not the canonical CI/CD transport.
 
 ### CI/CD handoff rules
 
@@ -311,11 +310,12 @@ CD must not rebuild either artifact from mutable repository state after its trus
 At execution time:
 
 ```text
-exact DeploymentBundle
-→ authorize exact candidate/finalized-release source
+protected CI/CD execution boundary
+→ exact DeploymentBundle
+→ validate candidate/finalized-release provenance
 → fresh runtime observation
 → fresh DeploymentPreview
-→ execute
+→ apply
 → fresh reconciliation
 → IN_SYNC / DRIFT / INDETERMINATE
 ```
