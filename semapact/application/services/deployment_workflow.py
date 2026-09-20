@@ -286,7 +286,7 @@ class DeploymentWorkflowService:
                     build_operational_deployment_event(
                         bundle_digest=bundle.bundle_digest,
                         release=bundle.release,
-                        release_record_id=(
+                        contract_release_id=(
                             release_record.contract_release_id
                             if release_record is not None
                             else None
@@ -322,7 +322,7 @@ class DeploymentWorkflowService:
             bundle_digest=bundle.bundle_digest,
             deployment_plan_id=bundle.deployment_plan.deployment_plan_id,
             authorization_id=deployment_authorization.deployment_authorization_id,
-            release_record_id=(
+            contract_release_id=(
                 release_record.contract_release_id
                 if release_record is not None
                 else None
@@ -337,7 +337,7 @@ class DeploymentWorkflowService:
                 build_operational_deployment_event(
                     bundle_digest=bundle.bundle_digest,
                     release=bundle.release,
-                    release_record_id=result.release_record_id,
+                    contract_release_id=result.contract_release_id,
                     contract_id=bundle.deployment_plan.contract_id,
                     contract_version=bundle.deployment_plan.contract_version,
                     revision_ref=bundle.deployment_plan.revision_ref,
