@@ -17,7 +17,7 @@ def _event():
     return build_operational_deployment_event(
         bundle_digest="sha256:" + ("a" * 64),
         release=False,
-        release_record_id=None,
+        contract_release_id=None,
         contract_id="orders-product",
         contract_version="1.2.3",
         revision_ref="git:abc123",
