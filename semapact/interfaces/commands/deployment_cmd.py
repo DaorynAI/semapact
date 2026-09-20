@@ -16,12 +16,12 @@ from semapact.approval import ApprovalRecord
 from semapact.application.models.deployment_workflow import DeploymentBundle
 from semapact.deployment import DeploymentTarget
 from semapact.exceptions import ValidationError
-from semapact.interfaces.parsing import parse_iso_timestamp
 from semapact.interfaces.outcomes import (
     ProcessOutcome,
     outcome_from_gate_result,
     outcome_from_reconciliation_status,
 )
+from semapact.interfaces.parsing import parse_iso_timestamp
 
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
