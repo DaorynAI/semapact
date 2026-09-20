@@ -327,6 +327,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write the exact released/versioned ODCS contract to this path",
     )
     release_finalize_parser.add_argument(
+        "--release-out",
+        help="Write the finalized immutable ContractRelease JSON artifact to this path",
+    )
+    release_finalize_parser.add_argument(
         "--repository-root",
         default=".",
         help="Repository root containing the Git governance ledger",
@@ -517,9 +521,14 @@ def _build_parser() -> argparse.ArgumentParser:
     deployment_assess_parser.add_argument("--candidate")
     deployment_assess_parser.add_argument("--base-revision-ref")
     deployment_assess_parser.add_argument("--candidate-revision-ref")
-    deployment_assess_parser.add_argument(
+    release_source_group = deployment_assess_parser.add_mutually_exclusive_group()
+    release_source_group.add_argument(
+        "--release",
+        help="Finalized ContractRelease JSON artifact to deploy instead of a candidate",
+    )
+    release_source_group.add_argument(
         "--release-id",
-        help="Finalized ContractReleaseRecord ID to deploy instead of a candidate",
+        help="Convenience fallback: resolve a finalized ContractRelease ID from Git history",
     )
     deployment_assess_parser.add_argument(
         "--repository-root",
