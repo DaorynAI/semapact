@@ -81,6 +81,7 @@ def run_release_finalize(args: argparse.Namespace) -> dict[str, Any]:
         "contractReleaseId": record.contract_release_id,
         "contractId": record.contract_id,
         "contractVersion": record.contract_version,
+        "sourceRevisionRef": record.source_revision_ref,
         "releaseBundleDigest": bundle.bundle_digest,
         "outputContract": str(output_path),
     }
