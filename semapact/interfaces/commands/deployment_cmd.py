@@ -306,13 +306,13 @@ def _bundle_text(
     lines = [
         f"Contract: {bundle.deployment_source.contract_id}@"
         f"{bundle.deployment_source.contract_version}",
-        f"Mode: {'release' if bundle.release else 'candidate'}",
+        f"Mode: {'release' if bundle.is_release else 'candidate'}",
         f"Target: {plan.target.platform}/{plan.target.runtime_target}",
         f"Deployment plan: {plan.deployment_plan_id}",
         f"Bundle digest: {bundle.bundle_digest}",
         "Execution authority: none (CI/read-only bundle)",
     ]
-    if bundle.release:
+    if bundle.is_release:
         assert bundle.contract_release is not None
         lines.append(
             f"Contract release: {bundle.contract_release.contract_release_id}"
@@ -343,7 +343,7 @@ def _deployment_result_text(result) -> str:
     lines = [
         f"Bundle digest: {result.bundle_digest}",
         f"Deployment plan: {result.deployment_plan_id}",
-        f"Authorization: {result.authorization_id}",
+        "Execution authority: surrounding protected deployment context",
         *(
             [f"Contract release: {result.contract_release_id}"]
             if result.contract_release_id is not None
