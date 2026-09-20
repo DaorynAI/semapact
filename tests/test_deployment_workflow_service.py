@@ -340,7 +340,7 @@ def test_candidate_review_deployment_needs_no_approval_or_release_history() -> N
 
     result = service.deploy(bundle, adapter=_ExecutionAdapter())
 
-    assert result.release_record_id is None
+    assert result.contract_release_id is None
     assert result.status is RuntimeDriftStatus.IN_SYNC
 
 
@@ -391,7 +391,7 @@ def test_configured_operational_history_records_failed_candidate_deployment() ->
     event = sink.events[0]
     assert event.status == "FAILED"
     assert event.release is False
-    assert event.release_record_id is None
+    assert event.contract_release_id is None
     assert event.deployment_preview_id is not None
     assert event.reconciliation_status is None
 
@@ -455,9 +455,9 @@ def test_review_release_requires_approval_and_records_formal_release(tmp_path) -
         release_history=_release_history(tmp_path),
     )
 
-    assert result.release_record_id is not None
+    assert result.contract_release_id is not None
     repository = GitWorkingTreeHistoryRepository(tmp_path)
-    record = repository.get_contract_release(result.release_record_id)
+    record = repository.get_contract_release(result.contract_release_id)
     assert record.contract_version == bundle.version_resolution.selected_version
     assert record.release_snapshot_id == bundle.release_snapshot.release_snapshot_id
     assert record.revision_ref == bundle.release_snapshot.release_revision_ref
@@ -540,7 +540,7 @@ def test_release_projects_metadata_only_after_in_sync(tmp_path) -> None:
     assert len(projector.calls) == 1
     plan, metadata = projector.calls[0]
     assert metadata.contract_version == plan.contract_version
-    assert metadata.contract_release_id == result.release_record_id
+    assert metadata.contract_release_id == result.contract_release_id
 
 
 def test_review_release_rejects_approval_for_different_bundle_digest(tmp_path) -> None:
