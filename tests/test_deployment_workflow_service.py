@@ -146,6 +146,19 @@ class _ExecutionAdapter(DeploymentAdapter):
         )
 
 
+class _OperationalSink:
+    def __init__(self) -> None:
+        self.events = []
+
+    def record_deployment(self, event) -> None:
+        self.events.append(event)
+
+
+class _FailingExecutionAdapter(_ExecutionAdapter):
+    def execute(self, plan, preview, authorization) -> None:
+        raise RuntimeError("provider mutation failed")
+
+
 class _MetadataProjector:
     def __init__(self) -> None:
         self.calls = []
@@ -352,6 +365,35 @@ def test_cd_uses_fresh_preview_not_ci_review_preview() -> None:
     assert adapter.executed_preview is result.fresh_preview
     assert result.fresh_preview.operations[0].kind is NativeOperationKind.NO_OP
     assert result.review_preview_changed is True
+
+
+def test_configured_operational_history_records_failed_candidate_deployment() -> None:
+    service = DeploymentWorkflowService()
+    bundle = service.assess(
+        _contract(name="Orders old"),
+        _contract(name="Orders new"),
+        effective_date="2026-09-20",
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=_target(),
+        adapter=_PreviewAdapter(),
+    )
+    sink = _OperationalSink()
+
+    with pytest.raises(RuntimeError, match="provider mutation failed"):
+        service.deploy(
+            bundle,
+            adapter=_FailingExecutionAdapter(),
+            operational_history=sink,
+        )
+
+    assert len(sink.events) == 1
+    event = sink.events[0]
+    assert event.status == "FAILED"
+    assert event.release is False
+    assert event.release_record_id is None
+    assert event.deployment_preview_id is not None
+    assert event.reconciliation_status is None
 
 
 def test_non_release_bundle_rejects_manual_approval() -> None:
