@@ -214,7 +214,7 @@ def test_apply_delegates_exact_plan_and_preview_without_internal_authorization()
     assert adapter.executed == (plan, preview, None)
 
 
-def test_execute_delegates_exact_canonical_artifacts() -> None:
+def test_execute_compatibility_wrapper_validates_then_uses_canonical_apply() -> None:
     plan = _plan()
     preview = _preview(plan)
     authorization = _authorization(plan)
@@ -228,7 +228,7 @@ def test_execute_delegates_exact_canonical_artifacts() -> None:
     )
 
     assert adapter.execute_calls == 1
-    assert adapter.executed == (plan, preview, authorization)
+    assert adapter.executed == (plan, preview, None)
 
 
 def test_verify_delegates_to_same_adapter_entrypoint() -> None:
