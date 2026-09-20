@@ -41,6 +41,7 @@ def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
         DeploymentWorkflowService,
     )
     from semapact.core.loader import ContractLoader
+    from semapact.contractops import ContractRelease
     from semapact.governance import GovernanceOperation, evaluate_governance_gate
     from semapact.platforms.git import GitWorkingTreeHistoryRepository
     from semapact.platforms.runtime_registry import (
@@ -51,11 +52,15 @@ def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
     service = DeploymentWorkflowService()
     loader = ContractLoader(runtime_context=args.runtime_context)
 
-    if args.release_id:
+    if args.release or args.release_id:
         _reject_candidate_args_for_release(args)
-        release = GitWorkingTreeHistoryRepository(
-            args.repository_root
-        ).get_contract_release(args.release_id)
+        release = (
+            _load_model(args.release, ContractRelease)
+            if args.release
+            else GitWorkingTreeHistoryRepository(
+                args.repository_root
+            ).get_contract_release(args.release_id)
+        )
         source_contract = OpenDataContractStandard.model_validate_json(
             release.released_contract_json
         )
@@ -158,23 +163,15 @@ def run_deployment_deploy(args: argparse.Namespace) -> DeploymentCommandResult:
         execution_config=execution_config,
     )
 
-    from semapact.deployment import RuntimeReleaseMetadataProjector
     from semapact.history import create_operational_history_sink
 
     operational_history = create_operational_history_sink(
         _resolve_operational_history_uri(args.operational_history)
     )
-    metadata_projector = (
-        adapter
-        if isinstance(adapter, RuntimeReleaseMetadataProjector)
-        else None
-    )
-
     result = DeploymentWorkflowService().deploy(
         bundle,
         adapter=adapter,
         operational_history=operational_history,
-        metadata_projector=metadata_projector,
     )
     rendered = (
         _model_json(result)
@@ -216,7 +213,7 @@ def _reject_candidate_args_for_release(args: argparse.Namespace) -> None:
     ]
     if supplied:
         raise ValidationError(
-            "--release-id cannot be combined with candidate assessment arguments: "
+            "Release deployment cannot be combined with candidate assessment arguments: "
             + ", ".join(supplied)
         )
 
