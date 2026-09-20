@@ -1,6 +1,10 @@
 """Typed application results composed from canonical domain artifacts."""
 
-from semapact.application.models.deployment_workflow import DeploymentWorkflowAssessment
+from semapact.application.models.deployment_workflow import (
+    DeploymentBundle,
+    build_deployment_bundle,
+    compute_deployment_bundle_digest,
+)
 from semapact.application.models.evolution import (
     BrokenHistoryReference,
     ContractEvolution,
@@ -18,7 +22,9 @@ __all__ = [
     "BrokenHistoryReference",
     "ContractEvolution",
     "DeploymentEvolution",
-    "DeploymentWorkflowAssessment",
+    "DeploymentBundle",
+    "build_deployment_bundle",
+    "compute_deployment_bundle_digest",
     "GovernanceAnalysis",
     "GovernanceProposal",
     "HistoryIntegrityReport",
