@@ -657,7 +657,7 @@ class GitWorkingTreeHistoryRepository:
         )
 
         try:
-            artifact = spec.model_type.model_validate_json(raw)
+            artifact = _parse_artifact_json(spec, raw)
             if spec.integrity_validator is not None:
                 spec.integrity_validator(artifact)
         except (PydanticValidationError, ValueError, TypeError) as exc:
