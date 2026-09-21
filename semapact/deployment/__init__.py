@@ -69,7 +69,6 @@ __all__ = [
     "validate_candidate_deployment_context",
     "validate_contract_release_deployment_context",
     "build_deployment_actions",
-    "build_deployment_plan",
     "build_deployment_plan_from_source",
     "build_candidate_deployment_source",
     "build_contract_release_deployment_source",
