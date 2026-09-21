@@ -148,9 +148,9 @@ operation
 scopeReference?
 ```
 
-`GovernanceDecision(REVIEW)` remains `REVIEW` after approval. Matching explicit review evidence produces an allowed `ContractOpsAuthorization`; it does not rewrite governance history.
+`GovernanceDecision(REVIEW)` remains `REVIEW` after approval. Formal-release approval is represented by an immutable `ApprovalRecord` bound to the exact `ReleaseSnapshot` and `ReleaseBundle` digest. `ReleaseFinalizer` projects that evidence into the PUBLISH authorization check without rewriting governance history.
 
-PUBLISH and DEPLOY are the external side-effect scopes that matter to the new workflow. The historical APPLY authorization remains supported for compatibility while callers migrate to pure `ReleaseSnapshot` materialization. Runtime DEPLOY remains scoped to the exact `DeploymentPlan` before mutation.
+Runtime deployment is a separate boundary. SemaPact does not create a deployment-authorization artifact; the surrounding protected CI/CD environment controls whether runtime mutation may be invoked, while SemaPact validates exact source/plan binding and runtime freshness.
 
 ## RELEASE SNAPSHOT
 
@@ -167,31 +167,13 @@ Release snapshot construction is pure. It materializes the exact selected ODCS s
 
 This pure snapshot is used only for formal `--release` bundles. Candidate deployment freezes the candidate directly in a non-release `DeploymentSourceSnapshot` and does not calculate a new semantic version.
 
-## APPLY compatibility
-
-`apply_contract_release(...)` remains available for existing callers. It validates the historical `ContractOpsAuthorization(operation=APPLY)`, builds the same pure `ReleaseSnapshot`, and wraps that snapshot into the legacy `AppliedContractRelease` artifact.
-
-New CI deployment workflows must not require APPLY authorization merely to plan or preview a deployment. The compatibility wrapper exists to preserve current publication/history integrations while the authorization surface is simplified.
-
 ## PUBLISH
 
-PUBLISH publishes an applied contract release or release artifact. It is distinct from runtime deployment.
+PUBLISH is the formal-release authorization boundary. For a REVIEW decision, the approval must bind the exact `ReleaseSnapshot` and `ReleaseBundle` digest. For ALLOW, no explicit approval record is required.
 
-It requires an allowed `ContractOpsAuthorization(operation=PUBLISH)` matching the exact applied release context before the publisher adapter is invoked. An APPLY authorization cannot authorize PUBLISH.
+After that check, `ReleaseFinalizer` constructs the immutable, target-neutral `ContractRelease`. The CLI persists that release fact to the Git governance ledger and may also emit the `ContractRelease` JSON artifact for CI/CD handoff.
 
-ContractOps defines only a narrow publisher port:
-
-```text
-AppliedContractRelease
-        ↓
-ContractReleasePublisher.publish(...)
-        ↓
-opaque publication reference
-        ↓
-PublicationResult
-```
-
-Git, storage, and other release-artifact publication behavior belongs in adapters rather than the ContractOps domain.
+PUBLISH does not authorize runtime mutation. A `ContractRelease` records what was formally released; deployment remains a separate protected execution boundary.
 
 ## DEPLOY
 
@@ -218,12 +200,5 @@ ContractOps distinguishes invalid release context from denied publication author
 - a valid formal release whose required PUBLISH approval is denied/missing → `ContractOpsAuthorizationError`;
 - runtime deployment fails closed on invalid source/plan provenance, stale runtime evidence, or unsupported provider transitions.
 
-Unexpected publisher/runtime failures are not converted into governance decisions; they propagate as execution failures.
+Unexpected persistence/runtime failures are not converted into governance decisions; they propagate as execution failures.
 
-## Compatibility helpers
-
-`semapact release prepare` and `semapact release create-pr` remain compatibility workflows for existing Git-based release processes. They are not the canonical ContractOps PLAN/APPLY/PUBLISH path and should not be treated as equivalent to `release plan` plus explicit authorization.
-
-`semapact.core.release.prepare_release_candidate()` likewise remains a backward-compatible helper and is not the canonical ContractOps APPLY path because it may classify changes itself.
-
-New ContractOps flows consume the existing authoritative `GovernanceDecision`, `ChangeSet`, `ReleasePlan`, and `VersionResolution` instead of recomputing them.
