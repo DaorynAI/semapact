@@ -138,7 +138,7 @@ DeploymentTarget
 
 `platform` is the downstream adapter dispatch key. `runtimeTarget` is an opaque provider-local product target. `sourceReference` identifies the exact runtime source/end point against which the plan is authorized; for Databricks this is the workspace host used by runtime observation. It is an identity reference, never a credential.
 
-Preview, execution, and verification fail closed when fresh runtime evidence comes from a different source than the plan's `sourceReference`. This prevents an authorization for the same catalog/schema name from being reused against another workspace.
+Preview, execution, and verification fail closed when fresh runtime evidence comes from a different source than the plan's `sourceReference`. This prevents a plan or bundle prepared for one catalog/schema binding from being reused against another workspace.
 
 The plan does not contain credentials, workspace clients, SQL connections, or provider sessions.
 
