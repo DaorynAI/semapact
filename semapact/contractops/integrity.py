@@ -12,7 +12,6 @@ import json
 import uuid
 from collections.abc import Sequence
 
-from semapact.change_context import ChangeContext
 from semapact.contractops.execution_models import (
     ContractRelease,
     ReleaseSnapshot,
@@ -75,7 +74,6 @@ def compute_change_set_id(
     base_revision_ref: str,
     candidate_revision_ref: str,
     changes: Sequence[GovernanceChange],
-    context: ChangeContext,
     source: str | None,
     actor_reference: str | None,
 ) -> str:
@@ -84,7 +82,6 @@ def compute_change_set_id(
         "contract_id": contract_id,
         "base_revision_ref": base_revision_ref,
         "candidate_revision_ref": candidate_revision_ref,
-        "context": context.model_dump(mode="json"),
         "changes": [change.model_dump(mode="json") for change in canonical_changes],
         "source": source,
         "actor_reference": actor_reference,
@@ -101,7 +98,6 @@ def validate_change_set_identity(change_set: ChangeSet) -> None:
         base_revision_ref=change_set.base_revision_ref,
         candidate_revision_ref=change_set.candidate_revision_ref,
         changes=change_set.changes,
-        context=change_set.context,
         source=change_set.source,
         actor_reference=change_set.actor_reference,
     )
