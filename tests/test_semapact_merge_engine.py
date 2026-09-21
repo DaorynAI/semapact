@@ -11,7 +11,7 @@ from open_data_contract_standard.model import (
 )
 
 import semapact.lifecycle.merge_engine as merge_engine
-from semapact.governance import ChangeContext
+from semapact.change_context import ChangeContext
 from semapact.lifecycle.merge_engine import ContractMergeEngine
 
 
