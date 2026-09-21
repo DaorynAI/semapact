@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 import pytest
 from pydantic import ValidationError as PydanticValidationError
@@ -13,9 +12,7 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
-from semapact.change_context import ChangeContext
 from semapact.governance import (
-    PublicChangeContextV1,
     PublicChangeEvidenceV1,
     PublicGovernanceChangeEvidenceV1,
     PublicGovernanceChangeV1,
@@ -30,8 +27,6 @@ from semapact.governance import (
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "governance_decisions"
-TEST_CONTEXT = ChangeContext(effective_date=date(2026, 1, 1))
-
 
 def _get_schemas(contract: OpenDataContractStandard) -> list[SchemaObject]:
     return getattr(contract, "schema_", getattr(contract, "schema", [])) or []
@@ -80,7 +75,7 @@ def test_public_decision_allow_scenario():
     base = _make_contract()
     candidate = _make_contract()
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     public_dec = to_public_governance_decision(decision)
 
     assert isinstance(public_dec, PublicGovernanceDecisionV1)
@@ -89,7 +84,6 @@ def test_public_decision_allow_scenario():
     assert public_dec.contract_id == "my-data-contract"
     assert public_dec.breaking is False
     assert public_dec.required_version_bump == "none"
-    assert public_dec.context.effective_date == "2026-01-01"
     assert public_dec.validation.valid is True
     assert public_dec.policy.valid is True
     assert public_dec.policy.id_violation is False
@@ -108,7 +102,7 @@ def test_public_decision_allow_scenario():
     assert dumped["schemaVersion"] == "1"
     assert dumped["decisionId"] == decision.decision_id
     assert dumped["contractId"] == "my-data-contract"
-    assert dumped["context"] == {"effectiveDate": "2026-01-01"}
+    assert "context" not in dumped
     assert dumped["requiredVersionBump"] == "none"
     assert dumped["evidence"] == {"hasChanges": False, "mergeConflictsCount": 0}
     assert dumped["changes"] == []
@@ -123,7 +117,7 @@ def test_public_decision_review_scenario():
         CustomProperty(property="lifecycleStatus", value="deprecated")
     ]
 
-    decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, cand)
     public_dec = to_public_governance_decision(decision)
 
     assert public_dec.schema_version == "1"
@@ -152,7 +146,7 @@ def test_public_decision_breaking_review_scenario():
     cand = _make_contract()
     _get_schemas(cand)[0].properties[1].physicalType = "decimal(8,2)"
 
-    decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, cand)
     public_dec = to_public_governance_decision(decision)
 
     assert public_dec.schema_version == "1"
@@ -174,7 +168,7 @@ def test_public_decision_block_retired_scenario():
     cand = _make_contract(status="retired")
     _get_schemas(cand)[0].properties[1].description = "New description"
 
-    decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, cand)
     public_dec = to_public_governance_decision(decision)
 
     assert public_dec.decision == "BLOCK"
@@ -194,7 +188,7 @@ def test_public_decision_block_validation_scenario():
         SchemaProperty(name="", logicalType="string", physicalType="", required=True)
     )
 
-    decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, cand)
     public_dec = to_public_governance_decision(decision)
 
     assert public_dec.decision == "BLOCK"
@@ -208,7 +202,6 @@ def test_public_decision_block_validation_scenario():
 
 def test_public_models_direct_instantiation_and_helpers():
     """Verify direct instantiation of public models and helper structures."""
-    context = PublicChangeContextV1(effective_date="2026-08-28")
     reason = PublicGovernanceReasonV1(
         code="TEST_CODE",
         severity="WARNING",
@@ -239,7 +232,6 @@ def test_public_models_direct_instantiation_and_helpers():
         decision_id="00000000-0000-0000-0000-000000000000",
         decision="REVIEW",
         contract_id="orders",
-        context=context,
         breaking=True,
         required_version_bump="major",
         reason_codes=("DECIMAL_PRECISION_REDUCED",),
@@ -250,7 +242,7 @@ def test_public_models_direct_instantiation_and_helpers():
         changes=(change,),
     )
 
-    assert decision.context.effective_date == "2026-08-28"
+    assert not hasattr(decision, "context")
     assert decision.changes[0].evidence[0].source == "MERGE_CONFLICT"
     assert decision.changes[0].field == "physicalType"
     assert decision.validation.issues[0].details == {"key": "val"}
@@ -264,7 +256,6 @@ def test_public_literals_strict_validation():
             "decisionId": "test",
             "decision": "BANANA",  # Invalid decision
             "contractId": "orders",
-            "context": {"effectiveDate": "2026-01-01"},
             "breaking": False,
             "requiredVersionBump": "none",
             "reasonCodes": [],
@@ -281,7 +272,6 @@ def test_public_literals_strict_validation():
             "decisionId": "test",
             "decision": "ALLOW",
             "contractId": "orders",
-            "context": {"effectiveDate": "2026-01-01"},
             "breaking": False,
             "requiredVersionBump": "huge",  # Invalid bump
             "reasonCodes": [],
@@ -309,7 +299,6 @@ def test_public_literals_strict_validation():
             "decisionId": "test",
             "decision": "ALLOW",
             "contractId": "orders",
-            "context": {"effectiveDate": "2026-01-01"},
             "breaking": False,
             "requiredVersionBump": "patch",  # Invalid bump for v1
             "reasonCodes": [],
@@ -324,7 +313,7 @@ def test_public_literals_strict_validation():
 def test_public_decision_immutability_and_extra_forbid():
     """Public governance models are frozen and reject extra fields."""
     base = _make_contract()
-    decision = evaluate_governance_decision(base, base, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, base)
     public_dec = to_public_governance_decision(decision)
 
     # Immutability
@@ -338,7 +327,6 @@ def test_public_decision_immutability_and_extra_forbid():
             "decisionId": "test",
             "decision": "ALLOW",
             "contractId": "orders",
-            "context": {"effectiveDate": "2026-01-01"},
             "breaking": False,
             "requiredVersionBump": "none",
             "reasonCodes": [],
@@ -374,7 +362,6 @@ def test_public_decision_byte_level_determinism():
         decision_id="11111111-1111-1111-1111-111111111111",
         decision="REVIEW",
         contract_id="orders",
-        context=PublicChangeContextV1(effective_date="2026-01-01"),
         breaking=True,
         required_version_bump="major",
         reason_codes=("Z_CODE", "A_CODE"),
@@ -397,7 +384,6 @@ def test_public_decision_byte_level_determinism():
         decision_id="11111111-1111-1111-1111-111111111111",
         decision="REVIEW",
         contract_id="orders",
-        context=PublicChangeContextV1(effective_date="2026-01-01"),
         breaking=True,
         required_version_bump="major",
         reason_codes=("Z_CODE", "A_CODE"),
@@ -421,7 +407,7 @@ def test_public_decision_roundtrip_deserialization():
     cand = _make_contract()
     _get_schemas(cand)[0].properties[1].physicalType = "decimal(8,2)"
 
-    decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, cand)
     public_dec = to_public_governance_decision(decision)
 
     json_str = serialize_public_governance_decision(public_dec)
@@ -437,7 +423,7 @@ def test_golden_fixtures_match():
     """Verify golden JSON fixtures match projected decisions with exact string equality (read-only assertion)."""
     # 1. ALLOW clean
     base = _make_contract()
-    allow_dec = evaluate_governance_decision(base, base, context=TEST_CONTEXT)
+    allow_dec = evaluate_governance_decision(base, base)
     allow_pub = to_public_governance_decision(allow_dec)
     allow_json_str = serialize_public_governance_decision(allow_pub, indent=2) + "\n"
     expected_allow = (FIXTURES_DIR / "allow_clean_decision.json").read_text(encoding="utf-8")
@@ -446,7 +432,7 @@ def test_golden_fixtures_match():
     # 2. BREAKING review decimal
     cand_breaking = _make_contract()
     _get_schemas(cand_breaking)[0].properties[1].physicalType = "decimal(8,2)"
-    breaking_dec = evaluate_governance_decision(base, cand_breaking, context=TEST_CONTEXT)
+    breaking_dec = evaluate_governance_decision(base, cand_breaking)
     breaking_pub = to_public_governance_decision(breaking_dec)
     breaking_json_str = serialize_public_governance_decision(breaking_pub, indent=2) + "\n"
     expected_breaking = (FIXTURES_DIR / "breaking_review_decision.json").read_text(encoding="utf-8")
@@ -457,7 +443,7 @@ def test_golden_fixtures_match():
     _get_schemas(cand_deprecate)[0].properties[1].customProperties = [
         CustomProperty(property="lifecycleStatus", value="deprecated")
     ]
-    review_dec = evaluate_governance_decision(base, cand_deprecate, context=TEST_CONTEXT)
+    review_dec = evaluate_governance_decision(base, cand_deprecate)
     review_pub = to_public_governance_decision(review_dec)
     review_json_str = serialize_public_governance_decision(review_pub, indent=2) + "\n"
     expected_review = (FIXTURES_DIR / "review_deprecate_decision.json").read_text(encoding="utf-8")
@@ -467,7 +453,7 @@ def test_golden_fixtures_match():
     base_retired = _make_contract(status="retired")
     cand_retired = _make_contract(status="retired")
     _get_schemas(cand_retired)[0].properties[1].description = "Retired update"
-    retired_dec = evaluate_governance_decision(base_retired, cand_retired, context=TEST_CONTEXT)
+    retired_dec = evaluate_governance_decision(base_retired, cand_retired)
     retired_pub = to_public_governance_decision(retired_dec)
     retired_json_str = serialize_public_governance_decision(retired_pub, indent=2) + "\n"
     expected_retired = (FIXTURES_DIR / "block_retired_decision.json").read_text(encoding="utf-8")
@@ -478,7 +464,7 @@ def test_golden_fixtures_match():
     _get_schemas(cand_invalid)[0].properties.append(
         SchemaProperty(name="", logicalType="string", physicalType="", required=True)
     )
-    invalid_dec = evaluate_governance_decision(base, cand_invalid, context=TEST_CONTEXT)
+    invalid_dec = evaluate_governance_decision(base, cand_invalid)
     invalid_pub = to_public_governance_decision(invalid_dec)
     invalid_json_str = serialize_public_governance_decision(invalid_pub, indent=2) + "\n"
     expected_invalid = (FIXTURES_DIR / "block_validation_decision.json").read_text(encoding="utf-8")
