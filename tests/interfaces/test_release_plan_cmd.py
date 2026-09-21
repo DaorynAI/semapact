@@ -92,15 +92,17 @@ def test_main_routes_release_plan_to_release_command_adapter(
     assert json.loads(capsys.readouterr().out) == expected
 
 
-def test_legacy_release_helpers_are_labeled_as_compatibility_paths() -> None:
-    help_text = cli._build_parser().format_help()
-    release_parser = cli._build_parser()._subparsers._group_actions[0].choices["release"]
-    release_help = release_parser.format_help()
+@pytest.mark.parametrize(
+    "unsupported_command",
+    ["prepare", "create-pr"],
+)
+def test_removed_release_commands_are_not_registered(unsupported_command: str) -> None:
+    parser = cli._build_parser()
 
-    assert "release" in help_text
-    assert "Compatibility helper" in release_help
-    assert "Compatibility Git workflow" in release_help
+    with pytest.raises(SystemExit) as exc:
+        parser.parse_args(["release", unsupported_command])
 
+    assert exc.value.code == 2
 
 
 def test_release_parser_exposes_assess_approve_finalize() -> None:
