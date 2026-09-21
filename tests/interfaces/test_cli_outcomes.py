@@ -6,7 +6,7 @@ import pytest
 
 
 from semapact.change_context import ChangeContext
-from semapact.core.release import RequiredBump
+from semapact.versioning import RequiredBump
 from semapact.exceptions import (
     GovernanceBlockedError,
     GovernanceReviewRequiredError,
