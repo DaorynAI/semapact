@@ -55,7 +55,7 @@ The orchestration above is provider-neutral. Platform packages configure or impl
 
 A `DeploymentPlan` is a deterministic, provider-neutral statement of the runtime state that one exact deployment source intends to converge toward.
 
-Canonical plans are v5 and bind only the immutable `DeploymentSourceSnapshot` plus the target-specific convergence actions. Release provenance and candidate-versus-release mode live only in the source snapshot; they are not duplicated in `DeploymentPlan`. Older deployment-plan shapes are not part of the supported model.
+Canonical plans use schema version 1 and bind only the immutable `DeploymentSourceSnapshot` plus target-specific convergence actions. Release provenance and candidate-versus-release mode live only in the source snapshot; they are not duplicated in `DeploymentPlan`.
 
 The initial action vocabulary deliberately contains only:
 
