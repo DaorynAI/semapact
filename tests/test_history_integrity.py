@@ -76,9 +76,6 @@ def _evolution_service(backend: GitWorkingTreeHistoryRepository) -> EvolutionCha
         decisions=backend,
         decision_links=backend,
         releases=backend,
-        deployments=backend,
-        observations=backend,
-        runtime_reconciliations=backend,
     )
 
 
