@@ -205,6 +205,7 @@ def test_data_product_sample_command_chain_executes_end_to_end(
     candidate_bundle = tmp_path / "candidate.deployment.bundle.json"
     release_bundle = tmp_path / "release.bundle.json"
     released_contract = tmp_path / "released.yaml"
+    approval_artifact = tmp_path / "release.approval.json"
     release_artifact = tmp_path / "contract-release.json"
     production_bundle = tmp_path / "production.deployment.bundle.json"
 
@@ -282,10 +283,13 @@ def test_data_product_sample_command_chain_executes_end_to_end(
         "github-environment:contract-release/run:1",
         "--recorded-at",
         "2026-09-21T04:00:00Z",
+        "--approval-out",
+        str(approval_artifact),
         "--repository-root",
         str(tmp_path),
     )
     assert code == 0
+    assert approval_artifact.is_file()
 
     # Finalization materializes ODCS and emits the immutable ContractRelease artifact.
     code, finalize_output = _run_cli(
@@ -295,6 +299,8 @@ def test_data_product_sample_command_chain_executes_end_to_end(
         "finalize",
         "--bundle",
         str(release_bundle),
+        "--approval",
+        str(approval_artifact),
         "--output-contract",
         str(released_contract),
         "--release-out",
@@ -413,6 +419,7 @@ def test_central_repo_sample_fans_out_distinct_release_artifacts(
         base_path = base_root / relative_path
         candidate_path = candidate_root / relative_path
         release_bundle = tmp_path / "release-bundles" / f"{artifact_key}.json"
+        approval_artifact = tmp_path / "finalized" / f"{artifact_key}.approval.json"
         release_artifact = tmp_path / "finalized" / f"{artifact_key}.json"
         deployment_bundle = tmp_path / "deploy" / f"{artifact_key}.json"
 
@@ -445,10 +452,13 @@ def test_central_repo_sample_fans_out_distinct_release_artifacts(
             "github-environment:contract-release/run:central",
             "--recorded-at",
             "2026-09-21T04:00:00Z",
+            "--approval-out",
+            str(approval_artifact),
             "--repository-root",
             str(tmp_path),
         )
         assert code == 0
+        assert approval_artifact.is_file()
 
         code, finalize_output = _run_cli(
             monkeypatch,
@@ -457,6 +467,8 @@ def test_central_repo_sample_fans_out_distinct_release_artifacts(
             "finalize",
             "--bundle",
             str(release_bundle),
+            "--approval",
+            str(approval_artifact),
             "--output-contract",
             str(candidate_path),
             "--release-out",
