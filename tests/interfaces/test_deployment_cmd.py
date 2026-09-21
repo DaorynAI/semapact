@@ -86,7 +86,7 @@ def test_deployment_parser_exposes_candidate_and_finalized_release_modes() -> No
 
 
 @pytest.mark.parametrize(
-    "legacy_args",
+    "unsupported_args",
     [
         ["deployment", "plan"],
         ["deployment", "preview"],
@@ -96,11 +96,11 @@ def test_deployment_parser_exposes_candidate_and_finalized_release_modes() -> No
         ["deployment", "assess", "--release"],
     ],
 )
-def test_legacy_deployment_cli_surfaces_are_not_public(legacy_args) -> None:
+def test_only_bundle_deployment_cli_surface_is_public(unsupported_args) -> None:
     parser = cli._build_parser()
 
     with pytest.raises(SystemExit) as exc:
-        parser.parse_args(legacy_args)
+        parser.parse_args(unsupported_args)
 
     assert exc.value.code == 2
 
