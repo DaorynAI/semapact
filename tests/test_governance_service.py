@@ -62,14 +62,10 @@ def _custom_property_value(entity: object, key: str) -> str | None:
     return None
 
 
-def test_governance_service_constructs_context_from_request_value() -> None:
-    decision = GovernanceService().evaluate(
-        _contract(),
-        _contract(),
-        effective_date="2026-08-13",
-    )
+def test_governance_service_evaluation_has_no_business_date_context() -> None:
+    decision = GovernanceService().evaluate(_contract(), _contract())
 
-    assert decision.context.effective_date == date(2026, 8, 13)
+    assert not hasattr(decision, "context")
 
 
 def test_governance_service_reuses_context_for_merge_and_evaluation() -> None:
@@ -88,8 +84,8 @@ def test_governance_service_reuses_context_for_merge_and_evaluation() -> None:
         if prop.name == "legacy_col"
     )
 
-    assert analysis.decision.context == analysis.context
     assert analysis.context.effective_date == date(2026, 8, 13)
+    assert not hasattr(analysis.decision, "context")
     assert _custom_property_value(merged_property, "deprecationDate") == "2026-08-13"
 
 
