@@ -147,7 +147,7 @@ def test_release_snapshot_fails_closed_when_candidate_version_drifted() -> None:
         )
 
 
-def test_release_snapshot_rejects_noncanonical_semver_input() -> None:
+def test_release_snapshot_rejects_tampered_version_resolution() -> None:
     candidate, decision, change_set, release_plan, version_resolution = (
         _release_context()
     )
@@ -155,7 +155,7 @@ def test_release_snapshot_rejects_noncanonical_semver_input() -> None:
         update={"selected_version": "v1.0.1"}
     )
 
-    with pytest.raises(ReleaseValidationError, match="canonical"):
+    with pytest.raises(ReleaseValidationError, match="deterministic identity"):
         build_release_snapshot(
             candidate,
             candidate_revision_ref="rev:candidate",
