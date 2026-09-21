@@ -14,7 +14,8 @@ from semapact.devops.audit import AuditMetadata
 from semapact.lifecycle.merge_engine import MergeConflict, MergeResult
 from semapact.lifecycle.policy import BreakingChange, PolicyEvaluation
 from semapact.exceptions import GovernanceBlockedError
-from semapact.governance import ChangeContext, GovernanceGateResult
+from semapact.change_context import ChangeContext
+from semapact.governance import GovernanceGateResult
 from semapact.orchestrator.pipeline import ContractPipeline
 from deltalake import write_deltalake
 
@@ -137,7 +138,6 @@ def test_pipeline_prepare_ci_cd_artifacts_writes_manifest_and_outputs(
     decision = evaluate_governance_decision(
         merged_contract,
         merged_contract,
-        context=TEST_CONTEXT,
     )
 
     artifacts = pipeline.prepare_ci_cd_artifacts(
