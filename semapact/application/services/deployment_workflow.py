@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Literal
 
 from open_data_contract_standard.model import OpenDataContractStandard
@@ -49,7 +49,6 @@ class DeploymentWorkflowService:
         base_contract: OpenDataContractStandard,
         candidate_contract: OpenDataContractStandard,
         *,
-        effective_date: date | str,
         base_revision_ref: str,
         candidate_revision_ref: str,
         target: DeploymentTarget,
@@ -59,7 +58,6 @@ class DeploymentWorkflowService:
         proposal = self._governance.evaluate_proposal(
             base_contract,
             candidate_contract,
-            effective_date=effective_date,
             base_revision_ref=base_revision_ref,
             candidate_revision_ref=candidate_revision_ref,
         )
