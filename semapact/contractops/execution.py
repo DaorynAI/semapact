@@ -93,3 +93,17 @@ def build_release_snapshot(
         selected_version=selected_version,
         released_contract_json=released_contract_json,
     )
+
+
+def _canonical_version(version: str, *, field_name: str) -> str:
+    try:
+        canonical = normalize_semver(version)
+    except ValueError as exc:
+        raise ReleaseValidationError(
+            f"{field_name} is not valid semantic version"
+        ) from exc
+    if canonical != str(version).strip():
+        raise ReleaseValidationError(
+            f"{field_name} must use canonical major.minor.patch form"
+        )
+    return canonical
