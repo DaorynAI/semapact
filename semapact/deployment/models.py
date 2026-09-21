@@ -1,4 +1,4 @@
-"""Provider-neutral immutable deployment planning, preview, and authorization artifacts."""
+"""Provider-neutral immutable deployment planning and preview artifacts."""
 
 from __future__ import annotations
 
