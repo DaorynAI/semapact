@@ -29,7 +29,10 @@ from semapact.deployment import (
     DeploymentPlan,
     DeploymentPreview,
     DeploymentTarget,
-    authorize_deployment,
+)
+from semapact.deployment.compatibility import (
+    authorize_legacy_deployment,
+    build_legacy_deployment_plan,
 )
 from semapact.deployment.models import (
     NativeOperationKind,
@@ -319,8 +322,8 @@ def _workflow(
 ):
     release_context = _release_context(*properties)
     service = DeploymentService()
-    plan = service.plan(release_context.release, _target())
-    authorization = authorize_deployment(
+    plan = build_legacy_deployment_plan(release_context.release, _target())
+    authorization = authorize_legacy_deployment(
         plan,
         release_context.release,
         release_context.deploy_authorization,
