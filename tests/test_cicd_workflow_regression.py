@@ -147,7 +147,11 @@ def _server(name: str, schema_name: str) -> Server:
     )
 
 
-def _contract(\n    *,\n    contract_id: str = "orders-product",\n    include_created_at: bool = False,\n) -> OpenDataContractStandard:
+def _contract(
+    *,
+    contract_id: str = "orders-product",
+    include_created_at: bool = False,
+) -> OpenDataContractStandard:
     properties = [
         SchemaProperty(
             name="id",
