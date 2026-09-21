@@ -6,7 +6,7 @@ import json
 from typing import Any, Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, JsonValue
 
-from semapact.core.release import RequiredBump
+from semapact.versioning import RequiredBump
 from semapact.governance.models import (
     DecisionResult,
     GovernanceDecision,
