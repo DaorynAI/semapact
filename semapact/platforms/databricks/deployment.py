@@ -248,8 +248,8 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
         statement = (
             "SELECT tag_name, tag_value "
             f"FROM `{catalog}`.information_schema.table_tags "
-            f"WHERE schema_name = {_sql_string(schema_name)} "
-            f"AND table_name = {_sql_string(table_name)} "
+            f"WHERE schema_name = {_sql_string(schema_name.casefold())} "
+            f"AND table_name = {_sql_string(table_name.casefold())} "
             f"AND tag_name IN ({keys})"
         )
         current: dict[str, str] = {}
