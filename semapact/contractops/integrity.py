@@ -14,9 +14,7 @@ from collections.abc import Sequence
 
 from semapact.change_context import ChangeContext
 from semapact.contractops.execution_models import (
-    AppliedContractRelease,
     ContractRelease,
-    PublicationResult,
     ReleaseSnapshot,
 )
 from semapact.contractops.models import (
@@ -45,14 +43,8 @@ SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE = uuid.UUID(
 SEMAPACT_RELEASE_SNAPSHOT_NAMESPACE = uuid.UUID(
     "d4248396-5ec7-4e6a-a238-b2db1abf76e8"
 )
-SEMAPACT_APPLIED_RELEASE_NAMESPACE = uuid.UUID(
-    "a5de2e65-aee7-48ac-9cb6-6a785f4cdf33"
-)
 SEMAPACT_CONTRACT_RELEASE_NAMESPACE = uuid.UUID(
     "0f95c8c5-4957-43f7-a38c-2756605c2df6"
-)
-SEMAPACT_PUBLICATION_NAMESPACE = uuid.UUID(
-    "f776fc77-b37f-43ef-bf6d-d8dcf38d264f"
 )
 
 
@@ -73,12 +65,8 @@ def validate_contractops_artifact_identity(artifact: object) -> None:
         validate_contractops_authorization_identity(artifact)
     elif isinstance(artifact, ReleaseSnapshot):
         validate_release_snapshot_identity(artifact)
-    elif isinstance(artifact, AppliedContractRelease):
-        validate_applied_release_identity(artifact)
     elif isinstance(artifact, ContractRelease):
         validate_contract_release_identity(artifact)
-    elif isinstance(artifact, PublicationResult):
-        validate_publication_result_identity(artifact)
 
 
 def compute_change_set_id(
@@ -217,10 +205,7 @@ def compute_contractops_authorization_id(
         "evidence_reference": evidence_reference,
         "evidence_action": evidence_action,
     }
-    # Compatibility invariant: scope_reference did not participate in pre-#122 IDs
-    # when it was absent. Keep that byte-for-byte behavior.
-    if scope_reference is not None:
-        payload["scope_reference"] = scope_reference
+    payload["scope_reference"] = scope_reference
     return deterministic_uuid5(SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE, payload)
 
 
@@ -289,48 +274,6 @@ def validate_release_snapshot_identity(snapshot: ReleaseSnapshot) -> None:
     _require_identity(snapshot.release_snapshot_id, expected, "ReleaseSnapshot")
 
 
-def compute_applied_release_id(
-    *,
-    contract_id: str,
-    decision_id: str,
-    change_set_id: str,
-    release_plan_id: str,
-    version_resolution_id: str,
-    release_revision_ref: str,
-    selected_version: str,
-    authorization_id: str,
-    released_contract_json: str,
-) -> str:
-    payload = {
-        "contract_id": contract_id,
-        "decision_id": decision_id,
-        "change_set_id": change_set_id,
-        "release_plan_id": release_plan_id,
-        "version_resolution_id": version_resolution_id,
-        "release_revision_ref": release_revision_ref,
-        "selected_version": selected_version,
-        "authorization_id": authorization_id,
-        "released_contract_json": released_contract_json,
-    }
-    return deterministic_uuid5(SEMAPACT_APPLIED_RELEASE_NAMESPACE, payload)
-
-
-def validate_applied_release_identity(release: AppliedContractRelease) -> None:
-    _require_canonical_json(release.released_contract_json, "AppliedContractRelease snapshot")
-    expected = compute_applied_release_id(
-        contract_id=release.contract_id,
-        decision_id=release.decision_id,
-        change_set_id=release.change_set_id,
-        release_plan_id=release.release_plan_id,
-        version_resolution_id=release.version_resolution_id,
-        release_revision_ref=release.release_revision_ref,
-        selected_version=release.selected_version,
-        authorization_id=release.authorization_id,
-        released_contract_json=release.released_contract_json,
-    )
-    _require_identity(release.applied_release_id, expected, "AppliedContractRelease")
-
-
 def compute_contract_release_id(
     *,
     contract_id: str,
@@ -378,31 +321,6 @@ def validate_contract_release_identity(release: ContractRelease) -> None:
         released_contract_json=release.released_contract_json,
     )
     _require_identity(release.contract_release_id, expected, "ContractRelease")
-
-
-def compute_publication_id(
-    *,
-    applied_release_id: str,
-    authorization_id: str,
-    publication_reference: str,
-) -> str:
-    return deterministic_uuid5(
-        SEMAPACT_PUBLICATION_NAMESPACE,
-        {
-            "applied_release_id": applied_release_id,
-            "authorization_id": authorization_id,
-            "publication_reference": publication_reference,
-        },
-    )
-
-
-def validate_publication_result_identity(result: PublicationResult) -> None:
-    expected = compute_publication_id(
-        applied_release_id=result.applied_release_id,
-        authorization_id=result.authorization_id,
-        publication_reference=result.publication_reference,
-    )
-    _require_identity(result.publication_id, expected, "PublicationResult")
 
 
 def _require_identity(actual: str, expected: str, artifact: str) -> None:
