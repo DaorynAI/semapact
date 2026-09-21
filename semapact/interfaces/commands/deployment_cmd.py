@@ -111,7 +111,6 @@ def run_deployment_assess(args: argparse.Namespace) -> DeploymentCommandResult:
         bundle = service.assess(
             base_contract,
             candidate_contract,
-            effective_date=args.effective_date,
             base_revision_ref=args.base_revision_ref,
             candidate_revision_ref=args.candidate_revision_ref,
             target=target,
@@ -190,7 +189,6 @@ def _require_candidate_args(args: argparse.Namespace) -> None:
         "--candidate": args.candidate,
         "--base-revision-ref": args.base_revision_ref,
         "--candidate-revision-ref": args.candidate_revision_ref,
-        "--effective-date": args.effective_date,
     }
     missing = [name for name, value in required.items() if not value]
     if missing:
@@ -207,7 +205,6 @@ def _reject_candidate_args_for_release(args: argparse.Namespace) -> None:
             ("--candidate", args.candidate),
             ("--base-revision-ref", args.base_revision_ref),
             ("--candidate-revision-ref", args.candidate_revision_ref),
-            ("--effective-date", args.effective_date),
         )
         if value
     ]
