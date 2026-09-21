@@ -25,7 +25,7 @@ from semapact.deployment.models import (
 from semapact.exceptions import ValidationError
 from semapact.observation import ObservedPlatformState, with_observed_state_fingerprint
 from semapact.reconciliation import ReconciliationResult
-from semapact.services.deployment_service import DeploymentService
+from semapact.application.services.deployment import DeploymentService
 
 CAPTURED_AT = datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc)
 SOURCE_REFERENCE = "https://adb.example"
