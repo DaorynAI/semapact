@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from semapact.contractops import AppliedContractRelease, ReleaseSnapshot
 from semapact.deployment import (
     DeploymentAdapter,
     DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
     DeploymentSourceSnapshot,
-    DeploymentTarget,
-    build_deployment_plan,
+    DeploymentTarget
     build_deployment_plan_from_source,
 )
 from semapact.deployment.models import validate_deployment_authorization_identity
@@ -23,12 +21,10 @@ class DeploymentService:
 
     def plan(
         self,
-        release: ReleaseSnapshot | AppliedContractRelease | DeploymentSourceSnapshot,
+        source: DeploymentSourceSnapshot,
         target: DeploymentTarget,
     ) -> DeploymentPlan:
-        if isinstance(release, DeploymentSourceSnapshot):
-            return build_deployment_plan_from_source(release, target)
-        return build_deployment_plan(release, target)
+        return build_deployment_plan_from_source(source, target)
 
     def preview(
         self,
