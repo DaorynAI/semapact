@@ -7,7 +7,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from semapact.change_context import ChangeContext
 from semapact.governance.gate import GovernanceOperation
 from semapact.lifecycle.changes import GovernanceChange
 from semapact.versioning import ActualVersionBump, RequiredBump
@@ -39,7 +38,6 @@ class ChangeSet(ContractOpsModel):
     base_revision_ref: str
     candidate_revision_ref: str
     changes: tuple[GovernanceChange, ...]
-    context: ChangeContext
     source: str | None = None
     actor_reference: str | None = None
 
