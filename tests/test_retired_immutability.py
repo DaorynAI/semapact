@@ -361,6 +361,7 @@ class TestRetiredMutationBoundaries:
             business=str(base_path),
             output=str(out_path),
             runtime_context="auto",
+            effective_date="2026-08-14",
         )
 
         with pytest.raises(GovernanceBlockedError) as exc_info:
@@ -565,7 +566,6 @@ class TestRetiredReadOnlyMatrix:
             base=str(base_path),
             candidate=str(cand_path),
             runtime_context="auto",
-            effective_date="2026-08-14",
         )
 
         result = run_release_classify(args)
