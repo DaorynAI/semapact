@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +116,8 @@ def repository_change_to_dict(change: RepositoryContractChange) -> dict[str, Any
     return {
         "contract_repo_path": change.contract_repo_path,
         "contractRepoPath": change.contract_repo_path,
+        "artifact_key": _artifact_key(change.contract_repo_path),
+        "artifactKey": _artifact_key(change.contract_repo_path),
         "status": change.status,
         "contract_id": change.contract_id,
         "contractId": change.contract_id,
@@ -139,3 +142,8 @@ def _relative_contract_index(root: Path) -> dict[str, Path]:
         str(path.relative_to(root)): path
         for path in (Path(item) for item in list_yaml_documents(root))
     }
+
+
+def _artifact_key(contract_repo_path: str) -> str:
+    """Return a collision-resistant filesystem/artifact key for one repo-relative path."""
+    return hashlib.sha256(contract_repo_path.encode("utf-8")).hexdigest()
