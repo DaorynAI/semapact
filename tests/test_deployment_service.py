@@ -24,11 +24,13 @@ from semapact.deployment.compatibility import (
     serialize_deployment_authorization_payload,
 )
 from semapact.deployment.models import (
+    SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE,
     compute_deployment_authorization_id,
     compute_deployment_plan_id,
     compute_deployment_preview_id,
 )
 from semapact.exceptions import ValidationError
+from semapact.utils.deterministic import deterministic_uuid5
 from semapact.observation import ObservedPlatformState, with_observed_state_fingerprint
 from semapact.reconciliation import ReconciliationResult
 from semapact.services.deployment_service import DeploymentService
@@ -194,14 +196,32 @@ def _authorization(plan: DeploymentPlan) -> DeploymentAuthorization:
 
 def test_legacy_authorization_wire_format_is_explicitly_adapted() -> None:
     plan = _plan()
-    authorization = _authorization(plan)
+    legacy_id = deterministic_uuid5(
+        SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE,
+        {
+            "contract_ops_authorization_id": "contractops-auth-1",
+            "deployment_plan_id": plan.deployment_plan_id,
+            "applied_release_id": plan.source_snapshot_id,
+            "allowed": True,
+        },
+    )
+    payload = {
+        "deployment_authorization_id": legacy_id,
+        "contract_ops_authorization_id": "contractops-auth-1",
+        "deployment_plan_id": plan.deployment_plan_id,
+        "applied_release_id": plan.source_snapshot_id,
+        "allowed": True,
+    }
 
-    payload = serialize_deployment_authorization_payload(authorization)
+    upgraded = parse_deployment_authorization_payload(payload)
 
-    assert payload["contract_ops_authorization_id"] == "contractops-auth-1"
-    assert payload["applied_release_id"] == plan.source_snapshot_id
-    assert "source_snapshot_id" not in payload
-    assert parse_deployment_authorization_payload(payload) == authorization
+    assert upgraded.authorization_version == "2"
+    assert upgraded.source_snapshot_id == plan.source_snapshot_id
+    assert upgraded.authorization_reference == "contractops-auth-1"
+    assert serialize_deployment_authorization_payload(upgraded) == upgraded.model_dump(
+        mode="json"
+    )
+    assert upgraded.deployment_authorization_id != legacy_id
 
 
 def test_preview_delegates_to_unified_adapter_entrypoint() -> None:
