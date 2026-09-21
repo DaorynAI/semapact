@@ -84,7 +84,7 @@ jobs:
         run: |
           MATRIX=$(jq -c '{include: [.contracts[]
             | select(.status == "changed")
-            | {contract_path: .contractRepoPath, artifact: (.contractRepoPath | gsub("[^A-Za-z0-9_-]"; "_"))}]}' artifacts/repository-changes.json)
+            | {contract_path: .contractRepoPath, artifact: .artifactKey}]}' artifacts/repository-changes.json)
           COUNT=$(echo "${MATRIX}" | jq '.include | length')
           echo "matrix=${MATRIX}" >> "${GITHUB_OUTPUT}"
           if [ "${COUNT}" -gt 0 ]; then
