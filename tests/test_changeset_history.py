@@ -46,13 +46,12 @@ def _contract(*, name: str) -> OpenDataContractStandard:
     )
 
 
-def _proposal(*, effective_date: str = "2026-09-12"):
+def _proposal(*, candidate_name: str = "Orders new"):
     base_revision = build_contract_revision(_contract(name="Orders old"))
-    candidate_revision = build_contract_revision(_contract(name="Orders new"))
+    candidate_revision = build_contract_revision(_contract(name=candidate_name))
     proposal = GovernanceService().evaluate_proposal(
         base_revision.contract,
         candidate_revision.contract,
-        effective_date=effective_date,
         base_revision_ref=base_revision.revision_id,
         candidate_revision_ref=candidate_revision.revision_id,
         source="test",
@@ -108,12 +107,12 @@ def test_records_exact_proposal_chain_without_recomputing_domain_artifacts(
     assert link.decision_id == proposal.decision.decision_id
 
 
-def test_changeset_context_round_trips_and_different_contexts_do_not_overwrite(
+def test_repeated_proposal_evaluation_reuses_same_history_identity(
     tmp_path: Path,
 ) -> None:
     service, backend = _service(tmp_path)
-    first, first_base, first_candidate = _proposal(effective_date="2026-09-12")
-    second, second_base, second_candidate = _proposal(effective_date="2026-09-13")
+    first, first_base, first_candidate = _proposal()
+    second, second_base, second_candidate = _proposal()
 
     service.record_proposal(
         first,
@@ -126,10 +125,10 @@ def test_changeset_context_round_trips_and_different_contexts_do_not_overwrite(
         candidate_revision=second_candidate,
     )
 
-    assert first.change_set.change_set_id != second.change_set.change_set_id
-    assert backend.get_change_set(first.change_set.change_set_id).context == first.change_set.context
-    assert backend.get_change_set(second.change_set.change_set_id).context == second.change_set.context
-    assert len(backend.list_change_sets("orders-product")) == 2
+    assert first.change_set.change_set_id == second.change_set.change_set_id
+    assert first.decision.decision_id == second.decision.decision_id
+    assert len(backend.list_change_sets("orders-product")) == 1
+    assert len(backend.list_decisions("orders-product")) == 1
 
 
 def test_rejects_changeset_that_does_not_reference_exact_contract_revisions(
@@ -143,7 +142,6 @@ def test_rejects_changeset_that_does_not_reference_exact_contract_revisions(
         base_revision_ref="git:base",
         candidate_revision_ref=original.candidate_revision_ref,
         changes=original.changes,
-        context=original.context,
         source=original.source,
         actor_reference=original.actor_reference,
     )
@@ -162,13 +160,13 @@ def test_rejects_decision_that_is_not_the_outcome_of_the_changeset(
 ) -> None:
     service, _ = _service(tmp_path)
     proposal, base_revision, candidate_revision = _proposal()
-    other, _, _ = _proposal(effective_date="2026-09-13")
+    other, _, _ = _proposal(candidate_name="Orders other")
     broken_proposal = proposal.__class__(
         change_set=proposal.change_set,
         decision=other.decision,
     )
 
-    with pytest.raises(ValueError, match="context"):
+    with pytest.raises(ValueError, match="changes"):
         service.record_proposal(
             broken_proposal,
             base_revision=base_revision,
