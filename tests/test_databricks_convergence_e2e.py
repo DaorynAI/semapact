@@ -606,7 +606,7 @@ def test_denied_deployment_authorization_fails_before_native_mutation() -> None:
                     workflow.authorization.contract_ops_authorization_id
                 ),
                 deployment_plan_id=workflow.plan.deployment_plan_id,
-                applied_release_id=workflow.plan.applied_release_id,
+                source_snapshot_id=workflow.plan.source_snapshot_id,
                 allowed=False,
             ),
         }
