@@ -66,7 +66,6 @@ jobs:
           semapact release classify-repo \
             --base-root "/tmp/semapact-base/${CONTRACT_ROOT}" \
             --candidate-root "${CONTRACT_ROOT}" \
-            --effective-date "$(date -u +%F)" \
             > artifacts/repository-changes.json
           cat artifacts/repository-changes.json
 
@@ -142,7 +141,6 @@ jobs:
             --candidate "${CONTRACT_ROOT}/${CONTRACT_PATH}" \
             --base-revision-ref "git:${BASE_SHA}" \
             --candidate-revision-ref "git:${CANDIDATE_SHA}" \
-            --effective-date "$(date -u +%F)" \
             --server "${DEV_SERVER}" \
             --bundle-out "artifacts/${ARTIFACT}.candidate.deployment.bundle.json"
 
@@ -193,7 +191,6 @@ jobs:
             --candidate "${CONTRACT_ROOT}/${CONTRACT_PATH}" \
             --base-revision-ref "git:${BASE_SHA}" \
             --candidate-revision-ref "git:${CANDIDATE_SHA}" \
-            --effective-date "$(date -u +%F)" \
             --bundle-out "artifacts/${ARTIFACT}.release.bundle.json"
 
       - name: Upload exact release bundle
