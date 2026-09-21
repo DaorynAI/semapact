@@ -66,7 +66,7 @@ class DeploymentHistoryService:
 
         release = self._releases.get_release_record_by_version(
             plan.contract_id,
-            plan.selected_version,
+            plan.contract_version,
         )
         _validate_release_link(release, plan)
         _validate_preview_link(preview, plan)
@@ -140,9 +140,8 @@ def _validate_types(
 def _validate_release_link(release: ReleaseRecord, plan: DeploymentPlan) -> None:
     if (
         release.contract_id != plan.contract_id
-        or release.contract_version != plan.selected_version
-        or release.release_plan_id != plan.release_plan_id
-        or release.applied_release_id != plan.applied_release_id
+        or release.contract_version != plan.contract_version
+        or release.applied_release_id != plan.source_snapshot_id
     ):
         raise ValueError("DeploymentPlan does not match the finalized ReleaseRecord")
 
@@ -166,9 +165,9 @@ def _validate_authorization_link(
         raise ValueError(
             "DeploymentAuthorization does not reference the supplied DeploymentPlan"
         )
-    if authorization.applied_release_id != plan.applied_release_id:
+    if authorization.source_snapshot_id != plan.source_snapshot_id:
         raise ValueError(
-            "DeploymentAuthorization does not reference the plan's applied release"
+            "DeploymentAuthorization does not reference the plan source snapshot"
         )
     if not authorization.allowed:
         raise ValueError("deployment history requires an allowed DeploymentAuthorization")
