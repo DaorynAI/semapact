@@ -321,6 +321,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     release_finalize_parser.add_argument("--bundle", required=True)
     release_finalize_parser.add_argument(
+        "--approval",
+        help=(
+            "Exact ApprovalRecord JSON artifact for a REVIEW release. "
+            "When omitted, SemaPact may resolve approval from the Git governance ledger."
+        ),
+    )
+    release_finalize_parser.add_argument(
         "--output-contract",
         required=True,
         help="Write the exact released/versioned ODCS contract to this path",
