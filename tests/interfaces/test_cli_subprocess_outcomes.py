@@ -142,8 +142,6 @@ def test_subprocess_analyze_release_classify_allow(active_contract_yaml: Path):
         str(active_contract_yaml),
         "--candidate",
         str(active_contract_yaml),
-        "--effective-date",
-        "2026-08-29",
     )
     assert res.returncode == 0
     payload = json.loads(res.stdout)
@@ -163,8 +161,6 @@ def test_subprocess_analyze_release_classify_review(
         str(active_contract_yaml),
         "--candidate",
         str(review_candidate_yaml),
-        "--effective-date",
-        "2026-08-29",
     )
     assert res.returncode == 0
     payload = json.loads(res.stdout)
@@ -184,8 +180,6 @@ def test_subprocess_analyze_release_classify_block(
         str(retired_contract_yaml),
         "--candidate",
         str(review_candidate_yaml),
-        "--effective-date",
-        "2026-08-29",
     )
     assert res.returncode == 0
     payload = json.loads(res.stdout)
@@ -293,8 +287,6 @@ def test_subprocess_validation_failed_on_invalid_contract(
         str(invalid_contract_yaml),
         "--candidate",
         str(active_contract_yaml),
-        "--effective-date",
-        "2026-08-29",
     )
     assert res.returncode == 2
     assert "❌" in res.stderr
@@ -313,8 +305,6 @@ def test_subprocess_runtime_error_on_missing_file(active_contract_yaml: Path):
         "/nonexistent/path/contract.yaml",
         "--candidate",
         str(active_contract_yaml),
-        "--effective-date",
-        "2026-08-29",
     )
     # File not found error is a runtime execution failure
     assert res.returncode == 5
