@@ -381,45 +381,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_effective_date_argument(release_build_manifest_parser)
 
-    release_prepare_parser = release_subparsers.add_parser(
-        "prepare",
-        help="Compatibility helper: prepare a candidate using an explicit release tag",
-    )
-    release_prepare_parser.add_argument("--base", required=True)
-    release_prepare_parser.add_argument("--candidate", required=True)
-    release_prepare_parser.add_argument("--release-tag", required=True)
-    release_prepare_parser.add_argument("--output", required=True)
-    release_prepare_parser.add_argument("--runtime-context", default="auto")
-    _add_effective_date_argument(release_prepare_parser)
 
-    release_pr_parser = release_subparsers.add_parser(
-        "create-pr",
-        help="Compatibility Git workflow: prepare a candidate and open a release PR",
-    )
-    release_pr_parser.add_argument("--base", required=True)
-    release_pr_parser.add_argument("--candidate", required=True)
-    release_pr_parser.add_argument("--release-tag", required=True)
-    release_pr_parser.add_argument("--repo-path", help="Local repository path")
-    release_pr_parser.add_argument("--contract-path", required=True)
-    release_pr_parser.add_argument("--source-branch", required=True)
-    release_pr_parser.add_argument("--target-branch", required=True)
-    release_pr_parser.add_argument(
-        "--git-provider",
-        choices=["azure", "github"],
-    )
-    release_pr_parser.add_argument("--organization")
-    release_pr_parser.add_argument("--github-owner")
-    release_pr_parser.add_argument("--github-repo")
-    release_pr_parser.add_argument("--github-token")
-    release_pr_parser.add_argument("--project")
-    release_pr_parser.add_argument("--repository-id")
-    release_pr_parser.add_argument("--pat-token")
-    release_pr_parser.add_argument("--title")
-    release_pr_parser.add_argument("--description")
-    release_pr_parser.add_argument("--commit-message")
-    release_pr_parser.add_argument("--push", action="store_true")
-    release_pr_parser.add_argument("--runtime-context", default="auto")
-    _add_effective_date_argument(release_pr_parser)
 
     release_prs_parser = release_subparsers.add_parser(
         "create-prs",
@@ -731,11 +693,9 @@ def main() -> int:
                 run_release_build_manifest,
                 run_release_classify,
                 run_release_classify_repo,
-                run_release_create_pr,
                 run_release_create_prs,
                 run_release_finalize,
                 run_release_plan,
-                run_release_prepare,
             )
             if args.release_command == "assess":
                 payload = run_release_assess(args)
@@ -763,14 +723,6 @@ def main() -> int:
                 return 0
             if args.release_command == "build-manifest":
                 payload = run_release_build_manifest(args)
-                print(json.dumps(payload, indent=2, sort_keys=True))
-                return 0
-            if args.release_command == "prepare":
-                payload = run_release_prepare(args)
-                print(json.dumps(payload, indent=2, sort_keys=True))
-                return 0
-            if args.release_command == "create-pr":
-                payload = run_release_create_pr(args)
                 print(json.dumps(payload, indent=2, sort_keys=True))
                 return 0
             if args.release_command == "create-prs":
