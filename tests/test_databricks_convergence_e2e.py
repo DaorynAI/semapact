@@ -17,30 +17,14 @@ from open_data_contract_standard.model import (
 from semapact.application.services.deployment import DeploymentService
 from semapact.application.services.deployment_workflow import DeploymentWorkflowService
 from semapact.change_context import ChangeContext
-from semapact.contractops import (
-    apply_contract_release,
-    authorize_contract_operation,
-    build_change_set_from_decision,
-    build_release_plan,
-    resolve_release_version,
-    VersionAuthorityConfig,
-)
 from semapact.deployment import (
     DeploymentPlan,
     DeploymentPreview,
     DeploymentTarget,
+    build_candidate_deployment_source,
 )
-from semapact.deployment.compatibility import (
-    authorize_legacy_deployment,
-    build_legacy_deployment_plan,
-)
-from semapact.deployment.models import (
-    NativeOperationKind,
-    compute_deployment_authorization_id,
-)
-from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
-from semapact.governance import DecisionResult, evaluate_governance_decision
-from semapact.governance.gate import GovernanceOperation
+from semapact.deployment.models import NativeOperationKind
+from semapact.exceptions import ValidationError
 from semapact.interfaces.commands import deployment_cmd
 from semapact.observation.fingerprint import with_observed_state_fingerprint
 from semapact.observation.models import (
@@ -98,53 +82,6 @@ def _contract(
         ],
     )
 
-
-def _release_context(*properties: SchemaProperty):
-    base = _contract(*properties, name="orders-old")
-    candidate = _contract(*properties, name="orders-new")
-    decision = evaluate_governance_decision(base, candidate, context=_CONTEXT)
-    assert decision.decision is DecisionResult.ALLOW
-
-    change_set = build_change_set_from_decision(
-        decision,
-        base_revision_ref="git:base",
-        candidate_revision_ref="git:candidate",
-        source="databricks-convergence-golden",
-        actor_reference="service:ci",
-    )
-    release_plan = build_release_plan(change_set, decision)
-    version_resolution = resolve_release_version(
-        release_plan,
-        current_version="1.0.0",
-        config=VersionAuthorityConfig(),
-    )
-    apply_authorization = authorize_contract_operation(
-        decision,
-        change_set,
-        release_plan,
-        version_resolution,
-        GovernanceOperation.APPLY,
-    )
-    release = apply_contract_release(
-        candidate,
-        candidate_revision_ref="git:candidate",
-        decision=decision,
-        change_set=change_set,
-        release_plan=release_plan,
-        version_resolution=version_resolution,
-        authorization=apply_authorization,
-    )
-    deploy_authorization = authorize_contract_operation(
-        decision,
-        change_set,
-        release_plan,
-        version_resolution,
-        GovernanceOperation.DEPLOY,
-    )
-    return SimpleNamespace(
-        release=release,
-        deploy_authorization=deploy_authorization,
-    )
 
 
 def _target(*, source_reference: str = _SOURCE) -> DeploymentTarget:
@@ -320,20 +257,17 @@ def _workflow(
     workspace: _StatefulWorkspace,
     *properties: SchemaProperty,
 ):
-    release_context = _release_context(*properties)
-    service = DeploymentService()
-    plan = build_legacy_deployment_plan(release_context.release, _target())
-    authorization = authorize_legacy_deployment(
-        plan,
-        release_context.release,
-        release_context.deploy_authorization,
+    contract = _contract(*properties, name="orders")
+    source = build_candidate_deployment_source(
+        contract,
+        revision_ref="git:candidate",
     )
+    service = DeploymentService()
+    plan = service.plan(source, _target())
     return SimpleNamespace(
         service=service,
         plan=plan,
-        authorization=authorization,
         adapter=_adapter(workspace),
-        release_context=release_context,
     )
 
 
@@ -417,7 +351,7 @@ def test_bundle_cd_replans_against_runtime_changed_after_ci() -> None:
     assert workspace.statements == []
 
 
-def test_missing_table_create_execute_and_fresh_verify_converge() -> None:
+def test_missing_table_create_apply_and_fresh_verify_converge() -> None:
     workspace = _StatefulWorkspace(present=False)
     workflow = _workflow(
         workspace,
@@ -430,10 +364,9 @@ def test_missing_table_create_execute_and_fresh_verify_converge() -> None:
     )
     assert preview.operations[0].kind is NativeOperationKind.CREATE
 
-    workflow.service.execute(
+    workflow.service.apply(
         workflow.plan,
         preview,
-        workflow.authorization,
         adapter=workflow.adapter,
     )
 
@@ -445,7 +378,7 @@ def test_missing_table_create_execute_and_fresh_verify_converge() -> None:
     _assert_in_sync(workflow)
 
 
-def test_missing_nullable_column_alter_execute_and_fresh_verify_converge() -> None:
+def test_missing_nullable_column_alter_apply_and_fresh_verify_converge() -> None:
     workspace = _StatefulWorkspace(
         present=True,
         columns=(("id", "INT", False),),
@@ -462,10 +395,9 @@ def test_missing_nullable_column_alter_execute_and_fresh_verify_converge() -> No
     )
     assert preview.operations[0].kind is NativeOperationKind.ALTER
 
-    workflow.service.execute(
+    workflow.service.apply(
         workflow.plan,
         preview,
-        workflow.authorization,
         adapter=workflow.adapter,
     )
 
@@ -480,7 +412,7 @@ def test_missing_nullable_column_alter_execute_and_fresh_verify_converge() -> No
     _assert_in_sync(workflow)
 
 
-def test_compliant_table_no_op_execute_and_verify_converge() -> None:
+def test_compliant_table_no_op_apply_and_verify_converge() -> None:
     workspace = _StatefulWorkspace(
         present=True,
         columns=(("id", "INT", False),),
@@ -496,10 +428,9 @@ def test_compliant_table_no_op_execute_and_verify_converge() -> None:
     )
     assert preview.operations[0].kind is NativeOperationKind.NO_OP
 
-    workflow.service.execute(
+    workflow.service.apply(
         workflow.plan,
         preview,
-        workflow.authorization,
         adapter=workflow.adapter,
     )
 
@@ -507,7 +438,7 @@ def test_compliant_table_no_op_execute_and_verify_converge() -> None:
     _assert_in_sync(workflow)
 
 
-def test_stale_runtime_between_preview_and_execute_fails_closed() -> None:
+def test_stale_runtime_between_preview_and_apply_fails_closed() -> None:
     workspace = _StatefulWorkspace(present=False)
     workflow = _workflow(
         workspace,
@@ -522,12 +453,11 @@ def test_stale_runtime_between_preview_and_execute_fails_closed() -> None:
     workspace.columns = [("id", "INT", False)]
 
     with pytest.raises(ValidationError, match="Runtime state changed"):
-        workflow.service.execute(
-            workflow.plan,
-            preview,
-            workflow.authorization,
-            adapter=workflow.adapter,
-        )
+        workflow.service.apply(
+        workflow.plan,
+        preview,
+        adapter=workflow.adapter,
+    )
 
     assert workspace.statements == []
 
@@ -553,7 +483,7 @@ def test_external_asset_requiring_mutation_fails_closed() -> None:
     assert workspace.statements == []
 
 
-def test_wrong_workspace_source_fails_preview_and_execute_closed() -> None:
+def test_wrong_workspace_source_fails_preview_and_apply_closed() -> None:
     wrong_workspace = _StatefulWorkspace(
         present=False,
         source_identifier="workspace:other",
@@ -581,48 +511,14 @@ def test_wrong_workspace_source_fails_preview_and_execute_closed() -> None:
     workspace.source_identifier = "workspace:other"
 
     with pytest.raises(ValidationError, match="Runtime source changed"):
-        workflow.service.execute(
-            workflow.plan,
-            preview,
-            workflow.authorization,
-            adapter=workflow.adapter,
-        )
-
-    assert workspace.statements == []
-
-
-def test_denied_deployment_authorization_fails_before_native_mutation() -> None:
-    workspace = _StatefulWorkspace(present=False)
-    workflow = _workflow(
-        workspace,
-        _property("id", "integer", required=True),
-    )
-    preview = workflow.service.preview(
+        workflow.service.apply(
         workflow.plan,
+        preview,
         adapter=workflow.adapter,
     )
-    denied = workflow.authorization.model_copy(
-        update={
-            "allowed": False,
-            "deployment_authorization_id": compute_deployment_authorization_id(
-                deployment_plan_id=workflow.plan.deployment_plan_id,
-                source_snapshot_id=workflow.plan.source_snapshot_id,
-                authorization_kind="contractops",
-                authorization_reference=workflow.authorization.authorization_reference,
-                allowed=False,
-            ),
-        }
-    )
-
-    with pytest.raises(ContractOpsAuthorizationError, match="not allowed"):
-        workflow.service.execute(
-            workflow.plan,
-            preview,
-            denied,
-            adapter=workflow.adapter,
-        )
 
     assert workspace.statements == []
+
 
 
 def test_databricks_integer_target_alias_does_not_create_false_drift() -> None:
