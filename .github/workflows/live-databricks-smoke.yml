@@ -1,0 +1,71 @@
+name: Live Databricks Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      catalog:
+        description: Unity Catalog catalog containing dedicated smoke schemas
+        required: true
+        type: string
+      uat_schema:
+        description: Dedicated UAT schema (must start with semapact_smoke_)
+        required: true
+        default: semapact_smoke_uat
+        type: string
+      prod_schema:
+        description: Dedicated PROD schema (must start with semapact_smoke_)
+        required: true
+        default: semapact_smoke_prod
+        type: string
+      warehouse_id:
+        description: SQL warehouse ID used for smoke DDL and tag queries
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-databricks-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: databricks-smoke
+    env:
+      UV_NO_PROGRESS: "1"
+      SEMAPACT_RUN_LIVE_DATABRICKS: "1"
+      SEMAPACT_LIVE_DATABRICKS_CONFIRM: I_UNDERSTAND_THIS_CREATES_TABLES
+      SEMAPACT_LIVE_DATABRICKS_CATALOG: ${{ inputs.catalog }}
+      SEMAPACT_LIVE_DATABRICKS_UAT_SCHEMA: ${{ inputs.uat_schema }}
+      SEMAPACT_LIVE_DATABRICKS_PROD_SCHEMA: ${{ inputs.prod_schema }}
+      SEMAPACT_LIVE_DATABRICKS_WAREHOUSE_ID: ${{ inputs.warehouse_id }}
+      SEMAPACT_LIVE_RUN_ID: ${{ github.run_id }}_${{ github.run_attempt }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install Databricks test dependencies
+        run: uv sync --extra databricks --group dev --frozen
+
+      - name: Run live Databricks smoke
+        run: >-
+          uv run pytest
+          tests/live/test_databricks_release_deployment_smoke.py
+          -m live_databricks
+          -vv
