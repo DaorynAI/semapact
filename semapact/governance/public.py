@@ -169,15 +169,6 @@ class PublicGovernanceModel(BaseModel):
     )
 
 
-class PublicChangeContextV1(PublicGovernanceModel):
-    """Public representation of contextual evaluation parameters."""
-
-    effective_date: str = Field(
-        validation_alias=AliasChoices("effective_date", "effectiveDate"),
-        serialization_alias="effectiveDate",
-    )
-
-
 class PublicGovernanceReasonV1(PublicGovernanceModel):
     """Public structured reason for a governance outcome or violation."""
 
@@ -282,7 +273,6 @@ class PublicGovernanceDecisionV1(PublicGovernanceModel):
         validation_alias=AliasChoices("contract_id", "contractId"),
         serialization_alias="contractId",
     )
-    context: PublicChangeContextV1
     breaking: bool
     required_version_bump: PublicRequiredVersionBump = Field(
         validation_alias=AliasChoices("required_version_bump", "requiredVersionBump"),
@@ -379,22 +369,17 @@ def to_public_governance_decision(decision: GovernanceDecision) -> PublicGoverna
             f"to_public_governance_decision requires GovernanceDecision, got {type(decision).__name__}"
         )
 
-    # 1. Project context
-    context = PublicChangeContextV1(
-        effective_date=decision.context.effective_date.isoformat()
-    )
-
-    # 2. Project reasons
+    # 1. Project reasons
     projected_reasons = tuple(_project_reason(r) for r in decision.reasons)
 
-    # 3. Project validation outcome
+    # 2. Project validation outcome
     validation_issues = tuple(_project_reason(r) for r in decision.validation.issues)
     validation = PublicValidationOutcomeV1(
         valid=decision.validation.valid,
         issues=validation_issues,
     )
 
-    # 4. Project policy outcome (omits internal BreakingChange structs)
+    # 3. Project policy outcome (omits internal BreakingChange structs)
     policy_violations = tuple(_project_reason(r) for r in decision.policy.violations)
     policy = PublicPolicyOutcomeV1(
         valid=decision.policy.valid,
@@ -404,16 +389,16 @@ def to_public_governance_decision(decision: GovernanceDecision) -> PublicGoverna
         violations=policy_violations,
     )
 
-    # 5. Project evidence
+    # 4. Project evidence
     evidence = PublicChangeEvidenceV1(
         has_changes=decision.evidence.has_changes,
         merge_conflicts_count=decision.evidence.merge_conflicts_count,
     )
 
-    # 6. Project canonical changes
+    # 5. Project canonical changes
     projected_changes = tuple(_project_change(c) for c in decision.changes)
 
-    # 7. Aggregate stable unique reason codes in deterministic alphabetical order
+    # 6. Aggregate stable unique reason codes in deterministic alphabetical order
     all_reason_codes: set[str] = set()
     for r in projected_reasons:
         all_reason_codes.add(r.code)
@@ -428,7 +413,6 @@ def to_public_governance_decision(decision: GovernanceDecision) -> PublicGoverna
         decision_id=decision.decision_id,
         decision=decision_val,
         contract_id=decision.contract_id,
-        context=context,
         breaking=decision.breaking,
         required_version_bump=bump_val,
         reason_codes=tuple(sorted(all_reason_codes)),
