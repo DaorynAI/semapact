@@ -183,7 +183,7 @@ def run_release_plan(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def run_release_classify_repo(args: argparse.Namespace) -> dict[str, Any]:
-    from semapact.devops.release_workflow import (
+    from semapact.application.services.repository_classification import (
         classify_contracts_in_repo,
         repository_change_to_dict,
     )
@@ -196,52 +196,3 @@ def run_release_classify_repo(args: argparse.Namespace) -> dict[str, Any]:
     )
     return {"contracts": [repository_change_to_dict(item) for item in results]}
 
-
-def run_release_build_manifest(args: argparse.Namespace) -> dict[str, Any]:
-    from semapact.devops.release_workflow import (
-        batch_manifest_build_to_dict,
-        batch_task_to_dict,
-        build_batch_release_manifest,
-    )
-
-    change_context = GovernanceService.create_context(args.effective_date)
-    build = build_batch_release_manifest(
-        base_root=args.base_root,
-        candidate_root=args.candidate_root,
-        context=change_context,
-        target_branch=args.target_branch,
-        source_branch_prefix=args.source_branch_prefix,
-    )
-    output_path = Path(args.output).expanduser().resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(
-            [batch_task_to_dict(item) for item in build.tasks], indent=2, sort_keys=True
-        ),
-        encoding="utf-8",
-    )
-    payload = batch_manifest_build_to_dict(build)
-    payload["output"] = str(output_path)
-    return payload
-
-
-
-def run_release_create_prs(args: argparse.Namespace) -> dict[str, Any]:
-    from semapact.devops.release_workflow import (
-        batch_task_to_dict,
-        create_release_pull_requests_from_manifest,
-        load_batch_release_tasks,
-    )
-
-    config = _build_git_config(args)
-    tasks = load_batch_release_tasks(args.manifest)
-    payload = create_release_pull_requests_from_manifest(
-        config=config,
-        repo_path=_get_repo_path(args),
-        tasks=tasks,
-        push=args.push,
-    )
-    return {
-        "tasks": [batch_task_to_dict(item) for item in tasks],
-        "results": payload,
-    }
