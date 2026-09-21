@@ -168,8 +168,8 @@ def _contract(\n    *,\n    contract_id: str = "orders-product",\n    include_cr
     return OpenDataContractStandard(
         apiVersion="v3.1.0",
         kind="DataContract",
-        id="orders-product",
-        name="Orders",
+        id=contract_id,
+        name=contract_id,
         version="1.2.3",
         status="active",
         servers=[
