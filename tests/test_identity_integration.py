@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 from open_data_contract_standard.model import SchemaObject, SchemaProperty
 
-from semapact.core.release import classify_contract_change
+from semapact.lifecycle.change_classification import classify_contract_change
 from semapact.exceptions import ValidationError
 from semapact.governance import ChangeContext
 from semapact.lifecycle.merge_engine import ContractMergeEngine
