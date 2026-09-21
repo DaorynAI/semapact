@@ -61,10 +61,15 @@ def run_release_finalize(args: argparse.Namespace) -> dict[str, Any]:
     from semapact.platforms.git import GitWorkingTreeHistoryRepository
     from semapact.utils.yaml_utils import dump_yaml
 
+    from semapact.approval import ApprovalRecord
+
     bundle = _load_model(args.bundle, ReleaseBundle)
     repository = GitWorkingTreeHistoryRepository(args.repository_root)
     approval = None
-    if bundle.decision.decision is DecisionResult.REVIEW:
+    approval_path = getattr(args, "approval", None)
+    if approval_path:
+        approval = _load_model(approval_path, ApprovalRecord)
+    elif bundle.decision.decision is DecisionResult.REVIEW:
         approval = ReleaseApprovalResolver(repository).resolve(bundle)
 
     record = ReleaseFinalizer().finalize(
