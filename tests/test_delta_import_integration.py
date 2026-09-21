@@ -12,7 +12,7 @@ from semapact.importers.delta_importer import (
     _extract_delta_relationships,
 )
 from semapact.interfaces.commands.utils import _split_discovered_delta_tables
-from semapact.services import GovernanceService
+from semapact.application.services.governance import GovernanceService
 from semapact.utils.storage_adapter import LocalStorageAdapter
 
 
