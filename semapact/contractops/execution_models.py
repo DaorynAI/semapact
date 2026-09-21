@@ -1,4 +1,4 @@
-"""Immutable artifacts for explicit ContractOps APPLY and PUBLISH phases."""
+"""Immutable artifacts for canonical ContractOps release flow."""
 
 from __future__ import annotations
 
