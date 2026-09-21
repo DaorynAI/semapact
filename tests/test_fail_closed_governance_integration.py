@@ -16,8 +16,8 @@ from open_data_contract_standard.model import (
 from semapact.core.lifecycle_cli import apply_lifecycle
 from semapact.devops.ci_cd import evaluate_ci_gate
 from semapact.exceptions import GovernanceBlockedError, GovernanceReviewRequiredError
+from semapact.change_context import ChangeContext
 from semapact.governance import (
-    ChangeContext,
     GovernanceOperation,
     evaluate_governance_decision,
 )
