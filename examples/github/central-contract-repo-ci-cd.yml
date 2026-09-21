@@ -237,15 +237,20 @@ jobs:
             ARTIFACT=$(echo "${ITEM}" | jq -r '.artifact')
             BUNDLE="artifacts/releases/${ARTIFACT}.release.bundle.json"
 
+            APPROVAL_ARGS=()
             if [ "$(jq -r '.decision.decision' "${BUNDLE}")" = "REVIEW" ]; then
+              APPROVAL="artifacts/finalized/${ARTIFACT}.approval.json"
               semapact release approve \
                 --bundle "${BUNDLE}" \
                 --actor-reference "github-environment:contract-release/run:${GITHUB_RUN_ID}" \
-                --recorded-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                --recorded-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                --approval-out "${APPROVAL}"
+              APPROVAL_ARGS=(--approval "${APPROVAL}")
             fi
 
             semapact release finalize \
               --bundle "${BUNDLE}" \
+              "${APPROVAL_ARGS[@]}" \
               --output-contract "${CONTRACT_ROOT}/${CONTRACT_PATH}" \
               --release-out "artifacts/finalized/${ARTIFACT}.contract-release.json" \
               > "/tmp/${ARTIFACT}.finalize.json"
