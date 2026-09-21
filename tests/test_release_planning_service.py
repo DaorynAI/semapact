@@ -7,7 +7,8 @@ from open_data_contract_standard.model import (
 )
 
 from semapact.contractops import VersionAuthorityConfig, resolve_release_version
-from semapact.services import GovernanceService, ReleasePlanningService
+from semapact.application.services.governance import GovernanceService
+from semapact.application.services.release_planning import ReleasePlanningService
 
 
 class CountingGovernanceService:
