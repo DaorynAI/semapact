@@ -1,8 +1,4 @@
-"""Provider-neutral deployment planning and orchestration boundary.
-
-Legacy authorization symbols remain importable for compatibility but are not part of
-the canonical public surface.
-"""
+"""Provider-neutral deployment planning and orchestration boundary."""
 
 from semapact.deployment.adapters import (
     DeploymentAdapter,
