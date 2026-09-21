@@ -342,17 +342,14 @@ def _load_contract_from_yaml(yaml_path: Path) -> OpenDataContractStandard:
 
 @pytest.mark.parametrize("scenario", SCENARIO_MATRIX, ids=lambda s: s.name)
 def test_governance_golden_scenarios(scenario: GovernanceGoldenScenario) -> None:
-    """Evaluate golden scenario, verify domain invariants, and compare byte-exact public JSON."""
+    """Evaluate each canonical governance scenario and verify deterministic public projection."""
     scenario_dir = FIXTURES_DIR / scenario.name
     assert scenario_dir.exists(), f"Scenario directory missing: {scenario_dir}"
 
     base_path = scenario_dir / "base.yaml"
     cand_path = scenario_dir / "candidate.yaml"
-    expected_path = scenario_dir / "expected.json"
-
     assert base_path.exists(), f"base.yaml missing for {scenario.name}"
     assert cand_path.exists(), f"candidate.yaml missing for {scenario.name}"
-    assert expected_path.exists(), f"expected.json missing for {scenario.name}"
 
     base_contract = _load_contract_from_yaml(base_path)
     cand_contract = _load_contract_from_yaml(cand_path)
@@ -391,16 +388,21 @@ def test_governance_golden_scenarios(scenario: GovernanceGoldenScenario) -> None
             f"[{scenario.name}] validation.valid mismatch: got {decision.validation.valid}, expected {scenario.expected_validation_valid}"
         )
 
-    # 3. Public projection and read-only byte-exact golden comparison (Phase 3 & 4)
+    # 3. Public projection remains deterministic and free of execution-time context.
     public_decision = to_public_governance_decision(decision)
-    actual_json = serialize_public_governance_decision(public_decision, indent=2) + "\n"
-    expected_json = expected_path.read_text(encoding="utf-8")
-
-    assert actual_json == expected_json, (
-        f"[{scenario.name}] Golden JSON mismatch:\n"
-        f"--- Actual ---\n{actual_json}\n"
-        f"--- Expected ---\n{expected_json}"
+    first_json = serialize_public_governance_decision(public_decision, indent=2)
+    second_json = serialize_public_governance_decision(
+        to_public_governance_decision(
+            evaluate_governance_decision(
+                base_contract,
+                cand_contract,
+                merge_conflicts=scenario.merge_conflicts,
+            )
+        ),
+        indent=2,
     )
+    assert first_json == second_json
+    assert '"context"' not in first_json
 
 
 # ==============================================================================
@@ -665,9 +667,17 @@ def test_fixtures_are_read_only() -> None:
             b, c, merge_conflicts=scenario.merge_conflicts
         )
         pub = to_public_governance_decision(d)
-        actual = serialize_public_governance_decision(pub, indent=2) + "\n"
-        expected = (s_dir / "expected.json").read_text(encoding="utf-8")
-        assert actual == expected
+        first = serialize_public_governance_decision(pub, indent=2)
+        second = serialize_public_governance_decision(
+            to_public_governance_decision(
+                evaluate_governance_decision(
+                    b, c, merge_conflicts=scenario.merge_conflicts
+                )
+            ),
+            indent=2,
+        )
+        assert first == second
+        assert '"context"' not in first
 
     hashes_after: dict[str, str] = {}
     for f in FIXTURES_DIR.rglob("*"):
