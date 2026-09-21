@@ -118,6 +118,9 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+  "live_databricks: opt-in tests against a real Databricks workspace",
+]
 
 [tool.setuptools.packages.find]
 include = ["semapact*"]
