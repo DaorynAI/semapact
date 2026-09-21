@@ -2,52 +2,45 @@
 
 This folder contains reference assets for wiring SemaPact into CI/CD.
 
-## Release Assets
-
-- `release/release-manifest.example.json`
-  - example per-contract batch release manifest
-
-## CI Shell Examples
+## Pull-request validation
 
 - `ci/pr-check.example.sh`
-  - single-contract and multi-contract PR build examples
-- `ci/release.example.sh`
-  - multi-contract release build example
+  - repository-level contract classification for PR validation
+- `azure-devops/semapact-pr-validation.yml`
+  - the same classification pattern in Azure DevOps
 
-## GitHub Actions Examples
+These examples use `semapact release classify-repo` only to discover which governed
+contracts changed. They do not create release branches, manifests, version bumps, or
+pull requests.
+
+## Canonical GitHub Actions CI/CD
 
 - `github/data-product-ci-cd.yml`
-  - end-to-end candidate CI + formal-release CD for a standard data-product repo
+  - end-to-end candidate CI + formal release + production deployment for a standard
+    data-product repo
 - `github/central-contract-repo-ci-cd.yml`
-  - changed-contract discovery, matrix assessment/deployment, and single-write governance ledger for a centralised contract repo
+  - changed-contract discovery, matrix release finalization, immutable artifact handoff,
+    target fan-out, and a single governance-ledger write for a central contract repo
 - `github/semapact-enrich.yml`
   - on-demand LLM contract enrichment trigger
-- `github/semapact-release.yml`
-  - release-promotion example
 
-## Azure DevOps Examples
+The two bundle-driven CI/CD examples intentionally use only public SemaPact CLI surfaces
+plus ordinary GitHub Actions/Git commands. They are architecture fitness tests: awkward
+JSON extraction, internal IDs, Git round-trips, or duplicate approval plumbing indicate
+a CLI/application-boundary problem.
 
-- `azure-devops/semapact-pr-validation.yml`
-  - PR validation template
-- `azure-devops/semapact-release.yml`
-  - release promotion template
+Both CI/CD examples assume contracts define Databricks servers named `development` and
+`production`; adapt those names to local contract conventions.
 
-Important rules reflected by these examples:
+Operational deployment history is config-first through `.semapact.yaml`. The examples
+do not repeat `--operational-history` on every deployment.
 
-- version governance is per contract, not per repo
-- PR builds classify changes but do not bump contract versions
-- release builds apply explicit release tags only for contracts that require a bump
-- contracts with `required_bump = none` are skipped by default in batch release manifests
+The examples use two distinct GitHub Environment boundaries. `contract-release` supplies
+human PUBLISH approval for REVIEW releases, recorded with `semapact release approve`.
+`production` protects whether the deployment job may run; SemaPact does not convert a
+finalized ContractRelease into DEPLOY authorization.
 
-
-## Bundle-driven CI/CD examples
-
-The two bundle-driven GitHub examples intentionally use only public SemaPact CLI surfaces plus ordinary GitHub Actions/Git commands. They are also architecture smoke tests: any large amount of JSON extraction or repository glue is a signal that the CLI boundary may need simplification.
-
-Both examples assume contracts define Databricks servers named `development` and `production`; adapt those names to local contract conventions.
-
-Operational deployment history is config-first through `.semapact.yaml`. The examples do not repeat `--operational-history` on every deployment.
-
-The examples use two distinct GitHub Environment boundaries. `contract-release` supplies human PUBLISH approval for REVIEW releases, recorded with `semapact release approve`. `production` protects whether the deployment job may run; SemaPact does not convert the finalized ContractRelease into DEPLOY authorization.
-
-`release finalize --release-out` publishes the immutable ContractRelease as a pipeline artifact. Deployment jobs consume that artifact directly with `deployment assess --release`; Git history remains the governance ledger rather than the job-to-job transport.
+`release finalize --release-out` publishes the immutable ContractRelease as a pipeline
+artifact. Deployment jobs consume that artifact directly with `deployment assess
+--release`; Git history remains the governance ledger rather than the job-to-job
+transport.
