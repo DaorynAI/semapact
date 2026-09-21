@@ -14,6 +14,10 @@ from semapact.deployment.authorization import (
     validate_candidate_deployment_context,
     validate_contract_release_deployment_context,
 )
+from semapact.deployment.compatibility import (
+    authorize_legacy_deployment as authorize_deployment,
+    build_legacy_deployment_plan as build_deployment_plan,
+)
 from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
     DeploymentAction,
