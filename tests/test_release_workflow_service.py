@@ -51,7 +51,6 @@ def _bundle() -> ReleaseBundle:
     return ReleaseWorkflowService().assess(
         _contract(),
         _contract(include_created_at=True),
-        effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
     )
