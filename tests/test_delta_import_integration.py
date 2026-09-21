@@ -146,7 +146,7 @@ def test_local_delta_import_preserves_governance_regression_path(tmp_path: Path)
         prop for prop in merged_orders.properties or [] if prop.name == "legacy_col"
     )
 
-    assert analysis.decision.context == analysis.context
+    assert not hasattr(analysis.decision, "context")
     assert analysis.decision.decision == DecisionResult.REVIEW
     assert analysis.decision.required_version_bump == "minor"
     assert _custom_property_value(legacy, "lifecycleStatus") == "deprecated"
