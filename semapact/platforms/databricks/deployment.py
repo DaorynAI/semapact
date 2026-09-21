@@ -83,6 +83,18 @@ class DatabricksStatementExecutor(NativeOperationExecutor):
             raise ValidationError(
                 "Databricks executable operation requires a SQL statement"
             )
+        self._run_statement(statement)
+
+    def query_rows(self, statement: str) -> tuple[tuple[str | None, ...], ...]:
+        """Execute one small metadata query and return its inline JSON rows."""
+        response = self._run_statement(statement)
+        result = getattr(response, "result", None)
+        data_array = getattr(result, "data_array", None) if result is not None else None
+        if not data_array:
+            return ()
+        return tuple(tuple(value for value in row) for row in data_array)
+
+    def _run_statement(self, statement: str) -> Any:
         if self._warehouse_id is None:
             raise ValidationError(
                 "Databricks deployment execution requires a SQL warehouse_id"
@@ -120,6 +132,7 @@ class DatabricksStatementExecutor(NativeOperationExecutor):
             raise RuntimeError(
                 f"Databricks deployment statement finished with state {state}: {error}"
             )
+        return response
 
 
 class DatabricksDeploymentAdapter(DeploymentOrchestrator):
@@ -134,6 +147,13 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
         poll_interval_seconds: float = 1.0,
         max_poll_attempts: int = 300,
     ) -> None:
+        statement_executor = DatabricksStatementExecutor(
+            client=client,
+            warehouse_id=warehouse_id,
+            poll_interval_seconds=poll_interval_seconds,
+            max_poll_attempts=max_poll_attempts,
+        )
+        self._statement_executor = statement_executor
         super().__init__(
             runtime_provider=runtime_provider,
             schema_mapper=SqlSchemaMapper(
@@ -143,12 +163,7 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
             ),
             transition_planner=DatabricksSchemaTransitionPlanner(),
             transition_compiler=DatabricksTransitionCompiler(),
-            executor=DatabricksStatementExecutor(
-                client=client,
-                warehouse_id=warehouse_id,
-                poll_interval_seconds=poll_interval_seconds,
-                max_poll_attempts=max_poll_attempts,
-            ),
+            executor=statement_executor,
         )
 
 
@@ -189,7 +204,29 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
                 f"`{part}`"
                 for part in (catalog, schema_name, action.physical_name)
             )
-            self._executor.execute(
+            current_tags = self._read_release_tags(
+                catalog=catalog,
+                schema_name=schema_name,
+                table_name=action.physical_name,
+                reserved_keys=tuple(sorted(tags)),
+            )
+            if current_tags == tags:
+                continue
+            if current_tags:
+                rendered_current_keys = ", ".join(
+                    _sql_string(key) for key in sorted(current_tags)
+                )
+                self._statement_executor.execute(
+                    NativeOperation(
+                        kind=NativeOperationKind.ALTER,
+                        governed_asset=action.governed_asset,
+                        statement=(
+                            f"ALTER TABLE {qualified} "
+                            f"UNSET TAGS ({rendered_current_keys})"
+                        ),
+                    )
+                )
+            self._statement_executor.execute(
                 NativeOperation(
                     kind=NativeOperationKind.ALTER,
                     governed_asset=action.governed_asset,
@@ -198,6 +235,36 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
                     ),
                 )
             )
+
+    def _read_release_tags(
+        self,
+        *,
+        catalog: str,
+        schema_name: str,
+        table_name: str,
+        reserved_keys: tuple[str, ...],
+    ) -> dict[str, str]:
+        keys = ", ".join(_sql_string(key) for key in reserved_keys)
+        statement = (
+            "SELECT tag_name, tag_value "
+            f"FROM `{catalog}`.information_schema.table_tags "
+            f"WHERE schema_name = {_sql_string(schema_name.casefold())} "
+            f"AND table_name = {_sql_string(table_name.casefold())} "
+            f"AND tag_name IN ({keys})"
+        )
+        current: dict[str, str] = {}
+        for row in self._statement_executor.query_rows(statement):
+            if len(row) != 2 or row[0] is None or row[1] is None:
+                raise RuntimeError(
+                    "Databricks table tag query returned an invalid row"
+                )
+            key, value = row
+            if key in current:
+                raise RuntimeError(
+                    f"Databricks table tag query returned duplicate key: {key}"
+                )
+            current[key] = value
+        return current
 
 
 def _statement_state(response: Any) -> str:
