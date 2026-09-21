@@ -7,7 +7,6 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from semapact.change_context import ChangeContext
 from semapact.governance import DecisionResult, GovernanceDecision, evaluate_governance_decision
 from semapact.utils.schema_utils import contract_to_model
 from semapact.utils.yaml_utils import list_yaml_documents, load_yaml
@@ -33,7 +32,6 @@ def classify_contracts_in_repo(
     *,
     base_root: str | Path,
     candidate_root: str | Path,
-    context: ChangeContext,
 ) -> list[RepositoryContractChange]:
     """Compare two contract roots using the canonical governance evaluator."""
     base_root_path = Path(base_root).expanduser().resolve()
@@ -78,7 +76,7 @@ def classify_contracts_in_repo(
 
         base = contract_to_model(load_yaml(base_path))
         candidate = contract_to_model(load_yaml(candidate_path))
-        decision = evaluate_governance_decision(base, candidate, context=context)
+        decision = evaluate_governance_decision(base, candidate)
         status = (
             "blocked"
             if decision.decision is DecisionResult.BLOCK
