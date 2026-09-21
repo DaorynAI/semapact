@@ -1,4 +1,4 @@
-"""Explicit contextual inputs for deterministic contract change analysis."""
+"""Explicit business-effective context for lifecycle mutations."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ChangeContext(BaseModel):
-    """Governance-relevant context supplied explicitly by the caller.
+    """Business-effective inputs used when a mutation materializes dated state.
 
-    ``effective_date`` is required and intentionally has no wall-clock default.
-    Callers must create the context at an upstream workflow boundary and pass the
-    same instance through merge and governance evaluation. Lower layers must not
-    regenerate or overwrite this date.
+    The context is deliberately explicit and has no wall-clock default. It belongs at
+    lifecycle/merge mutation boundaries where SemaPact may write facts such as
+    `deprecationDate`. Pure governance, release planning, and deployment assessment
+    must not depend on it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
