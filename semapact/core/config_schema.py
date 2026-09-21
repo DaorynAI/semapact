@@ -58,7 +58,7 @@ OperationalHistoryConfig = Annotated[
 
 
 class HistoryConfig(BaseModel):
-    """Typed history configuration while unrelated legacy config remains extensible."""
+    """Typed history configuration while unrelated configuration remains extensible."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
