@@ -14,7 +14,6 @@ from semapact.application.services.release_workflow import (
     ReleaseFinalizer,
     ReleaseWorkflowService,
 )
-from semapact.change_context import ChangeContext
 from semapact.contractops import (
     VersionAuthority,
     VersionAuthorityConfig,
@@ -33,7 +32,6 @@ from semapact.utils.deterministic import canonical_compact_json, deterministic_u
 from semapact.versioning import normalize_semver
 
 
-CONTEXT = ChangeContext(effective_date=date(2026, 9, 10))
 
 
 def _contract(
@@ -74,7 +72,6 @@ def _finalized_allow_release():
     bundle = workflow.assess(
         _contract(name="Orders old"),
         _contract(name="Orders new"),
-        effective_date="2026-09-10",
         base_revision_ref="rev:base",
         candidate_revision_ref="rev:candidate",
     )
@@ -154,7 +151,7 @@ def test_same_runtime_namespace_on_another_source_has_distinct_plan_identity() -
 def test_version_authorities_preserve_required_bump() -> None:
     base = _contract()
     candidate = _contract(include_created_at=True)
-    decision = evaluate_governance_decision(base, candidate, context=CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     change_set = build_change_set_from_decision(
         decision,
         base_revision_ref="rev:base",
