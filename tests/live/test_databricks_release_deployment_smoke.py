@@ -17,6 +17,7 @@ from semapact.application.services.release_workflow import (
     ReleaseWorkflowService,
 )
 from semapact.deployment import DeploymentTarget, NativeOperationKind
+from semapact.exceptions import ValidationError
 from semapact.governance import DecisionResult
 from semapact.platforms.databricks import create_databricks_workspace_client
 from semapact.platforms.databricks.deployment import (
@@ -25,6 +26,7 @@ from semapact.platforms.databricks.deployment import (
 )
 from semapact.platforms.runtime_registry import create_deployment_adapter
 from semapact.reconciliation import RuntimeDriftStatus
+from semapact.schema import validate_simple_sql_identifier
 
 
 pytestmark = [
@@ -51,7 +53,16 @@ def _required_env(name: str) -> str:
     return value
 
 
+def _safe_identifier(name: str, label: str) -> str:
+    try:
+        validate_simple_sql_identifier(name, label)
+    except ValidationError as exc:
+        pytest.fail(str(exc))
+    return name
+
+
 def _safe_schema(name: str) -> str:
+    _safe_identifier(name, "schema")
     if not name.casefold().startswith("semapact_smoke_"):
         pytest.fail(
             "live Databricks smoke schemas must start with 'semapact_smoke_'"
@@ -162,9 +173,14 @@ def test_live_candidate_release_and_redeployment_converge() -> None:
             f"{_CONFIRMATION} to run the live smoke"
         )
 
-    catalog = _required_env("SEMAPACT_LIVE_DATABRICKS_CATALOG")
+    catalog = _safe_identifier(
+        _required_env("SEMAPACT_LIVE_DATABRICKS_CATALOG"),
+        "catalog",
+    )
     uat_schema = _safe_schema(_required_env("SEMAPACT_LIVE_DATABRICKS_UAT_SCHEMA"))
     prod_schema = _safe_schema(_required_env("SEMAPACT_LIVE_DATABRICKS_PROD_SCHEMA"))
+    if uat_schema.casefold() == prod_schema.casefold():
+        pytest.fail("live Databricks smoke requires distinct UAT and PROD schemas")
     warehouse_id = _required_env("SEMAPACT_LIVE_DATABRICKS_WAREHOUSE_ID")
     run_id = _safe_run_id(_required_env("SEMAPACT_LIVE_RUN_ID"))
 
