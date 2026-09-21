@@ -198,7 +198,6 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
             f"{_sql_string(key)} = {_sql_string(value)}"
             for key, value in sorted(tags.items())
         )
-        rendered_keys = ", ".join(_sql_string(key) for key in sorted(tags))
         for action in plan.actions:
             validate_simple_sql_identifier(action.physical_name, "asset")
             qualified = ".".join(
@@ -214,12 +213,16 @@ class DatabricksDeploymentAdapter(DeploymentOrchestrator):
             if current_tags == tags:
                 continue
             if current_tags:
+                rendered_current_keys = ", ".join(
+                    _sql_string(key) for key in sorted(current_tags)
+                )
                 self._statement_executor.execute(
                     NativeOperation(
                         kind=NativeOperationKind.ALTER,
                         governed_asset=action.governed_asset,
                         statement=(
-                            f"ALTER TABLE {qualified} UNSET TAGS ({rendered_keys})"
+                            f"ALTER TABLE {qualified} "
+                            f"UNSET TAGS ({rendered_current_keys})"
                         ),
                     )
                 )
