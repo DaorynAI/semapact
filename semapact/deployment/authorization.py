@@ -9,6 +9,7 @@ from __future__ import annotations
 from semapact.deployment.models import (
     DeploymentAuthorization,
     DeploymentPlan,
+    compute_deployment_authorization_id,
     validate_deployment_plan_identity,
 )
 from semapact.deployment.source import DeploymentSourceSnapshot
