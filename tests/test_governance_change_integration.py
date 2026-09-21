@@ -18,7 +18,7 @@ from open_data_contract_standard.model import (
 )
 
 from semapact.change_context import ChangeContext
-from semapact.core.release import classify_contract_change
+from semapact.lifecycle.change_classification import classify_contract_change
 from semapact.governance import DecisionResult, evaluate_governance_decision
 from semapact.governance_codes import GovernanceReasonCode
 from semapact.lifecycle.changes import (
