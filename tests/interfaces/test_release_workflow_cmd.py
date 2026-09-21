@@ -61,7 +61,6 @@ def test_release_finalize_materializes_selected_version_and_history(tmp_path) ->
             candidate=str(candidate),
             base_revision_ref="git:base",
             candidate_revision_ref="git:candidate",
-            effective_date="2026-09-20",
             authority_reference=None,
             runtime_context="auto",
             bundle_out=str(bundle),
