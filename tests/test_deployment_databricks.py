@@ -150,14 +150,25 @@ class _Provider:
 
 
 class _Statements:
-    def __init__(self) -> None:
+    def __init__(self, *, tags: dict[str, str] | None = None) -> None:
         self.calls: list[str] = []
+        self.tags = dict(tags or {})
 
     def execute_statement(self, *, statement, warehouse_id, wait_timeout):
         self.calls.append(statement)
+        result = None
+        if statement.startswith("SELECT tag_name, tag_value "):
+            result = SimpleNamespace(
+                data_array=[
+                    [key, value]
+                    for key, value in sorted(self.tags.items())
+                    if key.startswith("semapact_")
+                ]
+            )
         return SimpleNamespace(
             statement_id="s-1",
             status=SimpleNamespace(state="SUCCEEDED", error=None),
+            result=result,
         )
 
     def get_statement(self, statement_id):
@@ -165,12 +176,17 @@ class _Statements:
 
 
 class _Client:
-    def __init__(self) -> None:
-        self.statement_execution = _Statements()
+    def __init__(self, *, tags: dict[str, str] | None = None) -> None:
+        self.statement_execution = _Statements(tags=tags)
 
 
-def _adapter(state: ObservedPlatformState, *, warehouse_id: str | None = "warehouse-1"):
-    client = _Client()
+def _adapter(
+    state: ObservedPlatformState,
+    *,
+    warehouse_id: str | None = "warehouse-1",
+    tags: dict[str, str] | None = None,
+):
+    client = _Client(tags=tags)
     provider = _Provider(state)
     adapter = DatabricksDeploymentAdapter(
         client=client,
@@ -348,12 +364,78 @@ def test_release_metadata_projects_version_and_provenance_as_uc_tags() -> None:
         ),
     )
 
-    assert client.statement_execution.calls == [
+    assert client.statement_execution.calls[0].startswith(
+        "SELECT tag_name, tag_value FROM `main`.information_schema.table_tags "
+    )
+    assert client.statement_execution.calls[1:] == [
         "ALTER TABLE `main`.`silver`.`orders` SET TAGS "
         "('semapact_contract_id' = 'orders-product', "
         "'semapact_contract_version' = '1.2.0', "
         "'semapact_release_id' = 'release-record-1', "
         "'semapact_source_revision' = 'rev:released')"
+    ]
+
+
+def test_release_metadata_projection_is_no_op_when_tags_already_match() -> None:
+    plan = _plan(_property("id", "BIGINT", required=True))
+    current = _state(("id", "bigint", False))
+    desired = {
+        "semapact_contract_id": "orders-product",
+        "semapact_contract_version": "1.2.0",
+        "semapact_release_id": "release-record-1",
+        "semapact_source_revision": "rev:released",
+    }
+    adapter, _, client = _adapter(current, tags=desired)
+
+    adapter.project_release_metadata(
+        plan,
+        RuntimeReleaseMetadata(
+            contract_id="orders-product",
+            contract_version="1.2.0",
+            contract_release_id="release-record-1",
+            source_revision_ref="rev:released",
+        ),
+    )
+
+    assert len(client.statement_execution.calls) == 1
+    assert client.statement_execution.calls[0].startswith(
+        "SELECT tag_name, tag_value FROM `main`.information_schema.table_tags "
+    )
+
+
+def test_release_metadata_replaces_only_reserved_stale_tags() -> None:
+    plan = _plan(_property("id", "BIGINT", required=True))
+    current = _state(("id", "bigint", False))
+    adapter, _, client = _adapter(
+        current,
+        tags={
+            "semapact_contract_id": "orders-product",
+            "semapact_contract_version": "1.1.0",
+            "semapact_release_id": "release-record-old",
+            "semapact_source_revision": "rev:old",
+            "business_owner": "sales",
+        },
+    )
+
+    adapter.project_release_metadata(
+        plan,
+        RuntimeReleaseMetadata(
+            contract_id="orders-product",
+            contract_version="1.2.0",
+            contract_release_id="release-record-1",
+            source_revision_ref="rev:released",
+        ),
+    )
+
+    assert client.statement_execution.calls[1:] == [
+        "ALTER TABLE `main`.`silver`.`orders` UNSET TAGS "
+        "('semapact_contract_id', 'semapact_contract_version', "
+        "'semapact_release_id', 'semapact_source_revision')",
+        "ALTER TABLE `main`.`silver`.`orders` SET TAGS "
+        "('semapact_contract_id' = 'orders-product', "
+        "'semapact_contract_version' = '1.2.0', "
+        "'semapact_release_id' = 'release-record-1', "
+        "'semapact_source_revision' = 'rev:released')",
     ]
 
 
