@@ -10,7 +10,7 @@ from semapact.interfaces.commands.utils import (
     _resolve_adls_oauth_token_from_config,
     _split_discovered_delta_tables,
 )
-from semapact.services import GovernanceService
+from semapact.application.services.governance import GovernanceService
 
 def run_import(args: argparse.Namespace) -> Path:
     from semapact.core.loader import ContractLoader

@@ -12,9 +12,8 @@ from semapact.change_context import ChangeContext
 from semapact.governance.evaluator import evaluate_governance_decision
 from semapact.governance.models import DecisionResult
 from semapact.governance_codes import GovernanceReasonCode
-from semapact.lifecycle.helpers import allows_breaking_changes
 from semapact.lifecycle.merge_engine import ContractMergeEngine
-from semapact.services.governance_service import GovernanceService
+from semapact.application.services.governance import GovernanceService
 
 TEST_CONTEXT = ChangeContext(effective_date=date(2026, 8, 14))
 
@@ -62,7 +61,7 @@ def test_invalid_root_lifecycle_evaluates_to_block():
     candidate = base.model_copy(deep=True)
     candidate.status = "invalid_status_xyz"
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     assert decision.decision == DecisionResult.BLOCK
     assert any(
         r.code == GovernanceReasonCode.VALIDATION_FAILED
@@ -78,7 +77,7 @@ def test_invalid_schema_lifecycle_evaluates_to_block():
         _cp("lifecycleStatus", "unknown_schema_status")
     ]
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     assert decision.decision == DecisionResult.BLOCK
     assert any(
         r.code == GovernanceReasonCode.VALIDATION_FAILED
@@ -94,7 +93,7 @@ def test_invalid_property_lifecycle_evaluates_to_block():
         _cp("lifecycleStatus", "invalid_prop_status")
     ]
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     assert decision.decision == DecisionResult.BLOCK
     assert any(
         r.code == GovernanceReasonCode.VALIDATION_FAILED
@@ -110,7 +109,7 @@ def test_invalid_nested_property_lifecycle_evaluates_to_block():
         _cp("lifecycleStatus", "garbage_nested_status")
     ]
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     assert decision.decision == DecisionResult.BLOCK
     assert any(
         r.code == GovernanceReasonCode.VALIDATION_FAILED
@@ -193,18 +192,18 @@ def test_merge_engine_detects_conflict_when_source_status_missing():
     assert any(c.rule == "physical_type_change" for c in result.conflicts)
 
 
-def test_merge_engine_auto_deprecates_when_source_status_proposed_or_missing():
+def test_merge_engine_auto_deprecates_when_source_status_draft():
     """Active governed target + source missing an active property -> auto-deprecation must occur."""
     engine = ContractMergeEngine()
     target = _base_active_contract()  # status: active
 
-    # Source has status="proposed" and is missing "customer" property
+    # Source is draft and is missing "customer" property
     source = OpenDataContractStandard(
         apiVersion="v3.1.0",
         kind="DataContract",
         id="orders_contract",
         version="1.0.0",
-        status="proposed",
+        status="draft",
         schema=[
             SchemaObject(
                 name="orders",
@@ -235,20 +234,3 @@ def test_merge_engine_auto_deprecates_when_source_status_proposed_or_missing():
     assert cp_map.get("lifecycleStatus") == "deprecated"
     assert cp_map.get("semapact.removed") == "true"
 
-
-def test_allows_breaking_changes_compatibility_wrapper():
-    active_contract = _base_active_contract()
-    draft_contract = active_contract.model_copy(deep=True)
-    draft_contract.status = "draft"
-
-    assert allows_breaking_changes(active_contract) is True
-    assert allows_breaking_changes(draft_contract) is False
-
-    active_prop = SchemaProperty(
-        name="col", customProperties=[_cp("lifecycleStatus", "active")]
-    )
-    deprecated_prop = SchemaProperty(
-        name="col", customProperties=[_cp("lifecycleStatus", "deprecated")]
-    )
-    assert allows_breaking_changes(active_prop) is True
-    assert allows_breaking_changes(deprecated_prop) is False

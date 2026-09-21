@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from semapact.change_context import ChangeContext
 from semapact.contractops.integrity import (
     SEMAPACT_CHANGESET_NAMESPACE,
     compute_change_set_id,
@@ -20,7 +19,6 @@ def build_change_set(
     base_revision_ref: str,
     candidate_revision_ref: str,
     changes: Sequence[GovernanceChange],
-    context: ChangeContext,
     source: str | None = None,
     actor_reference: str | None = None,
 ) -> ChangeSet:
@@ -49,7 +47,6 @@ def build_change_set(
         base_revision_ref=cleaned_base_ref,
         candidate_revision_ref=cleaned_candidate_ref,
         changes=canonical_changes,
-        context=context,
         source=cleaned_source,
         actor_reference=cleaned_actor_reference,
     )
@@ -60,7 +57,6 @@ def build_change_set(
         base_revision_ref=cleaned_base_ref,
         candidate_revision_ref=cleaned_candidate_ref,
         changes=canonical_changes,
-        context=context,
         source=cleaned_source,
         actor_reference=cleaned_actor_reference,
     )
@@ -80,7 +76,6 @@ def build_change_set_from_decision(
         base_revision_ref=base_revision_ref,
         candidate_revision_ref=candidate_revision_ref,
         changes=decision.changes,
-        context=decision.context,
         source=source,
         actor_reference=actor_reference,
     )

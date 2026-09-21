@@ -1,11 +1,9 @@
-"""Pure compilation of applied contract releases into deployment convergence plans."""
+"""Pure compilation of canonical deployment sources into convergence plans."""
 
 from __future__ import annotations
 
-from open_data_contract_standard.model import SchemaObject
+from open_data_contract_standard.model import OpenDataContractStandard, SchemaObject
 
-from semapact.contractops.execution_models import AppliedContractRelease
-from semapact.contractops.integrity import validate_applied_release_identity
 from semapact.deployment.models import (
     DeploymentAction,
     DeploymentActionKind,
@@ -13,31 +11,63 @@ from semapact.deployment.models import (
     DeploymentTarget,
     compute_deployment_plan_id,
 )
+from semapact.deployment.source import DeploymentSourceSnapshot
 from semapact.lifecycle.identity import normalize_identity_name
 from semapact.runtime import runtime_asset_specs_from_contract
 from semapact.utils.deterministic import canonical_compact_json
 
 
-def build_deployment_plan(
-    release: AppliedContractRelease,
+def build_deployment_plan_from_source(
+    source: DeploymentSourceSnapshot,
     target: DeploymentTarget,
 ) -> DeploymentPlan:
-    """Build one deterministic provider-neutral convergence plan.
-
-    Planning consumes exact released desired state only. It does not observe runtime,
-    choose CREATE/ALTER/DROP operations, contact a provider, or recompute governance.
-    """
-    if not isinstance(release, AppliedContractRelease):
+    """Build the canonical plan from one exact deployment source snapshot."""
+    if not isinstance(source, DeploymentSourceSnapshot):
         raise TypeError(
-            f"release must be AppliedContractRelease, got {type(release).__name__}"
+            "source must be DeploymentSourceSnapshot, "
+            f"got {type(source).__name__}"
         )
     if not isinstance(target, DeploymentTarget):
         raise TypeError(
             f"target must be DeploymentTarget, got {type(target).__name__}"
         )
 
-    validate_applied_release_identity(release)
-    contract = release.to_contract()
+    contract = source.to_contract()
+    ordered_actions = build_deployment_actions(contract)
+    deployment_plan_id = compute_deployment_plan_id(
+        source_snapshot_id=source.source_snapshot_id,
+        contract_id=source.contract_id,
+        revision_ref=source.revision_ref,
+        contract_version=source.contract_version,
+        target=target,
+        actions=ordered_actions,
+        plan_version="1",
+    )
+    return DeploymentPlan(
+        deployment_plan_id=deployment_plan_id,
+        source_snapshot_id=source.source_snapshot_id,
+        contract_id=source.contract_id,
+        revision_ref=source.revision_ref,
+        contract_version=source.contract_version,
+        target=target,
+        actions=ordered_actions,
+        plan_version="1",
+    )
+
+def build_deployment_actions(
+    contract: OpenDataContractStandard,
+) -> tuple[DeploymentAction, ...]:
+    """Project candidate/released ODCS state into provider-neutral desired actions.
+
+    Actions are desired-state facts only. They are not an execution permission;
+    they become target-specific planning input only through an exact DeploymentPlan.
+    """
+    if not isinstance(contract, OpenDataContractStandard):
+        raise TypeError(
+            "contract must be OpenDataContractStandard, "
+            f"got {type(contract).__name__}"
+        )
+
     asset_specs = runtime_asset_specs_from_contract(contract)
     specs_by_asset = {spec.governed_asset: spec for spec in asset_specs}
 
@@ -57,27 +87,7 @@ def build_deployment_plan(
             )
         )
 
-    ordered_actions = tuple(sorted(actions, key=lambda action: action.governed_asset))
-    deployment_plan_id = compute_deployment_plan_id(
-        applied_release_id=release.applied_release_id,
-        contract_id=release.contract_id,
-        release_plan_id=release.release_plan_id,
-        released_revision_ref=release.release_revision_ref,
-        selected_version=release.selected_version,
-        target=target,
-        actions=ordered_actions,
-    )
-
-    return DeploymentPlan(
-        deployment_plan_id=deployment_plan_id,
-        applied_release_id=release.applied_release_id,
-        contract_id=release.contract_id,
-        release_plan_id=release.release_plan_id,
-        released_revision_ref=release.release_revision_ref,
-        selected_version=release.selected_version,
-        target=target,
-        actions=ordered_actions,
-    )
+    return tuple(sorted(actions, key=lambda action: action.governed_asset))
 
 
 def _canonical_schema_json(schema: SchemaObject) -> str:

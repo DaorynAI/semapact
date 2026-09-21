@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -12,7 +11,6 @@ from open_data_contract_standard.model import (
 
 from semapact.application.services.evolution import EvolutionChainService
 from semapact.application.services.history_integrity import HistoryIntegrityService
-from semapact.change_context import ChangeContext
 from semapact.contractops import build_change_set_from_decision
 from semapact.governance import GovernanceDecision, evaluate_governance_decision
 from semapact.history import (
@@ -24,7 +22,6 @@ from semapact.history import (
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
 
 
-CONTEXT = ChangeContext(effective_date=date(2026, 9, 15))
 
 
 def _contract(*, name: str) -> OpenDataContractStandard:
@@ -55,7 +52,6 @@ def _decision() -> GovernanceDecision:
     return evaluate_governance_decision(
         _contract(name="orders-base"),
         _contract(name="orders-candidate"),
-        context=CONTEXT,
     )
 
 
@@ -76,9 +72,6 @@ def _evolution_service(backend: GitWorkingTreeHistoryRepository) -> EvolutionCha
         decisions=backend,
         decision_links=backend,
         releases=backend,
-        deployments=backend,
-        observations=backend,
-        runtime_reconciliations=backend,
     )
 
 

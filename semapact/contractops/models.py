@@ -7,7 +7,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from semapact.change_context import ChangeContext
 from semapact.governance.gate import GovernanceOperation
 from semapact.lifecycle.changes import GovernanceChange
 from semapact.versioning import ActualVersionBump, RequiredBump
@@ -39,7 +38,6 @@ class ChangeSet(ContractOpsModel):
     base_revision_ref: str
     candidate_revision_ref: str
     changes: tuple[GovernanceChange, ...]
-    context: ChangeContext
     source: str | None = None
     actor_reference: str | None = None
 
@@ -190,8 +188,8 @@ class ReviewAuthorizationEvidence(ContractOpsModel):
     """Opaque review evidence projected onto one exact version-resolved action.
 
     ``scope_reference`` is optional downstream scope provenance. ContractOps preserves
-    but does not interpret it. For example, deployment review can bind the evidence
-    to an exact ``DeploymentPlan`` without making ContractOps depend on deployment.
+    but does not interpret it. The formal release workflow uses it to bind PUBLISH
+    approval to the exact ``ReleaseSnapshot``.
     """
 
     evidence_reference: str

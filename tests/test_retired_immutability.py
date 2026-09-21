@@ -4,7 +4,7 @@ import argparse
 import json
 from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from open_data_contract_standard.model import (
@@ -19,7 +19,6 @@ from open_data_contract_standard.model import (
 
 from semapact.change_context import ChangeContext
 from semapact.core.loader import ContractLoader
-from semapact.devops.release_workflow import build_batch_release_manifest, create_release_pull_request
 from semapact.exceptions import GovernanceBlockedError
 from semapact.governance import (
     DecisionResult,
@@ -35,12 +34,9 @@ from semapact.interfaces.commands.lifecycle_cmd import (
     run_lifecycle_promote,
 )
 from semapact.interfaces.commands.merge_cmd import run_merge
-from semapact.interfaces.commands.release_cmd import (
-    run_release_classify,
-    run_release_prepare,
-)
+from semapact.interfaces.commands.release_cmd import run_release_classify
 from semapact.orchestrator.pipeline import ContractPipeline
-from semapact.services import GovernanceService
+from semapact.application.services.governance import GovernanceService
 from semapact.utils.schema_utils import contract_to_dict
 from semapact.utils.yaml_utils import dump_yaml
 
@@ -106,7 +102,7 @@ class TestRetiredKernelMatrix:
         base = _make_retired_contract()
         candidate = _make_retired_contract()
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.ALLOW
         assert decision.policy.retired_violation is False
@@ -122,7 +118,7 @@ class TestRetiredKernelMatrix:
         candidate.description = Description(usage="Updated description on retired contract")
         candidate.tags = ["legacy", "orders", "updated"]
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -131,25 +127,6 @@ class TestRetiredKernelMatrix:
             for r in decision.reasons
         )
 
-    def test_retired_via_custom_properties_effective_lifecycle_blocks(self) -> None:
-        """Effective lifecycle from customProperties.lifecycleStatus=retired blocks candidate mutation."""
-        base = _make_retired_contract()
-        base.status = None
-        base.customProperties = [
-            CustomProperty(property="lifecycleStatus", value="retired")
-        ]
-
-        candidate = base.model_copy(deep=True)
-        candidate.description = Description(usage="Mutated candidate description")
-
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
-
-        assert decision.decision == DecisionResult.BLOCK
-        assert decision.policy.retired_violation is True
-        assert any(
-            r.code == GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED
-            for r in decision.reasons
-        )
 
     def test_retired_schema_change_blocks(self) -> None:
         """Adding a new schema object to a retired contract produces BLOCK."""
@@ -163,7 +140,7 @@ class TestRetiredKernelMatrix:
             )
         )
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -182,7 +159,7 @@ class TestRetiredKernelMatrix:
             SchemaProperty(name="customer_id", logicalType="string", required=False)
         )
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -206,7 +183,7 @@ class TestRetiredKernelMatrix:
             )
         ]
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -229,7 +206,7 @@ class TestRetiredKernelMatrix:
             )
         ]
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -246,7 +223,7 @@ class TestRetiredKernelMatrix:
             CustomProperty(property="costCenter", value="finance")
         ]
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -263,7 +240,7 @@ class TestRetiredKernelMatrix:
             candidate = _make_retired_contract()
             candidate.status = target_status
 
-            decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+            decision = evaluate_governance_decision(base, candidate)
 
             assert decision.decision == DecisionResult.BLOCK
             assert decision.policy.retired_violation is True
@@ -278,7 +255,7 @@ class TestRetiredKernelMatrix:
         candidate = _make_retired_contract()
         candidate.version = "2.0.0"
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -292,7 +269,7 @@ class TestRetiredKernelMatrix:
         base = _make_active_contract()
         candidate = _make_retired_contract()
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.REVIEW
         assert decision.policy.retired_violation is False
@@ -312,7 +289,7 @@ class TestRetiredKernelMatrix:
             base.status = start_status
             candidate = _make_retired_contract()
 
-            decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+            decision = evaluate_governance_decision(base, candidate)
 
             assert decision.decision == DecisionResult.REVIEW
             assert decision.policy.retired_violation is False
@@ -333,7 +310,7 @@ class TestRetiredKernelMatrix:
         candidate.status = "invalid_status_value"
         candidate.description = Description(usage="Mutated invalid contract")
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.validation.valid is False
@@ -492,72 +469,6 @@ class TestRetiredMutationBoundaries:
         )
         assert contract_path.read_text(encoding="utf-8") == original_content
 
-    def test_release_prepare_blocks_retired_contract(self, tmp_path: Path) -> None:
-        """run_release_prepare blocks retired contract modification and writes no output."""
-        base_retired = _make_retired_contract()
-        candidate = _make_retired_contract()
-        candidate.description = Description(usage="Candidate with metadata updates")
-
-        base_path = dump_yaml(contract_to_dict(base_retired), tmp_path / "base.yaml")
-        cand_path = dump_yaml(contract_to_dict(candidate), tmp_path / "cand.yaml")
-        out_path = tmp_path / "promoted.yaml"
-
-        args = argparse.Namespace(
-            base=str(base_path),
-            candidate=str(cand_path),
-            output=str(out_path),
-            release_tag="orders/v1.1.0",
-            runtime_context="auto",
-            effective_date="2026-08-14",
-        )
-
-        with pytest.raises(GovernanceBlockedError) as exc_info:
-            run_release_prepare(args)
-
-        assert exc_info.value.operation == GovernanceOperation.PROPOSE
-        assert exc_info.value.decision is not None
-        assert any(
-            r.code == GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED
-            for r in exc_info.value.decision.reasons
-        )
-        assert not out_path.exists()
-
-    def test_release_create_pr_blocks_retired_contract(self, tmp_path: Path) -> None:
-        """create_release_pull_request blocks retired contract mutation before Git/file mutations."""
-        base_retired = _make_retired_contract()
-        candidate = _make_retired_contract()
-        candidate.description = Description(usage="Modified retired contract")
-
-        repo_dir = tmp_path / "repo"
-        repo_dir.mkdir()
-        contract_file = repo_dir / "contracts" / "orders.yaml"
-        contract_file.parent.mkdir(parents=True)
-        dump_yaml(contract_to_dict(base_retired), contract_file)
-
-        mock_config = MagicMock()
-
-        with pytest.raises(GovernanceBlockedError) as exc_info:
-            create_release_pull_request(
-                config=mock_config,
-                repo_path=str(repo_dir),
-                contract_repo_path="contracts/orders.yaml",
-                base_contract=base_retired,
-                candidate_contract=candidate,
-                release_tag="orders/v1.1.0",
-                source_branch="release/orders-v1.1.0",
-                target_branch="main",
-                context=TEST_CONTEXT,
-            )
-
-        assert exc_info.value.operation == GovernanceOperation.PROPOSE
-        assert exc_info.value.decision is not None
-        assert any(
-            r.code == GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED
-            for r in exc_info.value.decision.reasons
-        )
-        # Verify no git push or PR creation was called
-        mock_config.assert_not_called()
-
     def test_pipeline_ci_run_blocks_retired_contract(self, tmp_path: Path) -> None:
         """ContractPipeline.run on retired base writes audit manifest and blocks before writing artifacts."""
         base_retired = _make_retired_contract()
@@ -609,32 +520,6 @@ class TestRetiredMutationBoundaries:
         assert not merged_out.exists()
         assert not suite_out.exists()
 
-    def test_batch_release_manifest_skips_retired_contract(self, tmp_path: Path) -> None:
-        """build_batch_release_manifest skips retired mutated contracts via PROPOSE gate."""
-        base_root = tmp_path / "base"
-        cand_root = tmp_path / "cand"
-        base_root.mkdir()
-        cand_root.mkdir()
-
-        base_retired = _make_retired_contract()
-        cand_retired_mutated = _make_retired_contract()
-        cand_retired_mutated.description = Description(usage="Mutated retired description")
-
-        dump_yaml(contract_to_dict(base_retired), base_root / "orders.yaml")
-        dump_yaml(contract_to_dict(cand_retired_mutated), cand_root / "orders.yaml")
-
-        build = build_batch_release_manifest(
-            base_root=base_root,
-            candidate_root=cand_root,
-            context=TEST_CONTEXT,
-        )
-
-        # The retired mutated contract must be skipped, not included in tasks
-        assert len(build.tasks) == 0
-        assert len(build.skipped) == 1
-        assert build.skipped[0].contract_repo_path == "orders.yaml"
-
-
 # ==============================================================================
 # 3. Read-Only Matrix
 # ==============================================================================
@@ -661,7 +546,6 @@ class TestRetiredReadOnlyMatrix:
         decision = GovernanceService().evaluate(
             base_retired,
             candidate,
-            effective_date=date(2026, 8, 14),
         )
 
         gate_res = evaluate_governance_gate(decision, GovernanceOperation.ANALYZE)
@@ -682,7 +566,6 @@ class TestRetiredReadOnlyMatrix:
             base=str(base_path),
             candidate=str(cand_path),
             runtime_context="auto",
-            effective_date="2026-08-14",
         )
 
         result = run_release_classify(args)

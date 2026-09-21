@@ -20,47 +20,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "ContractValidator": ("semapact.core.validator", "ContractValidator"),
     "AzureDevOpsConfig": ("semapact.devops.pr_creator", "AzureDevOpsConfig"),
     "PullRequestCreator": ("semapact.devops.pr_creator", "PullRequestCreator"),
-    "BatchReleaseManifestBuild": (
-        "semapact.devops.release_workflow",
-        "BatchReleaseManifestBuild",
-    ),
-    "BatchReleaseTask": ("semapact.devops.release_workflow", "BatchReleaseTask"),
-    "ReleasePullRequestPlan": (
-        "semapact.devops.release_workflow",
-        "ReleasePullRequestPlan",
-    ),
-    "RepositoryContractChange": (
-        "semapact.devops.release_workflow",
-        "RepositoryContractChange",
-    ),
-    "batch_manifest_build_to_dict": (
-        "semapact.devops.release_workflow",
-        "batch_manifest_build_to_dict",
-    ),
-    "build_batch_release_manifest": (
-        "semapact.devops.release_workflow",
-        "build_batch_release_manifest",
-    ),
-    "build_release_pr_plan": (
-        "semapact.devops.release_workflow",
-        "build_release_pr_plan",
-    ),
-    "create_release_pull_request": (
-        "semapact.devops.release_workflow",
-        "create_release_pull_request",
-    ),
-    "create_release_pull_requests_from_manifest": (
-        "semapact.devops.release_workflow",
-        "create_release_pull_requests_from_manifest",
-    ),
-    "load_batch_release_tasks": (
-        "semapact.devops.release_workflow",
-        "load_batch_release_tasks",
-    ),
-    "repository_change_to_dict": (
-        "semapact.devops.release_workflow",
-        "repository_change_to_dict",
-    ),
     "SparkSqlContractExporter": (
         "semapact.exporters.sql_exporter",
         "SparkSqlContractExporter",

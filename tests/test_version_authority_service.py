@@ -6,7 +6,7 @@ from semapact.contractops import ReleasePlan, VersionAuthority
 from semapact.contractops.integrity import compute_release_plan_id
 from semapact.core.config import ConfigManager
 from semapact.exceptions import ReleaseValidationError, ValidationError
-from semapact.services import VersionAuthorityService
+from semapact.application.services.version_authority import VersionAuthorityService
 from semapact.versioning import RequiredBump
 
 

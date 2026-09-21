@@ -29,10 +29,6 @@ def validate_proposal_context(
         raise ReleaseValidationError(
             "ChangeSet and GovernanceDecision contract IDs do not match"
         )
-    if change_set.context != decision.context:
-        raise ReleaseValidationError(
-            "ChangeSet and GovernanceDecision governance contexts do not match"
-        )
     if change_set.changes != decision.changes:
         raise ReleaseValidationError(
             "ChangeSet changes do not match authoritative GovernanceDecision changes"

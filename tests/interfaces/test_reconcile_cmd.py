@@ -18,7 +18,7 @@ from semapact.reconciliation import (
     RuntimeDriftStatus,
     RuntimeReasonCode,
 )
-from semapact.services.reconciliation_service import RuntimeReconciliation
+from semapact.application.models.reconciliation import RuntimeReconciliation
 
 
 def _analysis() -> RuntimeReconciliation:

@@ -5,8 +5,8 @@ SemaPact treats a released ODCS contract as governed desired state, not as an ex
 The released contract is the authoritative artifact. SemaPact does **not** require a separate DDL build artifact before deployment. SQL and other provider-native commands are derived only after an exact released desired state is compared with an exact runtime target.
 
 ```text
-AppliedContractRelease
-        = governed desired state
+Candidate contract or finalized ContractRelease
+        = exact governed desired state
                 +
 ObservedPlatformState
         = point-in-time runtime state
@@ -23,12 +23,10 @@ This matters because one release may require different native operations in diff
 The deployment planning boundary is therefore:
 
 ```text
-AppliedContractRelease
+DeploymentSourceSnapshot
 + DeploymentTarget
         ↓
 DeploymentPlan
-        ↓
-DeploymentAuthorization
         ↓
 DeploymentService
         ↓
@@ -42,8 +40,8 @@ DeploymentOrchestrator
   → transition
   → compile
   → preview
-  → freshness / exact authorization
-  → execute
+  → freshness validation
+  → apply
   → verify
         ↓
 provider NativeOperationExecutor / RuntimeProvider
@@ -55,9 +53,9 @@ The orchestration above is provider-neutral. Platform packages configure or impl
 
 ## What a DeploymentPlan means
 
-A `DeploymentPlan` is a deterministic, provider-neutral statement of the runtime state that an exact applied contract release intends to converge toward.
+A `DeploymentPlan` is a deterministic, provider-neutral statement of the runtime state that one exact deployment source intends to converge toward.
 
-It is built only from `AppliedContractRelease`; drafts and raw candidate contracts are not deployment authority.
+Canonical plans use schema version 1 and bind only the immutable `DeploymentSourceSnapshot` plus target-specific convergence actions. Release provenance and candidate-versus-release mode live only in the source snapshot; they are not duplicated in `DeploymentPlan`.
 
 The initial action vocabulary deliberately contains only:
 
@@ -140,124 +138,316 @@ DeploymentTarget
 
 `platform` is the downstream adapter dispatch key. `runtimeTarget` is an opaque provider-local product target. `sourceReference` identifies the exact runtime source/end point against which the plan is authorized; for Databricks this is the workspace host used by runtime observation. It is an identity reference, never a credential.
 
-Preview, execution, and verification fail closed when fresh runtime evidence comes from a different source than the plan's `sourceReference`. This prevents an authorization for the same catalog/schema name from being reused against another workspace.
+Preview, execution, and verification fail closed when fresh runtime evidence comes from a different source than the plan's `sourceReference`. This prevents a plan or bundle prepared for one catalog/schema binding from being reused against another workspace.
 
 The plan does not contain credentials, workspace clients, SQL connections, or provider sessions.
 
+## ReleaseBundle and DeploymentBundle boundaries
+
+Formal contract release and runtime deployment are separate lifecycles with separate immutable handoff artifacts.
+
+A formal release is target-neutral:
+
+```text
+base + candidate
+    ↓
+GovernanceDecision
+→ ChangeSet
+→ ReleasePlan
+→ VersionResolution
+→ ReleaseSnapshot
+→ ReleaseBundle
+```
+
+`ReleaseBundle` contains no runtime target, workspace, catalog, schema, warehouse, or deployment preview. It freezes exactly what is intended to become a released contract.
+
+For REVIEW decisions, approval binds:
+
+```text
+PUBLISH
++ exact ReleaseSnapshot ID
++ exact ReleaseBundle digest
+```
+
+Finalization then creates the formal release fact and materializes the selected semantic version back into ODCS:
+
+```text
+ReleaseBundle
++ exact approval when REVIEW
+        ↓
+release finalize
+        ↓
+ContractRelease
++ versioned ODCS contract
+```
+
+A finalized release is environment-neutral. One release can subsequently fan out to multiple runtime targets without another version bump:
+
+```text
+ContractRelease orders@1.4.0
+├── dev
+├── test
+└── prod
+```
+
+Deployment begins only after the release exists, or directly from an unreleased candidate for validation/test use.
+
+Candidate deployment:
+
+```text
+base + candidate
+→ GovernanceDecision + ChangeSet
+→ DeploymentSourceSnapshot(source_kind=candidate)
+→ target-specific DeploymentPlan
+→ fresh DeploymentPreview
+→ DeploymentBundle
+```
+
+Finalized-release deployment:
+
+```text
+ContractRelease
+→ DeploymentSourceSnapshot(source_kind=contract_release)
+→ target-specific DeploymentPlan
+→ fresh DeploymentPreview
+→ DeploymentBundle
+```
+
+A release-mode `DeploymentBundle` therefore carries the exact finalized `ContractRelease`, not `ReleasePlan`, `VersionResolution`, or `ReleaseSnapshot`. Deployment never creates or versions a contract release.
+
 ## CLI workflow
 
-The deployment CLI consumes and emits canonical JSON artifacts. Planning and preview are read-only; `execute` is the runtime mutation boundary.
+### Candidate deployment
 
-### Plan
-
-```bash
-semapact deployment plan \
-  --release ./artifacts/applied-release.json \
-  --platform databricks \
-  --runtime main.sales \
-  --source-reference https://dbc-example.cloud.databricks.com
-```
-
-`--source-reference` must match the stable source identity reported by the runtime provider. Optional `--server` preserves the selected contract-server reference as target provenance.
-
-The output is the canonical `DeploymentPlan` JSON.
-
-### Preview
+Candidate deployment remains a direct `assess → deploy` path:
 
 ```bash
-semapact deployment preview \
-  --plan ./artifacts/deployment-plan.json
+semapact deployment assess \
+  --base ./contracts/orders.yaml \
+  --candidate ./contracts/orders.candidate.yaml \
+  --base-revision-ref git:abc123 \
+  --candidate-revision-ref git:def456 \
+  --server development \
+  --bundle-out ./artifacts/orders-dev.deployment.bundle.json
+
+semapact deployment deploy \
+  --bundle ./artifacts/orders-dev.deployment.bundle.json \
+  --warehouse-id <warehouse-id>
 ```
 
-Preview observes the exact target scope and derives a canonical `DeploymentPreview`. It does not mutate runtime and does not require a Databricks SQL warehouse merely to inspect provider-native operations.
+This does not calculate another semantic version, create release approval, or write release history. REVIEW may proceed for candidate runtime validation; BLOCK always fails closed.
 
-### Execute
+### Formal release
 
-For a preview containing CREATE or ALTER operations, provide the SQL warehouse used for mutation:
+Build the target-neutral release artifact first:
 
 ```bash
-semapact deployment execute \
-  --plan ./artifacts/deployment-plan.json \
-  --preview ./artifacts/deployment-preview.json \
-  --authorization ./artifacts/deployment-authorization.json \
-  --warehouse-id <databricks-sql-warehouse-id>
+semapact release assess \
+  --base ./contracts/orders.yaml \
+  --candidate ./contracts/orders.candidate.yaml \
+  --base-revision-ref git:abc123 \
+  --candidate-revision-ref git:def456 \
+  --bundle-out ./artifacts/orders.release.bundle.json
 ```
 
-For an all-`NO_OP` preview, `--warehouse-id` may be omitted because no native mutation is executed. Any CREATE/ALTER attempt without a warehouse fails closed.
-
-Execution requires the exact plan, exact preview, and exact `DeploymentAuthorization`. The adapter re-observes the target, validates the authorized runtime source and observation fingerprint, re-derives the expected preview for integrity/freshness validation, and executes only the supplied operations when the artifacts still match.
-
-Provider execution success is not convergence proof.
-
-Complete DDL export remains a useful inspection or integration utility, especially for creating new assets, but export is not a lifecycle phase. Exported SQL is derived output; deployment planning remains responsible for comparing the exact released contract with fresh runtime evidence before any mutation is authorized.
-
-### Verify
+For a REVIEW release, an external workflow may persist exact approval with the convenience command:
 
 ```bash
-semapact deployment verify \
-  --plan ./artifacts/deployment-plan.json \
-  --output json
+semapact release approve \
+  --bundle ./artifacts/orders.release.bundle.json \
+  --actor-reference github-environment:contract-release \
+  --recorded-at 2026-09-20T10:00:00+10:00 \
+  --approval-out ./artifacts/orders.approval.json
 ```
 
-Verification enters through the same DeploymentAdapter / DeploymentOrchestrator boundary, performs fresh runtime observation, and reuses the normal reconciliation semantics with the same platform schema mapper used by preview:
+The approval is `PUBLISH`-scoped to the exact `ReleaseSnapshot` and `ReleaseBundle` digest. The ApprovalRecord artifact is the CI/CD handoff; Git remains the durable governance ledger and is consulted only for conflict detection or fallback resolution. ALLOW releases do not require an ApprovalRecord.
 
-| Runtime status | Exit code |
-| --- | ---: |
-| `IN_SYNC` | `0` |
-| `DRIFT` | `6` |
-| `INDETERMINATE` | `7` |
+Finalize exactly once:
 
-This keeps execution status separate from convergence evidence. VERIFY is assurance/read-side behavior: provider mutation restrictions such as Databricks MANAGED-only writes do not prevent SemaPact from verifying an observable non-managed asset.
+```bash
+semapact release finalize \
+  --bundle ./artifacts/orders.release.bundle.json \
+  --approval ./artifacts/orders.approval.json \
+  --output-contract ./contracts/orders.yaml \
+  --release-out ./artifacts/orders.contract-release.json
+```
+
+Finalization:
+
+- authorizes the exact formal release;
+- writes one immutable `ContractRelease` to the Git governance ledger;
+- writes the selected version back to the ODCS contract file.
+
+After finalization, hand the immutable ContractRelease artifact directly to target-specific deployment:
+
+```bash
+semapact deployment assess \
+  --release ./artifacts/orders.contract-release.json \
+  --server production \
+  --bundle-out ./artifacts/orders-prod.deployment.bundle.json
+```
+
+The same ContractRelease artifact may be assessed/deployed against dev, test, prod, or another runtime target. `--release-id` remains a convenience fallback for resolving the same artifact from the Git governance ledger; Git history is not the canonical CI/CD transport.
+
+### CI/CD handoff rules
+
+Two immutable boundaries are now explicit:
+
+```text
+CI release planning
+→ ReleaseBundle
+→ approval/finalize
+→ ContractRelease
+
+runtime planning
+ContractRelease + target
+→ DeploymentBundle
+→ fresh CD execution
+```
+
+CD must not rebuild either artifact from mutable repository state after its trust boundary. Deployment always re-observes runtime before mutation, so the CI-time preview remains review evidence only and is never replayed blindly.
+
+At execution time:
+
+```text
+protected CI/CD execution boundary
+→ exact DeploymentBundle
+→ validate candidate/finalized-release provenance
+→ fresh runtime observation
+→ fresh DeploymentPreview
+→ apply
+→ fresh reconciliation
+→ IN_SYNC / DRIFT / INDETERMINATE
+```
+
+## Governance ledger vs operational history
+
+SemaPact deliberately separates low-frequency governance facts from high-frequency deployment telemetry.
+
+### Git governance ledger
+
+Git-backed history is appropriate for durable reviewable facts such as:
+
+```text
+ApprovalRecord
+ContractRelease
+```
+
+`semapact release finalize` creates one immutable, target-neutral `ContractRelease` containing the released contract version, the exact source revision from which the release was derived, and release-artifact identities. The released contract snapshot itself is canonical; the source revision is provenance and need not already contain the materialized version bump. Target-specific deployment bundles remain separate. Candidate deployment creates no release history.
+
+The Git adapter writes deterministic history files under `.semapact/history/`. The surrounding GitOps workflow remains responsible for committing/publishing those files; SemaPact does not silently push repository branches.
+
+The formal release fact is independent of runtime convergence. Once `ContractRelease` is created, a later runtime deployment failure does not undo or renumber the release.
+
+### Operational history — opt in
+
+Deployment executions can be much more frequent than releases, so SemaPact does **not** write deployment/reconciliation telemetry to Git by default.
+
+Without configuration:
+
+```text
+deployment execute + verify
+→ return DeploymentExecutionResult
+→ no operational history persistence
+```
+
+Configure operational telemetry once in `.semapact.yaml`:
+
+```yaml
+history:
+  operational:
+    backend: sqlite
+    path: .semapact/operational.db
+```
+
+For a shared/higher-volume Delta sink:
+
+```yaml
+history:
+  operational:
+    backend: delta
+    table_uri: s3://governance/semapact/operational-history
+```
+
+The `history.operational` subsection is validated fail-closed by the typed `SemaPactConfigSchema`. Unknown backends, missing backend-specific fields, or extra fields are rejected.
+
+Resolution precedence is:
+
+```text
+--operational-history CLI override
+        ↓
+history.operational project/global config
+        ↓
+disabled
+```
+
+The CLI URI remains available for one-off/custom pipeline overrides, but ordinary CI/CD does not repeat the history destination on every deployment.
+
+Supported operational history backends in this slice are SQLite and Delta. The Delta backend is lazy and requires the `delta` optional extra. Operational event payloads carry an explicit schema version so the telemetry contract can evolve independently of governance-history models.
+
+The Git ledger stores low-frequency governance facts only. Deployment/runtime telemetry is written only when an operational SQLite or Delta backend is configured.
+
+Operational events record concrete deployment occurrence facts including success/failure, exact bundle/plan/source provenance, target, timestamps, and reconciliation status when available.
 
 ## Databricks deployment capability
 
-The first Databricks write slice is intentionally narrow and fail-closed.
+The first Databricks write slice remains intentionally narrow and fail-closed for schema mutation:
 
 | Observed state | Supported behavior |
 | --- | --- |
 | Governed table is missing | `CREATE TABLE ... USING DELTA` as a managed table |
 | Existing `MANAGED` table is missing a governed nullable column | `ALTER TABLE ... ADD COLUMNS (...)` |
 | Existing `MANAGED` table already satisfies the governed shape | `NO_OP` |
-| Runtime contains extra columns not governed by this contract | Leave them untouched; no inferred `DROP` |
+| Runtime contains extra columns not governed by this contract | Leave them untouched |
 
-For this slice, `ALTER` means **only additive nullable-column change**. The adapter does not interpret `ALTER` as generic schema evolution.
+Rename, existing-column type/nullability mutation, unsafe required-column addition, DROP, non-managed mutation, and ambiguous mappings fail closed.
 
-The following are rejected rather than guessed or silently converted:
+### Unity Catalog release provenance tags
 
-- column rename;
-- existing-column physical type change;
-- existing-column nullability change;
-- adding a required/non-null column without an explicit safe migration/default strategy;
-- `DROP` or other destructive reconciliation;
-- mutation of existing external/non-managed assets;
-- unsupported or ambiguous provider mappings.
+After deployment of a **finalized formal release** reaches schema reconciliation status `IN_SYNC`, the Databricks adapter projects SemaPact-owned release provenance onto every governed Unity Catalog table:
 
-Existing external/non-managed assets remain observable through the runtime read side, but this deployment adapter does not claim mutation authority over them.
+```text
+semapact_contract_id
+semapact_contract_version
+semapact_release_id
+semapact_source_revision
+```
 
-The adapter is also not a general Databricks infrastructure engine. Workspace, catalog, schema, SQL warehouse, credentials, external locations, storage configuration, grants, jobs, and clusters are outside this deployment boundary and must be provisioned separately.
+For example, a released `orders@1.4.0` table is tagged with version `1.4.0` and the exact `ContractRelease` identity. Candidate/non-release deployments never publish formal release/version tags.
 
-## Authorization scope
+This projection is deliberately limited to SemaPact provenance. ODCS business tags, classifications, PII labels, or governed ABAC tags are **not** automatically mapped to Unity Catalog tags; those require a separate explicit mapping policy.
 
-Runtime deployment is a separate protected operation from publishing a contract release artifact.
+The Databricks principal running CD must have the Unity Catalog privileges needed to apply table tags, including `APPLY TAG` on the target object plus `USE CATALOG` and `USE SCHEMA` on its parents. SemaPact uses `ALTER TABLE ... SET TAGS`, supported by current Unity Catalog SQL surfaces.
 
-A `ContractOpsAuthorization(operation=DEPLOY)` establishes release-context authorization. Before runtime mutation, it must be bound to the exact `DeploymentPlan` as a `DeploymentAuthorization`.
+Tag mutation is a provider side effect and therefore requires a Databricks SQL warehouse even when the schema deployment itself resolves to `NO_OP`. A tag-write failure fails the release deployment command rather than silently claiming the runtime is fully projected.
 
-For review-required changes, structured review evidence may carry an opaque `scopeReference`. Deployment requires that scope to match the exact `deploymentPlanId`, so an approval for one exact platform/runtime/source target cannot be reused for another target.
+## Execution trust boundary
 
-A PUBLISH authorization cannot authorize DEPLOY.
+Candidate and finalized-release deployments use different provenance, but neither turns release state into runtime execution authority:
+
+```text
+candidate deployment
+→ exact GovernanceDecision + candidate source snapshot
+→ BLOCK fails closed
+
+formal release deployment
+→ exact finalized ContractRelease provenance
+```
+
+Whether runtime mutation may execute is decided by the surrounding protected CD context, such as a GitHub Environment or Azure DevOps Environment. SemaPact validates the exact bundle, source/plan linkage, fresh runtime observation, deterministic preview, and convergence; it does not manufacture DEPLOY authority from a ContractRelease.
 
 ## Determinism
 
 `deploymentPlanId` is UUID5-derived from the full stable plan record:
 
-- exact `AppliedContractRelease` identity and provenance;
+- exact deployment source snapshot (candidate or release) and revision/version provenance;
 - exact deployment target, including runtime source reference;
 - canonical actions ordered by governed asset identity;
 - plan schema version.
 
-The same exact applied release and target therefore produce the same DeploymentPlan.
+The same exact deployment source and target therefore produce the same DeploymentPlan.
 
-Action ordering is canonical even when schemas appear in a different order in source ODCS. However, DeploymentPlan does not redefine release identity: two distinct `AppliedContractRelease` artifacts remain distinct authorities even if their projected actions happen to be equivalent.
+Action ordering is canonical even when schemas appear in a different order in source ODCS. However, DeploymentPlan does not redefine release identity: two distinct exact release artifacts remain distinct plan inputs even if their projected actions happen to be equivalent.
 
 `DeploymentPreview` is likewise deterministic for the same plan and observed runtime evidence, but deterministic IDs provide artifact consistency rather than cryptographic authenticity. Execution still validates exact binding and fresh runtime evidence at the side-effect boundary.
 

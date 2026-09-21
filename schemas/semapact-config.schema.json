@@ -1,0 +1,101 @@
+{
+  "$defs": {
+    "DeltaOperationalHistoryConfig": {
+      "additionalProperties": false,
+      "description": "Delta Lake operational history configuration.",
+      "properties": {
+        "backend": {
+          "const": "delta",
+          "title": "Backend",
+          "type": "string"
+        },
+        "table_uri": {
+          "minLength": 1,
+          "title": "Table Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "backend",
+        "table_uri"
+      ],
+      "title": "DeltaOperationalHistoryConfig",
+      "type": "object"
+    },
+    "HistoryConfig": {
+      "additionalProperties": false,
+      "description": "Typed history configuration while unrelated configuration remains extensible.",
+      "properties": {
+        "operational": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "delta": "#/$defs/DeltaOperationalHistoryConfig",
+                  "sqlite": "#/$defs/SQLiteOperationalHistoryConfig"
+                },
+                "propertyName": "backend"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SQLiteOperationalHistoryConfig"
+                },
+                {
+                  "$ref": "#/$defs/DeltaOperationalHistoryConfig"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operational"
+        }
+      },
+      "title": "HistoryConfig",
+      "type": "object"
+    },
+    "SQLiteOperationalHistoryConfig": {
+      "additionalProperties": false,
+      "description": "Local SQLite operational history configuration.",
+      "properties": {
+        "backend": {
+          "const": "sqlite",
+          "title": "Backend",
+          "type": "string"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "backend",
+        "path"
+      ],
+      "title": "SQLiteOperationalHistoryConfig",
+      "type": "object"
+    }
+  },
+  "$id": "https://semapact.org/schemas/semapact-config.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Incremental root schema for project/global SemaPact configuration.",
+  "properties": {
+    "history": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HistoryConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "title": "SemaPactConfigSchema",
+  "type": "object"
+}

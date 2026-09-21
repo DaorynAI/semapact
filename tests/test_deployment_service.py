@@ -3,13 +3,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from open_data_contract_standard.model import SchemaObject, SchemaProperty
+from open_data_contract_standard.model import (
+    SchemaObject,
+    SchemaProperty,
+)
 
 from semapact.deployment import (
     DeploymentAction,
     DeploymentAdapter,
     DeploymentActionKind,
-    DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
     DeploymentTarget,
@@ -17,14 +19,13 @@ from semapact.deployment import (
     NativeOperationKind,
 )
 from semapact.deployment.models import (
-    compute_deployment_authorization_id,
     compute_deployment_plan_id,
     compute_deployment_preview_id,
 )
 from semapact.exceptions import ValidationError
 from semapact.observation import ObservedPlatformState, with_observed_state_fingerprint
 from semapact.reconciliation import ReconciliationResult
-from semapact.services.deployment_service import DeploymentService
+from semapact.application.services.deployment import DeploymentService
 
 CAPTURED_AT = datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc)
 SOURCE_REFERENCE = "https://adb.example"
@@ -56,9 +57,10 @@ class FakeDeploymentAdapter(DeploymentAdapter):
         self.verify_calls += 1
         return self.verification_result
 
-    def execute(self, plan, preview, authorization) -> None:
+    def apply(self, plan, preview) -> None:
         self.execute_calls += 1
-        self.executed = (plan, preview, authorization)
+        self.executed = (plan, preview, None)
+
 
 
 def _plan() -> DeploymentPlan:
@@ -87,21 +89,19 @@ def _plan() -> DeploymentPlan:
         source_reference=SOURCE_REFERENCE,
     )
     plan_id = compute_deployment_plan_id(
-        applied_release_id="release-1",
+        source_snapshot_id="release-1",
         contract_id="orders-contract",
-        release_plan_id="release-plan-1",
-        released_revision_ref="abc123",
-        selected_version="1.2.3",
+        revision_ref="abc123",
+        contract_version="1.2.3",
         target=target,
         actions=(action,),
     )
     return DeploymentPlan(
         deployment_plan_id=plan_id,
-        applied_release_id="release-1",
+        source_snapshot_id="release-1",
         contract_id="orders-contract",
-        release_plan_id="release-plan-1",
-        released_revision_ref="abc123",
-        selected_version="1.2.3",
+        revision_ref="abc123",
+        contract_version="1.2.3",
         target=target,
         actions=(action,),
     )
@@ -150,7 +150,7 @@ def _verification(plan: DeploymentPlan) -> ReconciliationResult:
     assert observation.fingerprint is not None
     return ReconciliationResult(
         contract_id=plan.contract_id,
-        contract_version=plan.selected_version,
+        contract_version=plan.contract_version,
         observation_source_identifier=observation.source_identifier,
         observation_fingerprint=observation.fingerprint,
     )
@@ -162,21 +162,6 @@ def _adapter(plan: DeploymentPlan) -> FakeDeploymentAdapter:
         _verification(plan),
     )
 
-
-def _authorization(plan: DeploymentPlan) -> DeploymentAuthorization:
-    authorization_id = compute_deployment_authorization_id(
-        contract_ops_authorization_id="contractops-auth-1",
-        deployment_plan_id=plan.deployment_plan_id,
-        applied_release_id=plan.applied_release_id,
-        allowed=True,
-    )
-    return DeploymentAuthorization(
-        deployment_authorization_id=authorization_id,
-        contract_ops_authorization_id="contractops-auth-1",
-        deployment_plan_id=plan.deployment_plan_id,
-        applied_release_id=plan.applied_release_id,
-        allowed=True,
-    )
 
 
 def test_preview_delegates_to_unified_adapter_entrypoint() -> None:
@@ -190,21 +175,20 @@ def test_preview_delegates_to_unified_adapter_entrypoint() -> None:
     assert adapter.execute_calls == 0
 
 
-def test_execute_delegates_exact_canonical_artifacts() -> None:
+def test_apply_delegates_exact_plan_and_preview_without_internal_authorization() -> None:
     plan = _plan()
     preview = _preview(plan)
-    authorization = _authorization(plan)
     adapter = _adapter(plan)
 
-    DeploymentService().execute(
+    DeploymentService().apply(
         plan,
         preview,
-        authorization,
         adapter=adapter,
     )
 
     assert adapter.execute_calls == 1
-    assert adapter.executed == (plan, preview, authorization)
+    assert adapter.executed == (plan, preview, None)
+
 
 
 def test_verify_delegates_to_same_adapter_entrypoint() -> None:
@@ -217,7 +201,7 @@ def test_verify_delegates_to_same_adapter_entrypoint() -> None:
     assert adapter.verify_calls == 1
 
 
-@pytest.mark.parametrize("operation", ["preview", "verify", "execute"])
+@pytest.mark.parametrize("operation", ["preview", "verify", "apply"])
 def test_service_rejects_adapter_platform_mismatch(operation: str) -> None:
     plan = _plan()
     adapter = _adapter(plan)
@@ -229,12 +213,7 @@ def test_service_rejects_adapter_platform_mismatch(operation: str) -> None:
         elif operation == "verify":
             DeploymentService().verify(plan, adapter=adapter)
         else:
-            DeploymentService().execute(
-                plan,
-                _preview(plan),
-                _authorization(plan),
-                adapter=adapter,
-            )
+            DeploymentService().apply(plan, _preview(plan), adapter=adapter)
 
     assert adapter.preview_calls == 0
     assert adapter.verify_calls == 0

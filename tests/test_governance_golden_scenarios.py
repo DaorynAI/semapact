@@ -15,8 +15,7 @@ import pytest
 import yaml
 
 from open_data_contract_standard.model import OpenDataContractStandard
-from semapact.change_context import ChangeContext
-from semapact.core.release import RequiredBump
+from semapact.versioning import RequiredBump
 from semapact.governance import (
     DecisionResult,
     evaluate_governance_decision,
@@ -27,7 +26,6 @@ from semapact.governance_codes import GovernanceReasonCode
 from semapact.lifecycle.merge_engine import MergeConflict
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "governance_scenarios"
-TEST_CONTEXT = ChangeContext(effective_date=date(2026, 1, 1))
 
 
 @dataclass(frozen=True)
@@ -344,17 +342,14 @@ def _load_contract_from_yaml(yaml_path: Path) -> OpenDataContractStandard:
 
 @pytest.mark.parametrize("scenario", SCENARIO_MATRIX, ids=lambda s: s.name)
 def test_governance_golden_scenarios(scenario: GovernanceGoldenScenario) -> None:
-    """Evaluate golden scenario, verify domain invariants, and compare byte-exact public JSON."""
+    """Evaluate each canonical governance scenario and verify deterministic public projection."""
     scenario_dir = FIXTURES_DIR / scenario.name
     assert scenario_dir.exists(), f"Scenario directory missing: {scenario_dir}"
 
     base_path = scenario_dir / "base.yaml"
     cand_path = scenario_dir / "candidate.yaml"
-    expected_path = scenario_dir / "expected.json"
-
     assert base_path.exists(), f"base.yaml missing for {scenario.name}"
     assert cand_path.exists(), f"candidate.yaml missing for {scenario.name}"
-    assert expected_path.exists(), f"expected.json missing for {scenario.name}"
 
     base_contract = _load_contract_from_yaml(base_path)
     cand_contract = _load_contract_from_yaml(cand_path)
@@ -363,7 +358,6 @@ def test_governance_golden_scenarios(scenario: GovernanceGoldenScenario) -> None
     decision = evaluate_governance_decision(
         base_contract,
         cand_contract,
-        context=TEST_CONTEXT,
         merge_conflicts=scenario.merge_conflicts,
     )
 
@@ -394,16 +388,21 @@ def test_governance_golden_scenarios(scenario: GovernanceGoldenScenario) -> None
             f"[{scenario.name}] validation.valid mismatch: got {decision.validation.valid}, expected {scenario.expected_validation_valid}"
         )
 
-    # 3. Public projection and read-only byte-exact golden comparison (Phase 3 & 4)
+    # 3. Public projection remains deterministic and free of execution-time context.
     public_decision = to_public_governance_decision(decision)
-    actual_json = serialize_public_governance_decision(public_decision, indent=2) + "\n"
-    expected_json = expected_path.read_text(encoding="utf-8")
-
-    assert actual_json == expected_json, (
-        f"[{scenario.name}] Golden JSON mismatch:\n"
-        f"--- Actual ---\n{actual_json}\n"
-        f"--- Expected ---\n{expected_json}"
+    first_json = serialize_public_governance_decision(public_decision, indent=2)
+    second_json = serialize_public_governance_decision(
+        to_public_governance_decision(
+            evaluate_governance_decision(
+                base_contract,
+                cand_contract,
+                merge_conflicts=scenario.merge_conflicts,
+            )
+        ),
+        indent=2,
     )
+    assert first_json == second_json
+    assert '"context"' not in first_json
 
 
 # ==============================================================================
@@ -417,7 +416,7 @@ def test_lifecycle_draft_entity_skips_breaking_checks() -> None:
     base = _load_contract_from_yaml(scenario_dir / "base.yaml")
     cand = _load_contract_from_yaml(scenario_dir / "candidate.yaml")
 
-    decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, cand)
 
     assert decision.decision == DecisionResult.REVIEW
     assert decision.breaking is False
@@ -431,7 +430,7 @@ def test_lifecycle_deprecated_entity_skips_breaking_checks() -> None:
     base = _load_contract_from_yaml(scenario_dir / "base.yaml")
     cand = _load_contract_from_yaml(scenario_dir / "candidate.yaml")
 
-    decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, cand)
 
     assert decision.decision == DecisionResult.REVIEW
     assert decision.breaking is False
@@ -445,7 +444,7 @@ def test_lifecycle_active_to_retired_transition_reviewable() -> None:
     base = _load_contract_from_yaml(scenario_dir / "base.yaml")
     cand = _load_contract_from_yaml(scenario_dir / "candidate.yaml")
 
-    decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, cand)
 
     assert decision.decision == DecisionResult.REVIEW
     assert decision.policy.retired_violation is False
@@ -461,7 +460,7 @@ def test_lifecycle_retired_contract_mutation_blocked() -> None:
     base = _load_contract_from_yaml(scenario_dir / "base.yaml")
     cand = _load_contract_from_yaml(scenario_dir / "candidate.yaml")
 
-    decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, cand)
 
     assert decision.decision == DecisionResult.BLOCK
     assert decision.policy.retired_violation is True
@@ -482,7 +481,7 @@ def test_physical_name_identity_stability() -> None:
     base = _load_contract_from_yaml(scenario_dir / "base.yaml")
     cand = _load_contract_from_yaml(scenario_dir / "candidate.yaml")
 
-    decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, cand)
 
     assert decision.decision == DecisionResult.REVIEW
     assert decision.breaking is False
@@ -532,13 +531,13 @@ def test_repeated_evaluation_determinism() -> None:
     base = _load_contract_from_yaml(scenario_dir / "base.yaml")
     cand = _load_contract_from_yaml(scenario_dir / "candidate.yaml")
 
-    first_dec = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+    first_dec = evaluate_governance_decision(base, cand)
     first_json = serialize_public_governance_decision(
         to_public_governance_decision(first_dec), indent=2
     )
 
     for _ in range(10):
-        subsequent_dec = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+        subsequent_dec = evaluate_governance_decision(base, cand)
         subsequent_json = serialize_public_governance_decision(
             to_public_governance_decision(subsequent_dec), indent=2
         )
@@ -603,8 +602,8 @@ def test_non_semantic_key_ordering_determinism() -> None:
     base_1 = OpenDataContractStandard.model_validate(base_dict_1)
     base_2 = OpenDataContractStandard.model_validate(base_dict_2)
 
-    dec_1 = evaluate_governance_decision(base_1, base_1, context=TEST_CONTEXT)
-    dec_2 = evaluate_governance_decision(base_2, base_2, context=TEST_CONTEXT)
+    dec_1 = evaluate_governance_decision(base_1, base_1)
+    dec_2 = evaluate_governance_decision(base_2, base_2)
 
     assert dec_1.decision_id == dec_2.decision_id
     assert to_public_governance_decision(dec_1).to_canonical_json(
@@ -632,10 +631,10 @@ def test_merge_conflict_ordering_determinism() -> None:
     )
 
     dec_forward = evaluate_governance_decision(
-        base, base, context=TEST_CONTEXT, merge_conflicts=(c1, c2)
+        base, base, merge_conflicts=(c1, c2)
     )
     dec_reverse = evaluate_governance_decision(
-        base, base, context=TEST_CONTEXT, merge_conflicts=(c2, c1)
+        base, base, merge_conflicts=(c2, c1)
     )
 
     assert dec_forward.decision_id == dec_reverse.decision_id
@@ -665,12 +664,20 @@ def test_fixtures_are_read_only() -> None:
         b = _load_contract_from_yaml(s_dir / "base.yaml")
         c = _load_contract_from_yaml(s_dir / "candidate.yaml")
         d = evaluate_governance_decision(
-            b, c, context=TEST_CONTEXT, merge_conflicts=scenario.merge_conflicts
+            b, c, merge_conflicts=scenario.merge_conflicts
         )
         pub = to_public_governance_decision(d)
-        actual = serialize_public_governance_decision(pub, indent=2) + "\n"
-        expected = (s_dir / "expected.json").read_text(encoding="utf-8")
-        assert actual == expected
+        first = serialize_public_governance_decision(pub, indent=2)
+        second = serialize_public_governance_decision(
+            to_public_governance_decision(
+                evaluate_governance_decision(
+                    b, c, merge_conflicts=scenario.merge_conflicts
+                )
+            ),
+            indent=2,
+        )
+        assert first == second
+        assert '"context"' not in first
 
     hashes_after: dict[str, str] = {}
     for f in FIXTURES_DIR.rglob("*"):

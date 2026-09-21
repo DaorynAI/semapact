@@ -79,6 +79,6 @@ def _contract_projection_from_plan(
     # deterministic plan identity was revalidated above.
     return OpenDataContractStandard.model_construct(
         id=plan.contract_id,
-        version=plan.selected_version,
+        version=plan.contract_version,
         schema_=schemas,
     )

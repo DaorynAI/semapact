@@ -8,17 +8,6 @@ from semapact.application.services.governance import GovernanceService
 from semapact.application.services.reconciliation import ReconciliationService
 from semapact.application.services.release_planning import ReleasePlanningService
 from semapact.application.services.version_authority import VersionAuthorityService
-from semapact.services import (
-    DeploymentService as LegacyDeploymentService,
-    GovernanceAnalysis as LegacyGovernanceAnalysis,
-    GovernanceProposal as LegacyGovernanceProposal,
-    GovernanceService as LegacyGovernanceService,
-    ReconciliationService as LegacyReconciliationService,
-    ReleasePlanningResult as LegacyReleasePlanningResult,
-    ReleasePlanningService as LegacyReleasePlanningService,
-    RuntimeReconciliation as LegacyRuntimeReconciliation,
-    VersionAuthorityService as LegacyVersionAuthorityService,
-)
 
 
 def test_application_result_models_have_explicit_model_ownership() -> None:
@@ -28,13 +17,9 @@ def test_application_result_models_have_explicit_model_ownership() -> None:
     assert ReleasePlanningResult.__module__ == "semapact.application.models.release"
 
 
-def test_legacy_services_package_is_compatibility_only() -> None:
-    assert LegacyGovernanceAnalysis is GovernanceAnalysis
-    assert LegacyGovernanceProposal is GovernanceProposal
-    assert LegacyRuntimeReconciliation is RuntimeReconciliation
-    assert LegacyReleasePlanningResult is ReleasePlanningResult
-    assert LegacyGovernanceService is GovernanceService
-    assert LegacyReconciliationService is ReconciliationService
-    assert LegacyDeploymentService is DeploymentService
-    assert LegacyReleasePlanningService is ReleasePlanningService
-    assert LegacyVersionAuthorityService is VersionAuthorityService
+def test_application_services_have_single_canonical_package() -> None:
+    assert DeploymentService.__module__ == "semapact.application.services.deployment"
+    assert GovernanceService.__module__ == "semapact.application.services.governance"
+    assert ReconciliationService.__module__ == "semapact.application.services.reconciliation"
+    assert ReleasePlanningService.__module__ == "semapact.application.services.release_planning"
+    assert VersionAuthorityService.__module__ == "semapact.application.services.version_authority"

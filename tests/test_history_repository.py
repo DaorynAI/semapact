@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -10,7 +9,6 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
-from semapact.change_context import ChangeContext
 from semapact.contractops import build_change_set_from_decision
 from semapact.governance import GovernanceDecision, evaluate_governance_decision
 from semapact.history import (
@@ -23,7 +21,6 @@ from semapact.history import (
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
 
 
-CONTEXT = ChangeContext(effective_date=date(2026, 9, 12))
 
 
 def _contract(*, name: str) -> OpenDataContractStandard:
@@ -54,7 +51,6 @@ def _decision(*, candidate_name: str) -> GovernanceDecision:
     return evaluate_governance_decision(
         _contract(name="orders-base"),
         _contract(name=candidate_name),
-        context=CONTEXT,
     )
 
 
@@ -78,7 +74,7 @@ def test_artifacts_round_trip_through_segregated_repository_ports(
 
     assert decisions.get_decision(decision.decision_id) == decision
     assert change_sets.get_change_set(change_set.change_set_id) == change_set
-    assert change_sets.get_change_set(change_set.change_set_id).context == CONTEXT
+    assert not hasattr(change_sets.get_change_set(change_set.change_set_id), "context")
 
 
 def test_identical_writes_are_idempotent(tmp_path: Path) -> None:

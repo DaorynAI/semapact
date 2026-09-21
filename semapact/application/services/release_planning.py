@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.application.models.release import ReleasePlanningResult
@@ -29,7 +27,6 @@ class ReleasePlanningService:
         base_contract: OpenDataContractStandard,
         candidate_contract: OpenDataContractStandard,
         *,
-        effective_date: date | str,
         base_revision_ref: str,
         candidate_revision_ref: str,
         authority_reference: str | None = None,
@@ -38,7 +35,6 @@ class ReleasePlanningService:
         proposal = self._governance.evaluate_proposal(
             base_contract,
             candidate_contract,
-            effective_date=effective_date,
             base_revision_ref=base_revision_ref,
             candidate_revision_ref=candidate_revision_ref,
         )

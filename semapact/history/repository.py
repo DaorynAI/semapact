@@ -5,17 +5,12 @@ from __future__ import annotations
 from typing import Protocol
 
 from semapact.approval.models import ApprovalRecord
-from semapact.contractops import ChangeSet, ReleasePlan
-from semapact.deployment import DeploymentAuthorization, DeploymentPlan, DeploymentPreview
+from semapact.contractops import ChangeSet, ContractRelease, ReleasePlan
 from semapact.governance import GovernanceDecision
 from semapact.governance.gate import GovernanceOperation
 from semapact.history.models import (
     ChangeSetDecisionLink,
-    DeploymentRecord,
     HistoryStorageIntegrityIssue,
-    ReleaseRecord,
-    RuntimeObservationRecord,
-    RuntimeReconciliationRecord,
 )
 from semapact.revision.models import ContractRevision, ContractRevisionSource
 
@@ -113,99 +108,17 @@ class ReleasePlanHistoryRepository(Protocol):
     def get_release_plan(self, release_plan_id: str) -> ReleasePlan: ...
 
 
-class ReleaseRecordHistoryRepository(Protocol):
-    """Persistence capability for finalized release audit records only."""
+class ContractReleaseHistoryRepository(Protocol):
+    """Persistence capability for finalized formal contract release facts."""
 
-    def put_release_record(self, record: ReleaseRecord) -> None: ...
-    def get_release_record(self, release_record_id: str) -> ReleaseRecord: ...
-    def list_release_records(self, contract_id: str) -> tuple[ReleaseRecord, ...]: ...
-
-    def get_release_record_by_version(
+    def put_contract_release(self, record: ContractRelease) -> None: ...
+    def get_contract_release(self, contract_release_id: str) -> ContractRelease: ...
+    def list_contract_releases(
+        self,
+        contract_id: str,
+    ) -> tuple[ContractRelease, ...]: ...
+    def get_contract_release_by_version(
         self,
         contract_id: str,
         contract_version: str,
-    ) -> ReleaseRecord: ...
-
-
-class DeploymentPlanHistoryRepository(Protocol):
-    """Persistence capability for canonical DeploymentPlan history only."""
-
-    def put_deployment_plan(self, plan: DeploymentPlan) -> None: ...
-    def get_deployment_plan(self, deployment_plan_id: str) -> DeploymentPlan: ...
-
-
-class DeploymentPreviewHistoryRepository(Protocol):
-    """Persistence capability for canonical DeploymentPreview history only."""
-
-    def put_deployment_preview(self, preview: DeploymentPreview) -> None: ...
-    def get_deployment_preview(self, deployment_preview_id: str) -> DeploymentPreview: ...
-
-
-class DeploymentAuthorizationHistoryRepository(Protocol):
-    """Persistence capability for canonical DeploymentAuthorization history only."""
-
-    def put_deployment_authorization(
-        self,
-        authorization: DeploymentAuthorization,
-    ) -> None: ...
-
-    def get_deployment_authorization(
-        self,
-        deployment_authorization_id: str,
-    ) -> DeploymentAuthorization: ...
-
-
-class DeploymentRecordHistoryRepository(Protocol):
-    """Persistence capability for terminal deployment execution occurrences only."""
-
-    def put_deployment_record(self, record: DeploymentRecord) -> None: ...
-    def get_deployment_record(self, deployment_record_id: str) -> DeploymentRecord: ...
-
-    def list_deployment_records_for_release(
-        self,
-        release_record_id: str,
-    ) -> tuple[DeploymentRecord, ...]: ...
-
-    def list_deployment_records_for_plan(
-        self,
-        deployment_plan_id: str,
-    ) -> tuple[DeploymentRecord, ...]: ...
-
-
-class RuntimeObservationHistoryRepository(Protocol):
-    """Persistence capability for canonical M1 observation evidence envelopes."""
-
-    def put_runtime_observation_record(self, record: RuntimeObservationRecord) -> None: ...
-    def get_runtime_observation_record(
-        self,
-        observation_record_id: str,
-    ) -> RuntimeObservationRecord: ...
-
-    def list_runtime_observation_records(
-        self,
-        source_identifier: str,
-    ) -> tuple[RuntimeObservationRecord, ...]: ...
-
-
-class RuntimeReconciliationHistoryRepository(Protocol):
-    """Persistence capability for point-in-time runtime reconciliation history."""
-
-    def put_runtime_reconciliation_record(
-        self,
-        record: RuntimeReconciliationRecord,
-    ) -> None: ...
-
-    def get_runtime_reconciliation_record(
-        self,
-        runtime_reconciliation_record_id: str,
-    ) -> RuntimeReconciliationRecord: ...
-
-    def list_runtime_reconciliation_records(
-        self,
-        contract_id: str,
-    ) -> tuple[RuntimeReconciliationRecord, ...]: ...
-
-    def list_runtime_reconciliation_records_for_source(
-        self,
-        source_identifier: str,
-    ) -> tuple[RuntimeReconciliationRecord, ...]: ...
+    ) -> ContractRelease: ...

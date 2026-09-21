@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from semapact.contractops import AppliedContractRelease
 from semapact.deployment import (
     DeploymentAdapter,
-    DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
+    DeploymentSourceSnapshot,
     DeploymentTarget,
-    build_deployment_plan,
+    build_deployment_plan_from_source,
 )
 from semapact.exceptions import ValidationError
 from semapact.reconciliation import ReconciliationResult
@@ -20,10 +19,10 @@ class DeploymentService:
 
     def plan(
         self,
-        release: AppliedContractRelease,
+        source: DeploymentSourceSnapshot,
         target: DeploymentTarget,
     ) -> DeploymentPlan:
-        return build_deployment_plan(release, target)
+        return build_deployment_plan_from_source(source, target)
 
     def preview(
         self,
@@ -34,16 +33,16 @@ class DeploymentService:
         _validate_component_key(adapter.key, plan.target.platform, "deployment adapter")
         return adapter.preview(plan)
 
-    def execute(
+    def apply(
         self,
         plan: DeploymentPlan,
         preview: DeploymentPreview,
-        authorization: DeploymentAuthorization,
         *,
         adapter: DeploymentAdapter,
     ) -> None:
+        """Apply one exact preview after the external execution boundary allows CD."""
         _validate_component_key(adapter.key, plan.target.platform, "deployment adapter")
-        adapter.execute(plan, preview, authorization)
+        adapter.apply(plan, preview)
 
     def verify(
         self,

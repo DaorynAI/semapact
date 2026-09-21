@@ -11,7 +11,7 @@ from open_data_contract_standard.model import (
 )
 
 import semapact.lifecycle.merge_engine as merge_engine
-from semapact.governance import ChangeContext
+from semapact.change_context import ChangeContext
 from semapact.lifecycle.merge_engine import ContractMergeEngine
 
 
@@ -353,7 +353,6 @@ def test_merge_engine_rejects_retired_contract_modification():
     decision = evaluate_governance_decision(
         existing,
         result.contract,
-        context=TEST_CONTEXT,
         merge_conflicts=result.conflicts,
     )
     assert decision.decision == DecisionResult.BLOCK

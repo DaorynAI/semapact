@@ -1,6 +1,5 @@
 """SemaPact Governance Kernel package."""
 
-from semapact.change_context import ChangeContext
 from semapact.governance_codes import (
     GOVERNANCE_REASON_REGISTRY,
     GovernanceReasonCode,
@@ -24,7 +23,6 @@ from semapact.governance.gate import (
     evaluate_governance_gate,
 )
 from semapact.governance.public import (
-    PublicChangeContextV1,
     PublicChangeDomain,
     PublicChangeEvidenceV1,
     PublicChangeType,
@@ -45,7 +43,6 @@ from semapact.governance.public import (
 )
 
 __all__ = [
-    "ChangeContext",
     "DecisionResult",
     "GovernanceReasonCode",
     "GovernanceSeverity",
@@ -70,7 +67,6 @@ __all__ = [
     "PublicEntityType",
     "PublicChangeDomain",
     "PublicEvidenceSource",
-    "PublicChangeContextV1",
     "PublicGovernanceReasonV1",
     "PublicValidationOutcomeV1",
     "PublicPolicyOutcomeV1",

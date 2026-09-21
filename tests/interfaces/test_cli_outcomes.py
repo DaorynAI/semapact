@@ -5,8 +5,7 @@ from __future__ import annotations
 import pytest
 
 
-from semapact.change_context import ChangeContext
-from semapact.core.release import RequiredBump
+from semapact.versioning import RequiredBump
 from semapact.exceptions import (
     GovernanceBlockedError,
     GovernanceReviewRequiredError,
@@ -44,7 +43,6 @@ def _make_dummy_decision(
         decision_id="test-dec-1",
         decision=decision,
         contract_id="test-contract",
-        context=ChangeContext(effective_date="2026-08-29"),
         breaking=breaking,
         required_version_bump=bump,
         validation=ValidationOutcome(valid=True),

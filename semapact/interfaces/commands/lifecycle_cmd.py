@@ -1,7 +1,7 @@
 import argparse
 from typing import Any
 
-from semapact.services import GovernanceService
+from semapact.application.services.governance import GovernanceService
 
 
 def run_lifecycle_promote(args: argparse.Namespace) -> dict[str, Any]:

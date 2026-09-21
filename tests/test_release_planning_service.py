@@ -7,7 +7,8 @@ from open_data_contract_standard.model import (
 )
 
 from semapact.contractops import VersionAuthorityConfig, resolve_release_version
-from semapact.services import GovernanceService, ReleasePlanningService
+from semapact.application.services.governance import GovernanceService
+from semapact.application.services.release_planning import ReleasePlanningService
 
 
 class CountingGovernanceService:
@@ -69,7 +70,6 @@ def test_release_planning_composes_one_decision_into_exact_m2_artifacts() -> Non
     result = service.plan(
         _contract(name="Orders old"),
         _contract(name="Orders new"),
-        effective_date="2026-09-11",
         base_revision_ref="git:base-123",
         candidate_revision_ref="git:candidate-456",
     )
@@ -98,14 +98,12 @@ def test_release_planning_is_deterministic_for_same_exact_inputs() -> None:
     first = service.plan(
         base,
         candidate,
-        effective_date="2026-09-11",
         base_revision_ref="git:base-123",
         candidate_revision_ref="git:candidate-456",
     )
     second = service.plan(
         base,
         candidate,
-        effective_date="2026-09-11",
         base_revision_ref="git:base-123",
         candidate_revision_ref="git:candidate-456",
     )

@@ -6,7 +6,7 @@ import pytest
 
 from semapact.core.lifecycle_cli import apply_lifecycle
 from semapact.exceptions import GovernanceReviewRequiredError
-from semapact.governance import ChangeContext
+from semapact.change_context import ChangeContext
 from semapact.utils.yaml_utils import load_yaml
 
 Args = namedtuple(

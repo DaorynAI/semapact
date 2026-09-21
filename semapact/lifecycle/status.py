@@ -37,10 +37,8 @@ class LifecycleStatus(StrEnum):
 def normalize_status(value: Any) -> LifecycleStatus:
     """Normalize status string to canonical LifecycleStatus enum.
 
-    Supported values & aliases:
-    - 'draft', 'proposed' -> LifecycleStatus.DRAFT
-      (Note: 'proposed' is a read-only governance interpretation alias;
-       SemaPact does not rewrite ODCS YAML status during resolution)
+    Supported values:
+    - 'draft' -> LifecycleStatus.DRAFT
     - 'active' -> LifecycleStatus.ACTIVE
     - 'deprecated' -> LifecycleStatus.DEPRECATED
     - 'retired' -> LifecycleStatus.RETIRED
@@ -58,7 +56,7 @@ def normalize_status(value: Any) -> LifecycleStatus:
     if not text:
         raise ValueError("Lifecycle status value cannot be empty")
 
-    if text in ("draft", "proposed"):
+    if text == "draft":
         return LifecycleStatus.DRAFT
     if text == "active":
         return LifecycleStatus.ACTIVE
@@ -109,10 +107,9 @@ def resolve_contract_lifecycle(
 ) -> LifecycleStatus:
     """Resolve authoritative contract root lifecycle status.
 
-    Fallback order:
+    Resolution:
     1. contract.status (ODCS native canonical root status)
-    2. contract.customProperties.lifecycleStatus (legacy fallback)
-    3. LifecycleStatus.DRAFT (canonical default)
+    2. LifecycleStatus.DRAFT when root status is absent or invalid
 
     Note: Lifecycle resolvers are intentionally total for deterministic analysis;
     invalid statuses fall back to DRAFT while lifecycle validity is enforced by ContractValidator.
@@ -121,7 +118,7 @@ def resolve_contract_lifecycle(
         return LifecycleStatus.DRAFT
 
 
-    # 1. Native root status
+    # Native root status
     raw_status = contract.status
     if raw_status is not None and str(raw_status).strip() != "":
         try:
@@ -129,12 +126,6 @@ def resolve_contract_lifecycle(
         except ValueError:
             return LifecycleStatus.DRAFT
 
-    # 2. Legacy customProperties fallback
-    declared = lifecycle_from_custom_properties(contract.customProperties)
-    if declared is not None:
-        return declared
-
-    # 3. Canonical default
     return LifecycleStatus.DRAFT
 
 

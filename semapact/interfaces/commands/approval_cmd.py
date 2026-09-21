@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 from argparse import Namespace
-from datetime import datetime
-
 from semapact.application.services.approval_record import ApprovalRecordService
 from semapact.contractops import ReviewEvidenceAction
 from semapact.governance import GovernanceOperation
+from semapact.interfaces.parsing import parse_iso_timestamp
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
 
 
 def run_approval_record(args: Namespace) -> dict[str, object]:
     """Record one explicit review event through the application service boundary."""
-    recorded_at = _parse_timestamp(args.recorded_at)
+    recorded_at = parse_iso_timestamp(args.recorded_at)
     service = ApprovalRecordService(
         GitWorkingTreeHistoryRepository(args.repository_root),
     )
@@ -34,13 +33,3 @@ def run_approval_record(args: Namespace) -> dict[str, object]:
     return record.model_dump(mode="json", by_alias=True)
 
 
-def _parse_timestamp(value: str) -> datetime:
-    if not isinstance(value, str):
-        raise TypeError("recorded_at must be an ISO-8601 string")
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ValueError("recorded_at must be an ISO-8601 timestamp") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError("recorded_at must include an explicit timezone offset")
-    return parsed

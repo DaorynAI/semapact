@@ -16,7 +16,7 @@ from semapact.observation import (
     with_observed_state_fingerprint,
 )
 from semapact.reconciliation import RuntimeDriftStatus
-from semapact.services.reconciliation_service import ReconciliationService
+from semapact.application.services.reconciliation import ReconciliationService
 
 
 class _Loader:

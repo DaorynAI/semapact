@@ -275,6 +275,73 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="release_command", required=True
     )
 
+    release_assess_parser = release_subparsers.add_parser(
+        "assess",
+        help="Build one immutable target-neutral formal ReleaseBundle",
+    )
+    release_assess_parser.add_argument("--base", required=True)
+    release_assess_parser.add_argument("--candidate", required=True)
+    release_assess_parser.add_argument("--base-revision-ref", required=True)
+    release_assess_parser.add_argument("--candidate-revision-ref", required=True)
+    release_assess_parser.add_argument(
+        "--authority-reference",
+        help="Explicit Git release reference when release.versionAuthority=git",
+    )
+    release_assess_parser.add_argument("--runtime-context", default="auto")
+    release_assess_parser.add_argument(
+        "--bundle-out",
+        help="Write the immutable ReleaseBundle JSON artifact to this path",
+    )
+
+    release_approve_parser = release_subparsers.add_parser(
+        "approve",
+        help="Record explicit REVIEW approval for one exact ReleaseBundle",
+    )
+    release_approve_parser.add_argument("--bundle", required=True)
+    release_approve_parser.add_argument("--actor-reference", required=True)
+    release_approve_parser.add_argument(
+        "--recorded-at",
+        required=True,
+        help="Approval timestamp as timezone-aware ISO-8601",
+    )
+    release_approve_parser.add_argument("--comment")
+    release_approve_parser.add_argument(
+        "--repository-root",
+        default=".",
+        help="Repository root containing the Git governance ledger",
+    )
+    release_approve_parser.add_argument(
+        "--approval-out",
+        help="Optional standalone ApprovalRecord JSON output",
+    )
+
+    release_finalize_parser = release_subparsers.add_parser(
+        "finalize",
+        help="Finalize one ReleaseBundle, record it, and materialize the versioned contract",
+    )
+    release_finalize_parser.add_argument("--bundle", required=True)
+    release_finalize_parser.add_argument(
+        "--approval",
+        help=(
+            "Exact ApprovalRecord JSON artifact for a REVIEW release. "
+            "When omitted, SemaPact may resolve approval from the Git governance ledger."
+        ),
+    )
+    release_finalize_parser.add_argument(
+        "--output-contract",
+        required=True,
+        help="Write the exact released/versioned ODCS contract to this path",
+    )
+    release_finalize_parser.add_argument(
+        "--release-out",
+        help="Write the finalized immutable ContractRelease JSON artifact to this path",
+    )
+    release_finalize_parser.add_argument(
+        "--repository-root",
+        default=".",
+        help="Repository root containing the Git governance ledger",
+    )
+
     release_classify_parser = release_subparsers.add_parser(
         "classify",
         help="Analyze the required version bump without creating release artifacts",
@@ -282,7 +349,6 @@ def _build_parser() -> argparse.ArgumentParser:
     release_classify_parser.add_argument("--base", required=True)
     release_classify_parser.add_argument("--candidate", required=True)
     release_classify_parser.add_argument("--runtime-context", default="auto")
-    _add_effective_date_argument(release_classify_parser)
 
     release_plan_parser = release_subparsers.add_parser(
         "plan",
@@ -297,7 +363,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Explicit Git release reference when release.versionAuthority=git",
     )
     release_plan_parser.add_argument("--runtime-context", default="auto")
-    _add_effective_date_argument(release_plan_parser)
 
     release_classify_repo_parser = release_subparsers.add_parser(
         "classify-repo",
@@ -305,79 +370,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     release_classify_repo_parser.add_argument("--base-root", required=True)
     release_classify_repo_parser.add_argument("--candidate-root", required=True)
-    _add_effective_date_argument(release_classify_repo_parser)
-
-    release_build_manifest_parser = release_subparsers.add_parser(
-        "build-manifest",
-        help="Build an editable per-contract release manifest from two contract roots",
-    )
-    release_build_manifest_parser.add_argument("--base-root", required=True)
-    release_build_manifest_parser.add_argument("--candidate-root", required=True)
-    release_build_manifest_parser.add_argument("--output", required=True)
-    release_build_manifest_parser.add_argument("--target-branch", default="release")
-    release_build_manifest_parser.add_argument(
-        "--source-branch-prefix", default="release/"
-    )
-    _add_effective_date_argument(release_build_manifest_parser)
-
-    release_prepare_parser = release_subparsers.add_parser(
-        "prepare",
-        help="Compatibility helper: prepare a candidate using an explicit release tag",
-    )
-    release_prepare_parser.add_argument("--base", required=True)
-    release_prepare_parser.add_argument("--candidate", required=True)
-    release_prepare_parser.add_argument("--release-tag", required=True)
-    release_prepare_parser.add_argument("--output", required=True)
-    release_prepare_parser.add_argument("--runtime-context", default="auto")
-    _add_effective_date_argument(release_prepare_parser)
-
-    release_pr_parser = release_subparsers.add_parser(
-        "create-pr",
-        help="Compatibility Git workflow: prepare a candidate and open a release PR",
-    )
-    release_pr_parser.add_argument("--base", required=True)
-    release_pr_parser.add_argument("--candidate", required=True)
-    release_pr_parser.add_argument("--release-tag", required=True)
-    release_pr_parser.add_argument("--repo-path", help="Local repository path")
-    release_pr_parser.add_argument("--contract-path", required=True)
-    release_pr_parser.add_argument("--source-branch", required=True)
-    release_pr_parser.add_argument("--target-branch", required=True)
-    release_pr_parser.add_argument(
-        "--git-provider",
-        choices=["azure", "github"],
-    )
-    release_pr_parser.add_argument("--organization")
-    release_pr_parser.add_argument("--github-owner")
-    release_pr_parser.add_argument("--github-repo")
-    release_pr_parser.add_argument("--github-token")
-    release_pr_parser.add_argument("--project")
-    release_pr_parser.add_argument("--repository-id")
-    release_pr_parser.add_argument("--pat-token")
-    release_pr_parser.add_argument("--title")
-    release_pr_parser.add_argument("--description")
-    release_pr_parser.add_argument("--commit-message")
-    release_pr_parser.add_argument("--push", action="store_true")
-    release_pr_parser.add_argument("--runtime-context", default="auto")
-    _add_effective_date_argument(release_pr_parser)
-
-    release_prs_parser = release_subparsers.add_parser(
-        "create-prs",
-        help="Run explicit per-contract release PR automation from a batch manifest",
-    )
-    release_prs_parser.add_argument("--manifest", required=True)
-    release_prs_parser.add_argument("--repo-path", help="Local repository path")
-    release_prs_parser.add_argument(
-        "--git-provider",
-        choices=["azure", "github"],
-    )
-    release_prs_parser.add_argument("--organization")
-    release_prs_parser.add_argument("--github-owner")
-    release_prs_parser.add_argument("--github-repo")
-    release_prs_parser.add_argument("--github-token")
-    release_prs_parser.add_argument("--project")
-    release_prs_parser.add_argument("--repository-id")
-    release_prs_parser.add_argument("--pat-token")
-    release_prs_parser.add_argument("--push", action="store_true")
 
 
     doctor_parser = subparsers.add_parser(
@@ -443,51 +435,92 @@ def _build_parser() -> argparse.ArgumentParser:
 
     deployment_parser = subparsers.add_parser(
         "deployment",
-        help="Plan, preview, execute, and verify governed runtime deployment",
+        help="Assess and deploy immutable target-specific runtime bundles",
     )
     deployment_subparsers = deployment_parser.add_subparsers(
         dest="deployment_command", required=True
     )
 
-    deployment_plan_parser = deployment_subparsers.add_parser(
-        "plan", help="Build a DeploymentPlan from an exact AppliedContractRelease"
+    deployment_assess_parser = deployment_subparsers.add_parser(
+        "assess",
+        help=(
+            "Assess either a base/candidate change or an already-finalized release "
+            "against one fresh runtime target"
+        ),
     )
-    deployment_plan_parser.add_argument("--release", required=True)
-    deployment_plan_parser.add_argument("--platform", required=True)
-    deployment_plan_parser.add_argument("--runtime", required=True)
-    deployment_plan_parser.add_argument(
+    deployment_assess_parser.add_argument("--base")
+    deployment_assess_parser.add_argument("--candidate")
+    deployment_assess_parser.add_argument("--base-revision-ref")
+    deployment_assess_parser.add_argument("--candidate-revision-ref")
+    release_source_group = deployment_assess_parser.add_mutually_exclusive_group()
+    release_source_group.add_argument(
+        "--release",
+        help="Finalized ContractRelease JSON artifact to deploy instead of a candidate",
+    )
+    release_source_group.add_argument(
+        "--release-id",
+        help="Convenience fallback: resolve a finalized ContractRelease ID from Git history",
+    )
+    deployment_assess_parser.add_argument(
+        "--repository-root",
+        default=".",
+        help="Repository root containing finalized release history",
+    )
+    deployment_assess_parser.add_argument(
+        "--server",
+        help="Contract server identifier when the deployment source defines multiple servers",
+    )
+    deployment_assess_parser.add_argument(
+        "--platform",
+        help="Fallback runtime provider when the deployment source defines no servers",
+    )
+    deployment_assess_parser.add_argument(
+        "--runtime",
+        help="Fallback provider-local runtime target when the deployment source defines no servers",
+    )
+    deployment_assess_parser.add_argument(
         "--source-reference",
-        required=True,
-        help="Stable runtime source identity (for Databricks, the workspace host; never credentials)",
+        help="Fallback stable runtime source identity when the source defines no server host",
     )
-    deployment_plan_parser.add_argument("--server")
-
-    deployment_preview_parser = deployment_subparsers.add_parser(
-        "preview", help="Observe runtime and derive provider-native deployment operations"
+    deployment_assess_parser.add_argument("--runtime-context", default="auto")
+    deployment_assess_parser.add_argument(
+        "--bundle-out",
+        help="Write the immutable DeploymentBundle JSON artifact to this path",
     )
-    deployment_preview_parser.add_argument("--plan", required=True)
-
-    deployment_execute_parser = deployment_subparsers.add_parser(
-        "execute", help="Execute an exact authorized DeploymentPreview"
-    )
-    deployment_execute_parser.add_argument("--plan", required=True)
-    deployment_execute_parser.add_argument("--preview", required=True)
-    deployment_execute_parser.add_argument("--authorization", required=True)
-    deployment_execute_parser.add_argument(
-        "--warehouse-id",
-        help="Databricks SQL warehouse required only when preview contains mutation operations",
-    )
-
-    deployment_verify_parser = deployment_subparsers.add_parser(
-        "verify", help="Verify DeploymentPlan convergence through M1 reconciliation"
-    )
-    deployment_verify_parser.add_argument("--plan", required=True)
-    deployment_verify_parser.add_argument(
+    deployment_assess_parser.add_argument(
         "--output",
         choices=["text", "json"],
         default="text",
         help="Output format (default: text)",
     )
+
+    deployment_deploy_parser = deployment_subparsers.add_parser(
+        "deploy",
+        help="Consume an immutable DeploymentBundle, execute against fresh runtime, and verify",
+    )
+    deployment_deploy_parser.add_argument("--bundle", required=True)
+    deployment_deploy_parser.add_argument(
+        "--warehouse-id",
+        help=(
+            "Databricks SQL warehouse required for runtime mutation and formal-release "
+            "Unity Catalog provenance tag projection"
+        ),
+    )
+    deployment_deploy_parser.add_argument(
+        "--operational-history",
+        help=(
+            "Optional operational-history URI override. When omitted, SemaPact reads "
+            "typed history.operational configuration; if neither is configured, "
+            "deployment telemetry persistence is disabled."
+        ),
+    )
+    deployment_deploy_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
 
     return parser
 
@@ -607,21 +640,15 @@ def main() -> int:
 
         if args.command == "deployment":
             from semapact.interfaces.commands.deployment_cmd import (
-                run_deployment_execute,
-                run_deployment_plan,
-                run_deployment_preview,
-                run_deployment_verify,
+                run_deployment_assess,
+                run_deployment_deploy,
             )
             from semapact.interfaces.outcomes import exit_code_from_outcome
 
-            if args.deployment_command == "plan":
-                result = run_deployment_plan(args)
-            elif args.deployment_command == "preview":
-                result = run_deployment_preview(args)
-            elif args.deployment_command == "execute":
-                result = run_deployment_execute(args)
-            elif args.deployment_command == "verify":
-                result = run_deployment_verify(args)
+            if args.deployment_command == "assess":
+                result = run_deployment_assess(args)
+            elif args.deployment_command == "deploy":
+                result = run_deployment_deploy(args)
             else:
                 parser.error(f"Unknown deployment command: {args.deployment_command}")
             print(result.output)
@@ -629,14 +656,25 @@ def main() -> int:
 
         if args.command == "release":
             from semapact.interfaces.commands.release_cmd import (
-                run_release_build_manifest,
+                run_release_approve,
+                run_release_assess,
                 run_release_classify,
                 run_release_classify_repo,
-                run_release_create_pr,
-                run_release_create_prs,
+                run_release_finalize,
                 run_release_plan,
-                run_release_prepare,
             )
+            if args.release_command == "assess":
+                payload = run_release_assess(args)
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return 0
+            if args.release_command == "approve":
+                payload = run_release_approve(args)
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return 0
+            if args.release_command == "finalize":
+                payload = run_release_finalize(args)
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return 0
             if args.release_command == "classify":
                 payload = run_release_classify(args)
                 print(json.dumps(payload, indent=2, sort_keys=True))
@@ -647,22 +685,6 @@ def main() -> int:
                 return 0
             if args.release_command == "classify-repo":
                 payload = run_release_classify_repo(args)
-                print(json.dumps(payload, indent=2, sort_keys=True))
-                return 0
-            if args.release_command == "build-manifest":
-                payload = run_release_build_manifest(args)
-                print(json.dumps(payload, indent=2, sort_keys=True))
-                return 0
-            if args.release_command == "prepare":
-                payload = run_release_prepare(args)
-                print(json.dumps(payload, indent=2, sort_keys=True))
-                return 0
-            if args.release_command == "create-pr":
-                payload = run_release_create_pr(args)
-                print(json.dumps(payload, indent=2, sort_keys=True))
-                return 0
-            if args.release_command == "create-prs":
-                payload = run_release_create_prs(args)
                 print(json.dumps(payload, indent=2, sort_keys=True))
                 return 0
 

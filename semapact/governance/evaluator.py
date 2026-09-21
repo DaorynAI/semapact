@@ -9,7 +9,6 @@ from typing import Any, Sequence
 
 from open_data_contract_standard.model import OpenDataContractStandard
 
-from semapact.change_context import ChangeContext
 from semapact.core.validator import ContractValidator
 from semapact.exceptions import ValidationError
 from semapact.governance.change_classification import (
@@ -45,7 +44,6 @@ def evaluate_governance_decision(
     base_contract: OpenDataContractStandard,
     candidate_contract: OpenDataContractStandard,
     *,
-    context: ChangeContext,
     merge_conflicts: Sequence[MergeConflict] = (),
 ) -> GovernanceDecision:
     """Evaluate an authoritative, deterministic governance decision for a contract change."""
@@ -92,7 +90,6 @@ def evaluate_governance_decision(
     decision_id = _generate_decision_id(
         base_contract=base_contract,
         candidate_contract=candidate_contract,
-        context=context,
         merge_conflicts=merge_conflicts,
         reasons=reasons,
     )
@@ -107,7 +104,6 @@ def evaluate_governance_decision(
         decision_id=decision_id,
         decision=decision_result,
         contract_id=contract_id,
-        context=context,
         breaking=bool(change_assessment.breaking_changes),
         required_version_bump=change_assessment.required_bump,
         reasons=reasons,
@@ -386,7 +382,6 @@ def _determine_decision(
 def _generate_decision_id(
     base_contract: OpenDataContractStandard,
     candidate_contract: OpenDataContractStandard,
-    context: ChangeContext,
     merge_conflicts: Sequence[MergeConflict],
     reasons: tuple[GovernanceReason, ...],
 ) -> str:
@@ -402,7 +397,6 @@ def _generate_decision_id(
         "alg": "v1",
         "base": base_fp,
         "candidate": candidate_fp,
-        "effective_date": context.effective_date.isoformat(),
         "conflict_count": len(merge_conflicts),
         "conflict_paths": conflict_paths,
         "reason_codes": reason_codes,

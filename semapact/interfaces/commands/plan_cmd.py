@@ -83,7 +83,6 @@ def run_plan(args: argparse.Namespace) -> None:
     decision = evaluate_governance_decision(
         base_contract,
         merged,
-        context=change_context,
         merge_conflicts=merge_result.conflicts,
     )
     gate_res = evaluate_governance_gate(decision, GovernanceOperation.ANALYZE)

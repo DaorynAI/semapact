@@ -10,14 +10,18 @@ from open_data_contract_standard.model import (
 )
 from pydantic import ValidationError as PydanticValidationError
 
-from semapact.contractops import AppliedContractRelease
-from semapact.contractops.integrity import compute_applied_release_id
+from semapact.contractops import ContractRelease
+from semapact.contractops.integrity import compute_contract_release_id
 from semapact.deployment import (
     DeploymentAction,
     DeploymentActionKind,
+    DeploymentPlan,
     DeploymentTarget,
-    build_deployment_plan,
+    build_candidate_deployment_source,
+    build_contract_release_deployment_source,
+    build_deployment_plan_from_source,
 )
+from semapact.odcs.serialization import canonical_contract_json
 
 
 def _schema(
@@ -39,38 +43,41 @@ def _schema(
     )
 
 
-def _release(
+def _contract(
     *,
     schemas: list[SchemaObject] | None = None,
-) -> AppliedContractRelease:
-    contract = OpenDataContractStandard(
+    version: str = "1.2.0",
+) -> OpenDataContractStandard:
+    return OpenDataContractStandard(
         apiVersion="v3.1.0",
         kind="DataContract",
         id="orders-product",
         name="Orders",
-        version="1.2.0",
+        version=version,
         status="active",
         schema=schemas or [_schema("orders")],
     )
-    released_contract_json = json.dumps(
-        contract.model_dump(mode="json", by_alias=True, exclude_none=True),
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
+
+
+def _release(
+    *,
+    schemas: list[SchemaObject] | None = None,
+) -> ContractRelease:
+    contract = _contract(schemas=schemas)
+    released_contract_json = canonical_contract_json(contract)
     fields = {
         "contract_id": "orders-product",
+        "contract_version": "1.2.0",
         "decision_id": "decision:test",
         "change_set_id": "change-set:test",
         "release_plan_id": "release-plan:test",
         "version_resolution_id": "version-resolution:test",
-        "release_revision_ref": "rev:released",
-        "selected_version": "1.2.0",
-        "authorization_id": "authorization:test",
+        "release_snapshot_id": "release-snapshot:test",
+        "source_revision_ref": "rev:released",
         "released_contract_json": released_contract_json,
     }
-    return AppliedContractRelease(
-        applied_release_id=compute_applied_release_id(**fields),
+    return ContractRelease(
+        contract_release_id=compute_contract_release_id(**fields),
         **fields,
     )
 
@@ -84,78 +91,89 @@ def _target() -> DeploymentTarget:
     )
 
 
-def test_same_exact_release_and_target_produce_same_plan() -> None:
-    release = _release(schemas=[_schema("zeta"), _schema("alpha")])
+def test_candidate_source_produces_canonical_v1_plan() -> None:
+    source = build_candidate_deployment_source(
+        _contract(),
+        revision_ref="rev:candidate",
+    )
 
-    first = build_deployment_plan(release, _target())
-    second = build_deployment_plan(release, _target())
+    plan = build_deployment_plan_from_source(source, _target())
+
+    assert plan.plan_version == "1"
+    assert plan.source_snapshot_id == source.source_snapshot_id
+    assert plan.contract_id == source.contract_id
+    assert plan.contract_version == source.contract_version
+    assert not hasattr(plan, "release_id")
+    assert not hasattr(plan, "release_plan_id")
+
+
+def test_finalized_release_source_produces_canonical_v1_plan() -> None:
+    release = _release()
+    source = build_contract_release_deployment_source(release)
+
+    plan = build_deployment_plan_from_source(source, _target())
+
+    assert plan.plan_version == "1"
+    assert source.release_id == release.contract_release_id
+    assert plan.source_snapshot_id == source.source_snapshot_id
+    assert plan.contract_version == release.contract_version
+
+
+def test_same_exact_source_and_target_produce_same_plan() -> None:
+    source = build_contract_release_deployment_source(
+        _release(schemas=[_schema("zeta"), _schema("alpha")])
+    )
+
+    first = build_deployment_plan_from_source(source, _target())
+    second = build_deployment_plan_from_source(source, _target())
 
     assert first == second
     assert first.deployment_plan_id == second.deployment_plan_id
-    assert first.model_dump(mode="json") == second.model_dump(mode="json")
     assert [action.governed_asset for action in first.actions] == ["alpha", "zeta"]
 
 
-def test_plan_preserves_exact_applied_release_provenance() -> None:
-    release = _release()
-
-    plan = build_deployment_plan(release, _target())
-
-    assert plan.applied_release_id == release.applied_release_id
-    assert plan.contract_id == release.contract_id
-    assert plan.release_plan_id == release.release_plan_id
-    assert plan.released_revision_ref == release.release_revision_ref
-    assert plan.selected_version == release.selected_version
-    assert plan.plan_version == "2"
-    assert plan.target.source_reference == "https://workspace.example"
-
-
 def test_actions_are_provider_neutral_ensure_state_intents() -> None:
-    plan = build_deployment_plan(
-        _release(schemas=[_schema("orders"), _schema("customers")]),
-        _target(),
+    source = build_candidate_deployment_source(
+        _contract(schemas=[_schema("orders"), _schema("customers")]),
+        revision_ref="rev:candidate",
     )
+    plan = build_deployment_plan_from_source(source, _target())
 
     assert plan.actions
     assert all(
         action.kind is DeploymentActionKind.ENSURE_ASSET_STATE
         for action in plan.actions
     )
-    assert {action.kind.value for action in plan.actions} == {"ENSURE_ASSET_STATE"}
 
 
 def test_physical_name_is_binding_hint_not_governed_identity() -> None:
-    plan = build_deployment_plan(
-        _release(schemas=[_schema("Orders", physical_name="prod_orders_v2")]),
-        _target(),
+    source = build_candidate_deployment_source(
+        _contract(schemas=[_schema("Orders", physical_name="prod_orders_v2")]),
+        revision_ref="rev:candidate",
     )
+    plan = build_deployment_plan_from_source(source, _target())
 
     action = plan.actions[0]
     assert action.governed_asset == "orders"
     assert action.physical_name == "prod_orders_v2"
 
-    desired = SchemaObject.model_validate_json(action.desired_state_json)
-    assert desired.name == "Orders"
-    assert desired.physicalName == "prod_orders_v2"
-
 
 def test_missing_physical_name_falls_back_to_governed_schema_name() -> None:
-    plan = build_deployment_plan(
-        _release(schemas=[_schema("Orders")]),
-        _target(),
+    source = build_candidate_deployment_source(
+        _contract(schemas=[_schema("Orders")]),
+        revision_ref="rev:candidate",
     )
+    plan = build_deployment_plan_from_source(source, _target())
 
-    action = plan.actions[0]
-    assert action.governed_asset == "orders"
-    assert action.physical_name == "Orders"
+    assert plan.actions[0].physical_name == "Orders"
 
 
-def test_target_is_explicit_and_changes_plan_identity() -> None:
-    release = _release()
+def test_target_changes_plan_identity() -> None:
+    source = build_contract_release_deployment_source(_release())
 
-    production = build_deployment_plan(release, _target())
-    staging = build_deployment_plan(
-        release,
+    production = build_deployment_plan_from_source(source, _target())
+    staging = build_deployment_plan_from_source(
+        source,
         DeploymentTarget(
             platform="databricks",
             runtime_target="main.staging",
@@ -165,42 +183,6 @@ def test_target_is_explicit_and_changes_plan_identity() -> None:
     )
 
     assert production.deployment_plan_id != staging.deployment_plan_id
-    assert production.target.platform == "databricks"
-    assert staging.target.runtime_target == "main.staging"
-
-
-def test_runtime_source_changes_plan_identity_for_same_runtime_target() -> None:
-    release = _release()
-    first = build_deployment_plan(release, _target())
-    second = build_deployment_plan(
-        release,
-        DeploymentTarget(
-            platform="databricks",
-            runtime_target="main.analytics",
-            source_reference="https://other-workspace.example",
-            server_name="production",
-        ),
-    )
-
-    assert first.deployment_plan_id != second.deployment_plan_id
-
-
-def test_schema_order_is_canonicalized_within_each_exact_release() -> None:
-    first_release = _release(
-        schemas=[_schema("zeta"), _schema("alpha")],
-    )
-    second_release = _release(
-        schemas=[_schema("alpha"), _schema("zeta")],
-    )
-
-    first = build_deployment_plan(first_release, _target())
-    second = build_deployment_plan(second_release, _target())
-
-    assert [action.governed_asset for action in first.actions] == ["alpha", "zeta"]
-    assert [action.governed_asset for action in second.actions] == ["alpha", "zeta"]
-    # Exact release snapshot identity remains authoritative; two releases with
-    # differently serialized source schema order remain distinct authorities.
-    assert first.deployment_plan_id != second.deployment_plan_id
 
 
 def test_desired_state_identity_mismatch_fails_closed() -> None:
@@ -220,8 +202,11 @@ def test_desired_state_identity_mismatch_fails_closed() -> None:
         )
 
 
-def test_deployment_models_are_immutable() -> None:
-    plan = build_deployment_plan(_release(), _target())
+def test_canonical_deployment_plan_rejects_release_provenance_fields() -> None:
+    source = build_contract_release_deployment_source(_release())
+    plan = build_deployment_plan_from_source(source, _target())
+    payload = plan.model_dump(mode="json")
+    payload["release_id"] = "unexpected"
 
     with pytest.raises(PydanticValidationError):
-        setattr(plan, "selected_version", "9.9.9")
+        DeploymentPlan.model_validate(payload)

@@ -12,8 +12,10 @@ import json
 import uuid
 from collections.abc import Sequence
 
-from semapact.change_context import ChangeContext
-from semapact.contractops.execution_models import AppliedContractRelease, PublicationResult
+from semapact.contractops.execution_models import (
+    ContractRelease,
+    ReleaseSnapshot,
+)
 from semapact.contractops.models import (
     ChangeSet,
     ContractOpsAuthorization,
@@ -37,11 +39,11 @@ SEMAPACT_VERSION_RESOLUTION_NAMESPACE = uuid.UUID(
 SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE = uuid.UUID(
     "b6218d0c-3f9d-44a2-8d68-e3b0ee170948"
 )
-SEMAPACT_APPLIED_RELEASE_NAMESPACE = uuid.UUID(
-    "a5de2e65-aee7-48ac-9cb6-6a785f4cdf33"
+SEMAPACT_RELEASE_SNAPSHOT_NAMESPACE = uuid.UUID(
+    "d4248396-5ec7-4e6a-a238-b2db1abf76e8"
 )
-SEMAPACT_PUBLICATION_NAMESPACE = uuid.UUID(
-    "f776fc77-b37f-43ef-bf6d-d8dcf38d264f"
+SEMAPACT_CONTRACT_RELEASE_NAMESPACE = uuid.UUID(
+    "0f95c8c5-4957-43f7-a38c-2756605c2df6"
 )
 
 
@@ -60,10 +62,10 @@ def validate_contractops_artifact_identity(artifact: object) -> None:
         validate_version_resolution_identity(artifact)
     elif isinstance(artifact, ContractOpsAuthorization):
         validate_contractops_authorization_identity(artifact)
-    elif isinstance(artifact, AppliedContractRelease):
-        validate_applied_release_identity(artifact)
-    elif isinstance(artifact, PublicationResult):
-        validate_publication_result_identity(artifact)
+    elif isinstance(artifact, ReleaseSnapshot):
+        validate_release_snapshot_identity(artifact)
+    elif isinstance(artifact, ContractRelease):
+        validate_contract_release_identity(artifact)
 
 
 def compute_change_set_id(
@@ -72,7 +74,6 @@ def compute_change_set_id(
     base_revision_ref: str,
     candidate_revision_ref: str,
     changes: Sequence[GovernanceChange],
-    context: ChangeContext,
     source: str | None,
     actor_reference: str | None,
 ) -> str:
@@ -81,7 +82,6 @@ def compute_change_set_id(
         "contract_id": contract_id,
         "base_revision_ref": base_revision_ref,
         "candidate_revision_ref": candidate_revision_ref,
-        "context": context.model_dump(mode="json"),
         "changes": [change.model_dump(mode="json") for change in canonical_changes],
         "source": source,
         "actor_reference": actor_reference,
@@ -98,7 +98,6 @@ def validate_change_set_identity(change_set: ChangeSet) -> None:
         base_revision_ref=change_set.base_revision_ref,
         candidate_revision_ref=change_set.candidate_revision_ref,
         changes=change_set.changes,
-        context=change_set.context,
         source=change_set.source,
         actor_reference=change_set.actor_reference,
     )
@@ -202,10 +201,7 @@ def compute_contractops_authorization_id(
         "evidence_reference": evidence_reference,
         "evidence_action": evidence_action,
     }
-    # Compatibility invariant: scope_reference did not participate in pre-#122 IDs
-    # when it was absent. Keep that byte-for-byte behavior.
-    if scope_reference is not None:
-        payload["scope_reference"] = scope_reference
+    payload["scope_reference"] = scope_reference
     return deterministic_uuid5(SEMAPACT_CONTRACTOPS_AUTHORIZATION_NAMESPACE, payload)
 
 
@@ -235,7 +231,7 @@ def validate_contractops_authorization_identity(
     )
 
 
-def compute_applied_release_id(
+def compute_release_snapshot_id(
     *,
     contract_id: str,
     decision_id: str,
@@ -244,7 +240,6 @@ def compute_applied_release_id(
     version_resolution_id: str,
     release_revision_ref: str,
     selected_version: str,
-    authorization_id: str,
     released_contract_json: str,
 ) -> str:
     payload = {
@@ -255,51 +250,73 @@ def compute_applied_release_id(
         "version_resolution_id": version_resolution_id,
         "release_revision_ref": release_revision_ref,
         "selected_version": selected_version,
-        "authorization_id": authorization_id,
         "released_contract_json": released_contract_json,
     }
-    return deterministic_uuid5(SEMAPACT_APPLIED_RELEASE_NAMESPACE, payload)
+    return deterministic_uuid5(SEMAPACT_RELEASE_SNAPSHOT_NAMESPACE, payload)
 
 
-def validate_applied_release_identity(release: AppliedContractRelease) -> None:
-    _require_canonical_json(release.released_contract_json, "AppliedContractRelease snapshot")
-    expected = compute_applied_release_id(
-        contract_id=release.contract_id,
-        decision_id=release.decision_id,
-        change_set_id=release.change_set_id,
-        release_plan_id=release.release_plan_id,
-        version_resolution_id=release.version_resolution_id,
-        release_revision_ref=release.release_revision_ref,
-        selected_version=release.selected_version,
-        authorization_id=release.authorization_id,
-        released_contract_json=release.released_contract_json,
+def validate_release_snapshot_identity(snapshot: ReleaseSnapshot) -> None:
+    _require_canonical_json(snapshot.released_contract_json, "ReleaseSnapshot snapshot")
+    expected = compute_release_snapshot_id(
+        contract_id=snapshot.contract_id,
+        decision_id=snapshot.decision_id,
+        change_set_id=snapshot.change_set_id,
+        release_plan_id=snapshot.release_plan_id,
+        version_resolution_id=snapshot.version_resolution_id,
+        release_revision_ref=snapshot.release_revision_ref,
+        selected_version=snapshot.selected_version,
+        released_contract_json=snapshot.released_contract_json,
     )
-    _require_identity(release.applied_release_id, expected, "AppliedContractRelease")
+    _require_identity(snapshot.release_snapshot_id, expected, "ReleaseSnapshot")
 
 
-def compute_publication_id(
+def compute_contract_release_id(
     *,
-    applied_release_id: str,
-    authorization_id: str,
-    publication_reference: str,
+    contract_id: str,
+    contract_version: str,
+    decision_id: str,
+    change_set_id: str,
+    release_plan_id: str,
+    version_resolution_id: str,
+    release_snapshot_id: str,
+    source_revision_ref: str,
+    released_contract_json: str,
 ) -> str:
+    """Derive deterministic identity for one finalized formal contract release."""
     return deterministic_uuid5(
-        SEMAPACT_PUBLICATION_NAMESPACE,
+        SEMAPACT_CONTRACT_RELEASE_NAMESPACE,
         {
-            "applied_release_id": applied_release_id,
-            "authorization_id": authorization_id,
-            "publication_reference": publication_reference,
+            "contract_id": contract_id,
+            "contract_version": contract_version,
+            "decision_id": decision_id,
+            "change_set_id": change_set_id,
+            "release_plan_id": release_plan_id,
+            "version_resolution_id": version_resolution_id,
+            "release_snapshot_id": release_snapshot_id,
+            "source_revision_ref": source_revision_ref,
+            "released_contract_json": released_contract_json,
         },
     )
 
 
-def validate_publication_result_identity(result: PublicationResult) -> None:
-    expected = compute_publication_id(
-        applied_release_id=result.applied_release_id,
-        authorization_id=result.authorization_id,
-        publication_reference=result.publication_reference,
+def validate_contract_release_identity(release: ContractRelease) -> None:
+    """Fail closed when finalized release identity/content diverge."""
+    _require_canonical_json(
+        release.released_contract_json,
+        "ContractRelease snapshot",
     )
-    _require_identity(result.publication_id, expected, "PublicationResult")
+    expected = compute_contract_release_id(
+        contract_id=release.contract_id,
+        contract_version=release.contract_version,
+        decision_id=release.decision_id,
+        change_set_id=release.change_set_id,
+        release_plan_id=release.release_plan_id,
+        version_resolution_id=release.version_resolution_id,
+        release_snapshot_id=release.release_snapshot_id,
+        source_revision_ref=release.source_revision_ref,
+        released_contract_json=release.released_contract_json,
+    )
+    _require_identity(release.contract_release_id, expected, "ContractRelease")
 
 
 def _require_identity(actual: str, expected: str, artifact: str) -> None:

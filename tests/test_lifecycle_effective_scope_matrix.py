@@ -121,17 +121,6 @@ def _cp(key: str, value: str) -> CustomProperty:
             LifecycleStatus.DEPRECATED,
             False,
         ),
-        # 9. Proposed contract alias: interpreted as draft
-        (
-            "proposed",
-            None,
-            None,
-            None,
-            LifecycleStatus.DRAFT,
-            LifecycleStatus.DRAFT,
-            LifecycleStatus.DRAFT,
-            False,
-        ),
     ],
 )
 def test_lifecycle_effective_scope_matrix(

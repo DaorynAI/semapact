@@ -82,21 +82,19 @@ def _plan() -> DeploymentPlan:
         source_reference=SOURCE_REFERENCE,
     )
     plan_id = compute_deployment_plan_id(
-        applied_release_id="release-1",
+        source_snapshot_id="release-1",
         contract_id="orders-contract",
-        release_plan_id="release-plan-1",
-        released_revision_ref="abc123",
-        selected_version="1.2.3",
+        revision_ref="abc123",
+        contract_version="1.2.3",
         target=target,
         actions=(action,),
     )
     return DeploymentPlan(
         deployment_plan_id=plan_id,
-        applied_release_id="release-1",
+        source_snapshot_id="release-1",
         contract_id="orders-contract",
-        release_plan_id="release-plan-1",
-        released_revision_ref="abc123",
-        selected_version="1.2.3",
+        revision_ref="abc123",
+        contract_version="1.2.3",
         target=target,
         actions=(action,),
     )
@@ -194,7 +192,7 @@ def test_runtime_source_mismatch_fails_closed() -> None:
 
 
 def test_tampered_deployment_plan_identity_fails_closed() -> None:
-    plan = _plan().model_copy(update={"selected_version": "9.9.9"})
+    plan = _plan().model_copy(update={"contract_version": "9.9.9"})
 
     with pytest.raises(ValueError, match="deterministic identity"):
         verify_deployment_convergence(plan, FakeRuntimeProvider(_observation()))

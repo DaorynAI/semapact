@@ -7,6 +7,7 @@ pull requests; normal GitOps tooling can version the deterministic files it writ
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import secrets
@@ -19,36 +20,21 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 
 from semapact.approval.integrity import validate_approval_record_identity
 from semapact.approval.models import ApprovalRecord
-from semapact.contractops import ChangeSet, ReleasePlan
+from semapact.contractops import ChangeSet, ContractRelease, ReleasePlan
 from semapact.contractops.integrity import (
     validate_change_set_identity,
+    validate_contract_release_identity,
     validate_release_plan_identity,
-)
-from semapact.deployment import DeploymentAuthorization, DeploymentPlan, DeploymentPreview
-from semapact.deployment.models import (
-    validate_deployment_authorization_identity,
-    validate_deployment_plan_identity,
-    validate_deployment_preview_identity,
 )
 from semapact.governance import GovernanceDecision
 from semapact.governance.gate import GovernanceOperation
 from semapact.history import (
     ChangeSetDecisionLink,
-    DeploymentRecord,
     HistoryConflictError,
     HistoryCorruptionError,
     HistoryIntegrityIssueCode,
     HistoryNotFoundError,
     HistoryStorageIntegrityIssue,
-    ReleaseRecord,
-    RuntimeObservationRecord,
-    RuntimeReconciliationRecord,
-)
-from semapact.history.integrity import (
-    validate_deployment_record_identity,
-    validate_release_record_identity,
-    validate_runtime_observation_record_identity,
-    validate_runtime_reconciliation_record_identity,
 )
 from semapact.revision.integrity import (
     validate_contract_revision_identity,
@@ -113,47 +99,11 @@ _RELEASE_PLANS = _HistoryKindSpec(
     "release_plan_id",
     validate_release_plan_identity,
 )
-_RELEASE_RECORDS = _HistoryKindSpec(
-    "release_records",
-    ReleaseRecord,
-    "release_record_id",
-    validate_release_record_identity,
-)
-_DEPLOYMENT_PLANS = _HistoryKindSpec(
-    "deployment_plans",
-    DeploymentPlan,
-    "deployment_plan_id",
-    validate_deployment_plan_identity,
-)
-_DEPLOYMENT_PREVIEWS = _HistoryKindSpec(
-    "deployment_previews",
-    DeploymentPreview,
-    "deployment_preview_id",
-    validate_deployment_preview_identity,
-)
-_DEPLOYMENT_AUTHORIZATIONS = _HistoryKindSpec(
-    "deployment_authorizations",
-    DeploymentAuthorization,
-    "deployment_authorization_id",
-    validate_deployment_authorization_identity,
-)
-_DEPLOYMENT_RECORDS = _HistoryKindSpec(
-    "deployment_records",
-    DeploymentRecord,
-    "deployment_record_id",
-    validate_deployment_record_identity,
-)
-_RUNTIME_OBSERVATIONS = _HistoryKindSpec(
-    "runtime_observations",
-    RuntimeObservationRecord,
-    "observation_record_id",
-    validate_runtime_observation_record_identity,
-)
-_RUNTIME_RECONCILIATIONS = _HistoryKindSpec(
-    "runtime_reconciliations",
-    RuntimeReconciliationRecord,
-    "runtime_reconciliation_record_id",
-    validate_runtime_reconciliation_record_identity,
+_CONTRACT_RELEASES = _HistoryKindSpec(
+    "contract_releases",
+    ContractRelease,
+    "contract_release_id",
+    validate_contract_release_identity,
 )
 
 _HISTORY_KIND_SPECS: dict[str, _HistoryKindSpec[BaseModel]] = {
@@ -166,13 +116,7 @@ _HISTORY_KIND_SPECS: dict[str, _HistoryKindSpec[BaseModel]] = {
         _CONTRACT_REVISIONS,
         _CONTRACT_REVISION_SOURCES,
         _RELEASE_PLANS,
-        _RELEASE_RECORDS,
-        _DEPLOYMENT_PLANS,
-        _DEPLOYMENT_PREVIEWS,
-        _DEPLOYMENT_AUTHORIZATIONS,
-        _DEPLOYMENT_RECORDS,
-        _RUNTIME_OBSERVATIONS,
-        _RUNTIME_RECONCILIATIONS,
+        _CONTRACT_RELEASES,
     )
 }
 
@@ -330,172 +274,64 @@ class GitWorkingTreeHistoryRepository:
     def get_release_plan(self, release_plan_id: str) -> ReleasePlan:
         return self._get(_RELEASE_PLANS, release_plan_id)
 
-    def put_release_record(self, record: ReleaseRecord) -> None:
-        if not isinstance(record, ReleaseRecord):
+    def put_contract_release(self, record: ContractRelease) -> None:
+        if not isinstance(record, ContractRelease):
             raise TypeError(
-                f"record must be ReleaseRecord, got {type(record).__name__}"
+                "record must be ContractRelease, "
+                f"got {type(record).__name__}"
             )
-        validate_release_record_identity(record)
-        for existing in self.list_release_records(record.contract_id):
+        validate_contract_release_identity(record)
+        for existing in self.list_contract_releases(record.contract_id):
             if (
                 existing.contract_version == record.contract_version
-                and existing.release_record_id != record.release_record_id
+                and existing.contract_release_id != record.contract_release_id
             ):
                 raise HistoryConflictError(
-                    "A different ReleaseRecord already exists for "
+                    "A different ContractRelease already exists for "
                     f"{record.contract_id!r} version {record.contract_version!r}"
                 )
-        self._put(_RELEASE_RECORDS, record.release_record_id, record)
+        self._put(_CONTRACT_RELEASES, record.contract_release_id, record)
 
-    def get_release_record(self, release_record_id: str) -> ReleaseRecord:
-        return self._get(_RELEASE_RECORDS, release_record_id)
+    def get_contract_release(
+        self,
+        contract_release_id: str,
+    ) -> ContractRelease:
+        return self._get(_CONTRACT_RELEASES, contract_release_id)
 
-    def list_release_records(self, contract_id: str) -> tuple[ReleaseRecord, ...]:
+    def list_contract_releases(
+        self,
+        contract_id: str,
+    ) -> tuple[ContractRelease, ...]:
         contract_id = _required_text(contract_id, "contract_id")
         return tuple(
             record
-            for record in self._list(_RELEASE_RECORDS)
+            for record in self._list(_CONTRACT_RELEASES)
             if record.contract_id == contract_id
         )
 
-    def get_release_record_by_version(
+    def get_contract_release_by_version(
         self,
         contract_id: str,
         contract_version: str,
-    ) -> ReleaseRecord:
+    ) -> ContractRelease:
         contract_id = _required_text(contract_id, "contract_id")
         contract_version = _required_text(contract_version, "contract_version")
         matches = tuple(
             record
-            for record in self.list_release_records(contract_id)
+            for record in self.list_contract_releases(contract_id)
             if record.contract_version == contract_version
         )
         if not matches:
             raise HistoryNotFoundError(
-                f"ReleaseRecord for {contract_id!r} version {contract_version!r} was not found"
+                f"ContractRelease for {contract_id!r} "
+                f"version {contract_version!r} was not found"
             )
         if len(matches) != 1:
             raise HistoryCorruptionError(
-                f"Multiple ReleaseRecords exist for {contract_id!r} version {contract_version!r}"
+                f"Multiple ContractReleases exist for {contract_id!r} "
+                f"version {contract_version!r}"
             )
         return matches[0]
-
-    def put_deployment_plan(self, plan: DeploymentPlan) -> None:
-        self._put(_DEPLOYMENT_PLANS, plan.deployment_plan_id, plan)
-
-    def get_deployment_plan(self, deployment_plan_id: str) -> DeploymentPlan:
-        return self._get(_DEPLOYMENT_PLANS, deployment_plan_id)
-
-    def put_deployment_preview(self, preview: DeploymentPreview) -> None:
-        self._put(_DEPLOYMENT_PREVIEWS, preview.deployment_preview_id, preview)
-
-    def get_deployment_preview(self, deployment_preview_id: str) -> DeploymentPreview:
-        return self._get(_DEPLOYMENT_PREVIEWS, deployment_preview_id)
-
-    def put_deployment_authorization(
-        self,
-        authorization: DeploymentAuthorization,
-    ) -> None:
-        self._put(
-            _DEPLOYMENT_AUTHORIZATIONS,
-            authorization.deployment_authorization_id,
-            authorization,
-        )
-
-    def get_deployment_authorization(
-        self,
-        deployment_authorization_id: str,
-    ) -> DeploymentAuthorization:
-        return self._get(_DEPLOYMENT_AUTHORIZATIONS, deployment_authorization_id)
-
-    def put_deployment_record(self, record: DeploymentRecord) -> None:
-        self._put(_DEPLOYMENT_RECORDS, record.deployment_record_id, record)
-
-    def get_deployment_record(self, deployment_record_id: str) -> DeploymentRecord:
-        return self._get(_DEPLOYMENT_RECORDS, deployment_record_id)
-
-    def list_deployment_records_for_release(
-        self,
-        release_record_id: str,
-    ) -> tuple[DeploymentRecord, ...]:
-        release_record_id = _required_text(release_record_id, "release_record_id")
-        return tuple(
-            record
-            for record in self._list(_DEPLOYMENT_RECORDS)
-            if record.release_record_id == release_record_id
-        )
-
-    def list_deployment_records_for_plan(
-        self,
-        deployment_plan_id: str,
-    ) -> tuple[DeploymentRecord, ...]:
-        deployment_plan_id = _required_text(deployment_plan_id, "deployment_plan_id")
-        return tuple(
-            record
-            for record in self._list(_DEPLOYMENT_RECORDS)
-            if record.deployment_plan_id == deployment_plan_id
-        )
-
-    def put_runtime_observation_record(self, record: RuntimeObservationRecord) -> None:
-        self._put(_RUNTIME_OBSERVATIONS, record.observation_record_id, record)
-
-    def get_runtime_observation_record(
-        self,
-        observation_record_id: str,
-    ) -> RuntimeObservationRecord:
-        return self._get(_RUNTIME_OBSERVATIONS, observation_record_id)
-
-    def list_runtime_observation_records(
-        self,
-        source_identifier: str,
-    ) -> tuple[RuntimeObservationRecord, ...]:
-        source_identifier = _required_text(source_identifier, "source_identifier")
-        return tuple(
-            record
-            for record in self._list(_RUNTIME_OBSERVATIONS)
-            if record.observation.source_identifier == source_identifier
-        )
-
-    def put_runtime_reconciliation_record(
-        self,
-        record: RuntimeReconciliationRecord,
-    ) -> None:
-        self._put(
-            _RUNTIME_RECONCILIATIONS,
-            record.runtime_reconciliation_record_id,
-            record,
-        )
-
-    def get_runtime_reconciliation_record(
-        self,
-        runtime_reconciliation_record_id: str,
-    ) -> RuntimeReconciliationRecord:
-        return self._get(
-            _RUNTIME_RECONCILIATIONS,
-            runtime_reconciliation_record_id,
-        )
-
-    def list_runtime_reconciliation_records(
-        self,
-        contract_id: str,
-    ) -> tuple[RuntimeReconciliationRecord, ...]:
-        contract_id = _required_text(contract_id, "contract_id")
-        return tuple(
-            record
-            for record in self._list(_RUNTIME_RECONCILIATIONS)
-            if record.result.contract_id == contract_id
-        )
-
-    def list_runtime_reconciliation_records_for_source(
-        self,
-        source_identifier: str,
-    ) -> tuple[RuntimeReconciliationRecord, ...]:
-        source_identifier = _required_text(source_identifier, "source_identifier")
-        return tuple(
-            record
-            for record in self._list(_RUNTIME_RECONCILIATIONS)
-            if record.result.observation_source_identifier == source_identifier
-        )
 
     def inspect_history_integrity(self) -> tuple[HistoryStorageIntegrityIssue, ...]:
         """Inspect physical history artifacts and checksum evidence without mutation."""
@@ -576,7 +412,7 @@ class GitWorkingTreeHistoryRepository:
         )
 
         try:
-            artifact = spec.model_type.model_validate_json(raw)
+            artifact = _parse_artifact_json(spec, raw)
             if spec.integrity_validator is not None:
                 spec.integrity_validator(artifact)
         except (PydanticValidationError, ValueError, TypeError) as exc:
@@ -762,7 +598,7 @@ class GitWorkingTreeHistoryRepository:
         expected_id: str,
     ) -> None:
         existing = self._read_validated(spec, path, expected_id=expected_id)
-        existing_canonical = _canonical_model_json(existing)
+        existing_canonical = _canonical_artifact_json(spec, existing)
         if existing_canonical != canonical:
             raise HistoryConflictError(
                 f"{spec.model_type.__name__} {expected_id!r} already exists with different content"
@@ -779,7 +615,7 @@ class GitWorkingTreeHistoryRepository:
         try:
             raw = path.read_text(encoding="utf-8")
             self._verify_checksum_if_present(path, raw)
-            artifact = spec.model_type.model_validate_json(raw)
+            artifact = _parse_artifact_json(spec, raw)
             if spec.integrity_validator is not None:
                 spec.integrity_validator(artifact)
         except HistoryCorruptionError:
@@ -808,8 +644,8 @@ class GitWorkingTreeHistoryRepository:
                 f"artifact must be {spec.model_type.__name__}, got {type(artifact).__name__}"
             )
         try:
-            canonical = _canonical_model_json(artifact)
-            validated = spec.model_type.model_validate_json(canonical)
+            canonical = _canonical_artifact_json(spec, artifact)
+            validated = _parse_artifact_json(spec, canonical)
             if spec.integrity_validator is not None:
                 spec.integrity_validator(validated)
         except (PydanticValidationError, ValueError, TypeError) as exc:
@@ -1054,6 +890,23 @@ def _integrity_issue_sort_key(
 
 def _path_name(path: Path) -> str:
     return path.name
+
+
+def _canonical_artifact_json(
+    spec: _HistoryKindSpec[T],
+    artifact: T,
+) -> str:
+    """Serialize one canonical persisted history artifact."""
+    del spec
+    return _canonical_model_json(artifact)
+
+
+def _parse_artifact_json(
+    spec: _HistoryKindSpec[T],
+    raw: str,
+) -> T:
+    """Rehydrate one canonical persisted history artifact."""
+    return spec.model_type.model_validate_json(raw)
 
 
 def _canonical_model_json(artifact: BaseModel) -> str:

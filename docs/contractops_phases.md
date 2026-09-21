@@ -4,31 +4,39 @@ ContractOps separates reasoning from side effects so CI, agents, APIs, and user 
 
 ## Canonical contract release flow
 
+Contract release is explicit and distinct from ordinary runtime deployment.
+
+Candidate deployment does not enter the version-resolution path:
+
+```text
+ANALYZE
+→ GovernanceDecision
+→ ChangeSet
+→ candidate DeploymentSourceSnapshot
+→ DeploymentPlan
+→ runtime deployment
+```
+
+A formal release enters ContractOps release planning exactly once:
+
 ```text
 ANALYZE
 → GovernanceDecision
 
-PLAN
+PLAN RELEASE
 → ChangeSet
 → ReleasePlan
 → VersionResolution
+→ ReleaseSnapshot
 
-AUTHORIZE
-→ ContractOpsAuthorization
-
-APPLY
-→ AppliedContractRelease
-
-PUBLISH
-→ PublicationResult
+FORMAL RELEASE
+→ immutable ContractRelease
 
 DEPLOY
-→ DeploymentPlan + DeploymentAuthorization
-→ runtime mutation through a platform adapter
+→ one or more target-specific DeploymentPlan / deployment occurrences
 ```
 
-Each phase consumes artifacts from the previous phases. Later phases do not recalculate earlier decisions.
-
+The same formal contract version may be deployed to dev, test, and prod without another version bump. Runtime promotion is not a new contract release.
 ## The contract is the desired-state artifact
 
 SemaPact does not introduce a canonical BUILD phase that turns a contract into a separately authoritative DDL artifact.
@@ -37,11 +45,13 @@ The governed contract remains the model of desired state throughout the lifecycl
 
 ```text
 candidate ODCS
-    ↓ ANALYZE / PLAN / AUTHORIZE / APPLY
-AppliedContractRelease
-= immutable governed desired state
-    ↓ DEPLOY planning against one runtime target
-provider-native operations
+    ↓ ANALYZE / PLAN
+ReleaseSnapshot
+= immutable selected governed desired state
+    ↓ target-specific DeploymentPlan
+fresh runtime observation
+    ↓
+provider-native preview operations
 ```
 
 A SQL or provider-specific export is a **derived compilation output**, not a second source of truth and not deployment authority. It may be regenerated from the exact governed contract state whenever required.
@@ -54,7 +64,7 @@ base contract ↔ candidate contract
 → governance changes, breaking classification, version requirements
 
 Runtime deployment comparison
-AppliedContractRelease ↔ observed runtime state
+ReleaseSnapshot / DeploymentPlan ↔ observed runtime state
 → CREATE / ALTER / NO_OP or an explicit unsupported transition
 ```
 
@@ -138,71 +148,57 @@ operation
 scopeReference?
 ```
 
-`GovernanceDecision(REVIEW)` remains `REVIEW` after approval. Matching explicit review evidence produces an allowed `ContractOpsAuthorization`; it does not rewrite governance history.
+`GovernanceDecision(REVIEW)` remains `REVIEW` after approval. Formal-release approval is represented by an immutable `ApprovalRecord` bound to the exact `ReleaseSnapshot` and `ReleaseBundle` digest. `ReleaseFinalizer` projects that evidence into the PUBLISH authorization check without rewriting governance history.
 
-APPLY, PUBLISH, and DEPLOY are distinct operation scopes. Runtime DEPLOY additionally binds authorization to the exact `DeploymentPlan` before mutation.
+Runtime deployment is a separate boundary. SemaPact does not create a deployment-authorization artifact; the surrounding protected CI/CD environment controls whether runtime mutation may be invoked, while SemaPact validates exact source/plan binding and runtime freshness.
 
-## APPLY
+## RELEASE SNAPSHOT
 
-APPLY materializes the exact released ODCS state from the planned candidate and `VersionResolution.selectedVersion`.
+Release snapshot construction is pure. It materializes the exact selected ODCS state from the planned candidate and `VersionResolution.selectedVersion` without crossing an external side-effect boundary.
 
-The canonical APPLY path:
+`build_release_snapshot(...)`:
 
-- requires an allowed `ContractOpsAuthorization(operation=APPLY)`;
 - requires the supplied candidate revision reference to match the planned revision;
 - validates contract identity and the expected current version;
 - copies the candidate and synchronizes only the selected release version;
 - does not mutate the input candidate;
-- does not rerun diffing, lifecycle policy, breaking-change classification, or version authority.
+- does not rerun governance or version authority;
+- produces a deterministic `ReleaseSnapshot` with no authorization ID.
 
-The output is an immutable `AppliedContractRelease` containing provenance IDs and a canonical JSON snapshot of the released ODCS state. Consumers can materialize a fresh ODCS model from that snapshot.
-
-This also covers metadata-only governed releases: `requiredVersionBump=none` may have been resolved by SemaPact version authority to an actual patch release, and APPLY uses that already-selected version directly.
+This pure snapshot is used only for formal `--release` bundles. Candidate deployment freezes the candidate directly in a non-release `DeploymentSourceSnapshot` and does not calculate a new semantic version.
 
 ## PUBLISH
 
-PUBLISH publishes an applied contract release or release artifact. It is distinct from runtime deployment.
+PUBLISH is the formal-release authorization boundary. For a REVIEW decision, the approval must bind the exact `ReleaseSnapshot` and `ReleaseBundle` digest. For ALLOW, no explicit approval record is required.
 
-It requires an allowed `ContractOpsAuthorization(operation=PUBLISH)` matching the exact applied release context before the publisher adapter is invoked. An APPLY authorization cannot authorize PUBLISH.
+After that check, `ReleaseFinalizer` constructs the immutable, target-neutral `ContractRelease`. The CLI persists that release fact to the Git governance ledger and may also emit the `ContractRelease` JSON artifact for CI/CD handoff.
 
-ContractOps defines only a narrow publisher port:
-
-```text
-AppliedContractRelease
-        ↓
-ContractReleasePublisher.publish(...)
-        ↓
-opaque publication reference
-        ↓
-PublicationResult
-```
-
-Git, storage, and other release-artifact publication behavior belongs in adapters rather than the ContractOps domain.
+PUBLISH does not authorize runtime mutation. A `ContractRelease` records what was formally released; deployment remains a separate protected execution boundary.
 
 ## DEPLOY
 
-DEPLOY mutates a runtime toward a provider-neutral `DeploymentPlan` and is separate from release publication.
+DEPLOY converges one runtime toward an exact target-specific `DeploymentPlan`. The desired state comes from one immutable `DeploymentSourceSnapshot`:
 
-A release-context `ContractOpsAuthorization(operation=DEPLOY)` is not enough on its own. Runtime execution also requires a `DeploymentAuthorization` bound to the exact deployment plan, including its target. A review approval scoped to one deployment plan therefore cannot be rebound to another target.
+- `source_kind=candidate` for validation/test deployment without a formal release;
+- `source_kind=contract_release` for deployment of an already-finalized `ContractRelease`.
 
-Platform-specific execution belongs behind a deployment adapter. The adapter must not recompute governance, version authority, release planning, or approval semantics.
+Candidate `BLOCK` decisions fail closed. Candidate `REVIEW` may still be deployed for non-release validation/test because this path creates no formal release fact or release approval.
 
-See [`deployment_plans.md`](deployment_plans.md) for the deployment CLI, Databricks capability boundary, preview integrity checks, and convergence verification semantics.
+Formal REVIEW approval belongs to the earlier PUBLISH boundary. A `ContractRelease` proves what was released; it does not grant permission to mutate a runtime. Whether `semapact deployment deploy` may run is controlled by the surrounding protected execution context, such as a GitHub or Azure DevOps Environment.
+
+The deployment adapter validates exact plan/source binding, re-observes runtime, derives a fresh deterministic preview, checks runtime freshness, applies safe operations, then verifies convergence. For Databricks, a finalized release that reaches `IN_SYNC` also projects SemaPact-owned release/version provenance into Unity Catalog tags.
+
+Runtime deployment history is optional operational telemetry and is not written to Git by default.
+
+See [`deployment_plans.md`](deployment_plans.md) for the complete candidate/release CLI flow, operational-history backends, Databricks tags, and convergence semantics.
 
 ## Failure semantics
 
-ContractOps distinguishes invalid context from denied authorization:
+ContractOps distinguishes invalid release context from denied publication authorization:
 
-- mismatched revision/artifact/operation context → `ReleaseValidationError`;
-- a valid context whose explicit authorization is denied → `ContractOpsAuthorizationError`;
-- external publishers or runtime adapters are never invoked when authorization validation fails.
+- mismatched release revision/artifact context → `ReleaseValidationError`;
+- a valid formal release whose required PUBLISH approval is denied/missing → `ContractOpsAuthorizationError`;
+- runtime deployment fails closed on invalid source/plan provenance, stale runtime evidence, or unsupported provider transitions.
 
-Unexpected publisher/runtime failures are not converted into governance decisions; they propagate as execution failures.
+Unexpected persistence/runtime failures are not converted into governance decisions; they propagate as execution failures.
 
-## Compatibility helpers
-
-`semapact release prepare` and `semapact release create-pr` remain compatibility workflows for existing Git-based release processes. They are not the canonical ContractOps PLAN/APPLY/PUBLISH path and should not be treated as equivalent to `release plan` plus explicit authorization.
-
-`semapact.core.release.prepare_release_candidate()` likewise remains a backward-compatible helper and is not the canonical ContractOps APPLY path because it may classify changes itself.
-
-New ContractOps flows consume the existing authoritative `GovernanceDecision`, `ChangeSet`, `ReleasePlan`, and `VersionResolution` instead of recomputing them.

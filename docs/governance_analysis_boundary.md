@@ -2,24 +2,21 @@
 
 SemaPact governance analysis is a pure, repeatable operation. It determines what a proposed contract change means; it does not perform the change or publish anything.
 
-## Canonical Boundary
+## Canonical boundary
 
 ```text
-Analyze
-  base + candidate + ChangeContext
+base + candidate + ChangeContext
         ↓
-  GovernanceDecision
-
-Apply
-  explicit local/candidate mutation
-
-Publish / Deploy / CI
-  explicit protected side effects
+GovernanceDecision
+        ↓
+application workflow
+        ↓
+explicit mutation / release / deployment boundary
 ```
 
-Governance analysis remains upstream of all mutation-capable workflows. Later phases consume its result rather than recomputing governance semantics.
+Later phases consume the decision rather than recomputing governance semantics.
 
-## Analysis Entry Points
+## Analysis entry points
 
 The authoritative domain evaluator is:
 
@@ -33,85 +30,63 @@ evaluate_governance_decision(
 )
 ```
 
-Application clients should normally enter governance analysis through:
+Application clients normally enter through:
 
 ```python
 GovernanceService.evaluate(...)
 ```
 
-`GovernanceService.merge_and_evaluate(...)` may construct an in-memory merged candidate before evaluation, but it must not persist that candidate or perform external publication side effects.
+`GovernanceService.merge_and_evaluate(...)` may construct an in-memory merged candidate before evaluation, but it must not persist that candidate or perform publication/runtime side effects.
 
-## Analysis Invariants
+## Analysis invariants
 
 Governance analysis must not:
 
-- mutate the base contract;
-- mutate the candidate contract;
-- write contract, manifest, or other files;
-- create or modify Git branches, commits, or tags;
+- mutate the base or candidate contract;
+- write contract or artifact files;
+- create Git branches, commits, or tags;
 - create pull requests;
-- publish metadata or deployment artifacts;
+- publish metadata;
 - apply a release version;
-- invoke deployment or runtime mutation.
+- invoke runtime mutation.
 
-For the same normalized inputs and the same `ChangeContext`, repeated analysis must produce the same deterministic `GovernanceDecision`, including the same `decision_id`.
+For identical normalized inputs and `ChangeContext`, repeated analysis must produce the same deterministic `GovernanceDecision`, including `decision_id`.
 
-Analysis may compute evidence such as validation results, canonical `GovernanceChange` values, policy findings, breaking status, and the minimum required version bump. Computing a required version bump is analysis; applying a version is not.
+Computing validation evidence, canonical `GovernanceChange` values, policy findings, breaking status, and minimum required version bump is analysis. Applying a version or changing runtime state is not.
 
-## Policy Findings, Decisions, and Gate Results
+## Policy findings, decisions, and execution authority
 
-These three concepts have different meanings and must not be treated as interchangeable:
+These are distinct:
 
 ```text
 policy.valid
-= no policy-breaking findings were detected
+= whether policy-breaking findings were detected
 
-decision
+GovernanceDecision
 = authoritative governance disposition
 
-gate result
-= authoritative permission for a specific operation
+execution authority
+= permission to cross a specific side-effect boundary
 ```
 
-A breaking change can therefore legitimately produce:
+A breaking change may legitimately produce:
 
 ```text
 policy.valid = false
 decision = REVIEW
 ```
 
-This means the lifecycle policy found breaking evidence, not that every operation is prohibited. For example, analysis remains readable while a CI, publish, or deploy operation may require review before side effects are allowed.
+Consumers must use the authoritative `GovernanceDecision` and the workflow boundary that owns the side effect. They must not reinterpret `policy.valid`, `breaking`, or individual reason codes as independent permission checks.
 
-External consumers must use `GovernanceDecision` and the operation-specific governance gate for authorization. They must not use `policy.valid`, `breaking`, or individual reason codes as independent permission checks.
+Formal release REVIEW approval is scoped to the exact release artifact. Runtime deployment permission belongs to the protected CI/CD execution context; it is not inferred from `ContractRelease`.
 
-## Side-Effecting Operations
+## Regression protection
 
-Mutation-capable workflows are downstream consumers of governance analysis. They must consume an already-produced `GovernanceDecision` (or an application result containing that decision) and enforce the appropriate `GovernanceOperation` gate before performing protected side effects.
+`tests/test_governance_analysis_boundary.py` protects analysis purity and determinism.
 
-Conceptually:
+The two canonical GitHub Actions examples are architecture fitness tests for the public workflow boundary:
 
-```text
-GovernanceDecision
-        ↓
-GovernanceOperation gate
-        ↓
-explicit APPLY / PUBLISH / DEPLOY / CI boundary
-```
+- `examples/github/data-product-ci-cd.yml`
+- `examples/github/central-contract-repo-ci-cd.yml`
 
-A client or adapter must not independently reinterpret breaking changes, validation, lifecycle policy, or version requirements to bypass the authoritative decision.
-
-## Regression Protection
-
-`tests/test_governance_analysis_boundary.py` protects this architecture contract by checking that:
-
-- the authoritative evaluator does not import integration or mutation layers;
-- decision evaluation performs no filesystem or process side effects;
-- input contracts remain unchanged;
-- repeated evaluation is deterministic;
-- the `GovernanceService.evaluate(...)` application boundary preserves the same purity guarantees.
-
-`tests/test_pipeline_manifest.py` additionally protects the CI boundary by checking that:
-
-- legacy manifest breaking-change fields are projections of the authoritative decision rather than a parallel reason-code interpretation;
-- reviewable non-breaking changes do not invent breaking evidence;
-- the automation pipeline enforces the CI gate once at the artifact side-effect boundary.
+They must use public CLI surfaces only. If they require internal artifact reconstruction, duplicate approval logic, unnecessary Git round-trips, or internal implementation IDs, that is treated as an application/CLI boundary defect.

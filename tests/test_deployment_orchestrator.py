@@ -10,12 +10,10 @@ from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
     DeploymentAction,
     DeploymentActionKind,
-    DeploymentAuthorization,
     DeploymentPlan,
     DeploymentTarget,
     NativeOperation,
     NativeOperationKind,
-    compute_deployment_authorization_id,
     compute_deployment_plan_id,
 )
 from semapact.deployment.orchestrator import DeploymentOrchestrator
@@ -145,18 +143,22 @@ def _plan() -> DeploymentPlan:
         runtime_target="main",
         source_reference="source-1",
     )
-    kwargs = dict(
-        applied_release_id="release-1",
+    identity_kwargs = dict(
+        source_snapshot_id="release-1",
         contract_id="contract-1",
-        release_plan_id="release-plan-1",
-        released_revision_ref="revision-1",
-        selected_version="1.0.0",
+        revision_ref="revision-1",
+        contract_version="1.0.0",
         target=target,
         actions=(action,),
     )
     return DeploymentPlan(
-        deployment_plan_id=compute_deployment_plan_id(**kwargs),
-        **kwargs,
+        deployment_plan_id=compute_deployment_plan_id(**identity_kwargs),
+        source_snapshot_id="release-1",
+        contract_id="contract-1",
+        revision_ref="revision-1",
+        contract_version="1.0.0",
+        target=target,
+        actions=(action,),
     )
 
 
@@ -171,7 +173,9 @@ def _observation() -> ObservedPlatformState:
     )
 
 
-def test_generic_orchestrator_owns_observe_preview_freshness_and_execute() -> None:
+
+
+def test_generic_orchestrator_owns_observe_preview_freshness_and_apply() -> None:
     plan = _plan()
     runtime_provider = _RuntimeProvider(_observation())
     executor = _Executor()
@@ -190,21 +194,7 @@ def test_generic_orchestrator_owns_observe_preview_freshness_and_execute() -> No
     assert preview.operations[0].kind is NativeOperationKind.CREATE
     assert preview.operations[0].statement == "CREATE_ASSET orders"
 
-    authorization_id = compute_deployment_authorization_id(
-        contract_ops_authorization_id="contract-auth-1",
-        deployment_plan_id=plan.deployment_plan_id,
-        applied_release_id=plan.applied_release_id,
-        allowed=True,
-    )
-    authorization = DeploymentAuthorization(
-        deployment_authorization_id=authorization_id,
-        contract_ops_authorization_id="contract-auth-1",
-        deployment_plan_id=plan.deployment_plan_id,
-        applied_release_id=plan.applied_release_id,
-        allowed=True,
-    )
-
-    orchestrator.execute(plan, preview, authorization)
+    orchestrator.apply(plan, preview)
 
     assert runtime_provider.observe_calls == 2
     assert executor.operations == [preview.operations[0]]

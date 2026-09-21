@@ -12,7 +12,7 @@ from semapact.importers.delta_importer import (
     _extract_delta_relationships,
 )
 from semapact.interfaces.commands.utils import _split_discovered_delta_tables
-from semapact.services import GovernanceService
+from semapact.application.services.governance import GovernanceService
 from semapact.utils.storage_adapter import LocalStorageAdapter
 
 
@@ -146,7 +146,7 @@ def test_local_delta_import_preserves_governance_regression_path(tmp_path: Path)
         prop for prop in merged_orders.properties or [] if prop.name == "legacy_col"
     )
 
-    assert analysis.decision.context == analysis.context
+    assert not hasattr(analysis.decision, "context")
     assert analysis.decision.decision == DecisionResult.REVIEW
     assert analysis.decision.required_version_bump == "minor"
     assert _custom_property_value(legacy, "lifecycleStatus") == "deprecated"

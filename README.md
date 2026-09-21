@@ -67,19 +67,31 @@ GovernanceDecision
 Governance Gate
 ```
 
-Canonical ContractOps then carries the exact governed decision forward:
+The exact governed decision then feeds either candidate deployment or an explicit formal release:
 
 ```text
 GovernanceDecision
 → ChangeSet
-→ ReleasePlan
-→ VersionResolution
-→ ContractOpsAuthorization
-→ AppliedContractRelease
-→ DeploymentPlan
-→ DeploymentAuthorization
-→ runtime mutation
+   ├─ candidate deployment
+   │    → DeploymentSourceSnapshot(source_kind=candidate)
+   │    → DeploymentPlan
+   │    → DeploymentBundle
+   │
+   └─ formal release
+        → ReleasePlan
+        → VersionResolution
+        → ReleaseSnapshot
+        → ReleaseBundle
+        → ContractRelease
+             ↓
+          + target
+             ↓
+        DeploymentSourceSnapshot(source_kind=contract_release)
+        → DeploymentPlan
+        → DeploymentBundle
 ```
+
+Release approval protects formal publication. Runtime deployment permission belongs to the surrounding protected execution context; ContractRelease is provenance, not DEPLOY authorization.
 
 For production assurance:
 
@@ -126,9 +138,9 @@ DRAFT → ACTIVE → DEPRECATED → RETIRED
 
 Lifecycle status does not itself mean that a revision has been authorized for release.
 
-### Side effects are operation-scoped
+### Side effects have explicit trust boundaries
 
-SemaPact distinguishes analysis and planning from side effects. APPLY, PUBLISH, and DEPLOY are separate protected operations. A publication authorization cannot be reused as runtime deployment authority.
+SemaPact distinguishes pure planning/materialization from external side effects. Formal release PUBLISH approval is recorded explicitly when governance requires review. Runtime DEPLOY permission belongs to the surrounding protected execution boundary (for example a GitHub or Azure DevOps Environment), not to the ContractRelease artifact. Release state therefore cannot authorize runtime mutation by itself.
 
 ### Runtime-aware without becoming platform-owned
 
@@ -155,7 +167,7 @@ SemaPact currently supports deterministic change analysis and lifecycle-aware po
 - relationship change handling;
 - version-policy classification;
 - deterministic `GovernanceDecision` artifacts;
-- centralized governance gates for ANALYZE / PROPOSE / APPLY / PUBLISH / DEPLOY / CI operations.
+- centralized governance and release-approval boundaries, with runtime deployment permission delegated to the protected execution environment.
 
 ### Canonical ContractOps release planning
 
@@ -177,33 +189,67 @@ SemaPact supports two version-authority modes:
 
 See [`docs/contractops_phases.md`](docs/contractops_phases.md) and [`docs/version_authority.md`](docs/version_authority.md).
 
-### Governed runtime deployment
+### Contract release and runtime deployment
 
-`semapact deployment` exposes a canonical CLI/CI surface:
+SemaPact treats formal contract release and runtime deployment as separate lifecycles.
+
+A formal release is target-neutral:
 
 ```text
-plan
+release assess
+→ GovernanceDecision
+→ ChangeSet
+→ ReleasePlan
+→ VersionResolution
+→ ReleaseSnapshot
+→ ReleaseBundle
+
+REVIEW → exact release approval
+        ↓
+release finalize
+→ ContractRelease
+→ materialize the selected version back to ODCS
+```
+
+The selected version is calculated once. The resulting `ContractRelease` can then be deployed to any number of runtime targets without another version bump:
+
+```text
+orders@1.4.0
+├── dev
+├── test
+└── prod
+```
+
+Deployment is target-specific:
+
+```text
+deployment assess --release ./artifacts/contract-release.json
+→ DeploymentSourceSnapshot
 → DeploymentPlan
+→ fresh runtime preview
+→ DeploymentBundle
 
-preview
-→ fresh runtime observation
-→ DeploymentPreview
-
-execute
-→ exact plan + preview + DeploymentAuthorization
-→ provider execution
-
-verify
-→ fresh observation + reconciliation
+deployment deploy
+→ fresh preview → execute → fresh verify
 → IN_SYNC / DRIFT / INDETERMINATE
 ```
 
-Planning and preview are read-only. Runtime mutation occurs only through `deployment execute`, and provider execution success is not treated as convergence proof.
+Candidate/non-release deployment remains available directly from base + candidate and does not create a new contract version or release history.
 
-The first Databricks write capability is intentionally narrow: create a missing managed Delta table, add missing nullable governed columns to an existing managed table, or perform NO_OP when the governed shape is already satisfied. Rename, existing-column type/nullability mutation, required-column addition without a safe migration strategy, DROP, and existing external/non-managed asset mutation fail closed.
+Deployment telemetry is disabled by default. High-frequency execution history can be enabled once in typed `.semapact.yaml` configuration with a SQLite or Delta backend; it is not written into Git governance history. The `--operational-history` CLI option is only an override.
+
+For Databricks, once deployment of a finalized formal release verifies `IN_SYNC`, SemaPact projects the finalized release provenance to governed Unity Catalog tables using reserved tags:
+
+```text
+semapact_contract_id
+semapact_contract_version
+semapact_release_id
+semapact_source_revision
+```
+
+Candidate deployments do not publish formal version/release tags. Business classifications or ABAC tags are not automatically mapped.
 
 See [`docs/deployment_plans.md`](docs/deployment_plans.md).
-
 ### Databricks discovery and observation
 
 With the `databricks` extra, SemaPact provides a thin read-side integration using the official Databricks SDK:
@@ -329,14 +375,81 @@ pip install "semapact[databricks]"
 
 The Databricks SDK owns authentication-provider selection. SemaPact forwards supported connection hints rather than implementing a separate credential system.
 
-After an exact `AppliedContractRelease` and deployment authorization have been produced, the runtime path is exposed through:
+Assess a candidate deployment without creating a new contract version:
 
 ```bash
-semapact deployment plan --help
-semapact deployment preview --help
-semapact deployment execute --help
-semapact deployment verify --help
+semapact deployment assess \
+  --base ./contracts/orders.yaml \
+  --candidate ./contracts/orders.candidate.yaml \
+  --base-revision-ref git:abc123 \
+  --candidate-revision-ref git:def456 \
+  --server development \
+  --bundle-out ./artifacts/orders-dev.bundle.json
 ```
+
+Build a target-neutral formal release separately:
+
+```bash
+semapact release assess \
+  --base ./contracts/orders.yaml \
+  --candidate ./contracts/orders.candidate.yaml \
+  --base-revision-ref git:abc123 \
+  --candidate-revision-ref git:def456 \
+  --bundle-out ./artifacts/orders.release.bundle.json
+```
+
+For REVIEW releases, record the exact external approval and then finalize the release:
+
+```bash
+semapact release approve \
+  --bundle ./artifacts/orders.release.bundle.json \
+  --actor-reference github-environment:contract-release \
+  --recorded-at 2026-09-20T10:00:00+10:00 \
+  --approval-out ./artifacts/orders.approval.json
+
+semapact release finalize \
+  --bundle ./artifacts/orders.release.bundle.json \
+  --approval ./artifacts/orders.approval.json \
+  --output-contract ./contracts/orders.yaml \
+  --release-out ./artifacts/orders.contract-release.json
+```
+
+Finalization writes the selected semantic version back to the ODCS contract and records the immutable `ContractRelease` in the Git governance ledger. The release records the source revision from which it was derived; the finalized release identity is the immutable released-contract snapshot, not a claim that the source revision already contained the materialized version bump.
+
+Deployment then consumes the finalized release artifact directly:
+
+```bash
+semapact deployment assess \
+  --release ./artifacts/orders.contract-release.json \
+  --server production \
+  --bundle-out ./artifacts/orders-prod.deployment.bundle.json
+
+semapact deployment deploy \
+  --bundle ./artifacts/orders-prod.deployment.bundle.json \
+  --warehouse-id <databricks-sql-warehouse-id>
+```
+
+Candidate deployments do not require release approval.
+
+Operational deployment history is configured project-wide rather than repeated on every deploy:
+
+```yaml
+history:
+  operational:
+    backend: sqlite
+    path: .semapact/operational.db
+```
+
+For a shared Delta sink:
+
+```yaml
+history:
+  operational:
+    backend: delta
+    table_uri: s3://governance/semapact/operational-history
+```
+
+The config is fail-closed against the typed `SemaPactConfigSchema`. `--operational-history` remains available only as a per-invocation override. If neither config nor override is present, operational persistence stays disabled. See [`docs/configuration.md`](docs/configuration.md) for precedence and schema details.
 
 ## Optional Dependencies
 
@@ -359,16 +472,15 @@ Optional extras are intentionally separate from the base distribution. If an int
 
 ```text
 semapact/
-  core/             # loading, validation, compatibility workflow boundaries
+  core/             # loading, configuration and validation
   lifecycle/        # canonical identity, lifecycle and change policy
   governance/       # GovernanceDecision and centralized gate
-  contractops/      # deterministic release planning / authorization / apply / publish domain
-  deployment/       # provider-neutral deployment plans, authorization, preview contracts
+  contractops/      # deterministic release planning, approval and release artifacts
+  deployment/       # provider-neutral deployment source, plan and preview contracts
   runtime/          # provider-neutral governed runtime asset projection
   application/      # interface-independent use-case models + orchestration
     models/         # application result DTOs; no domain authority
     services/       # thin orchestration over canonical domain rules/ports
-  services/         # backward-compatible imports only
   observation/      # platform-neutral observed state + fingerprint
   reconciliation/   # governed desired vs observed comparison
   platforms/        # provider adapters such as Databricks
@@ -376,12 +488,12 @@ semapact/
   exporters/        # SQL / graph and other outputs
   quality/          # quality intent adapters
   interfaces/       # CLI and user-facing boundaries
-  devops/           # Git / CI compatibility helpers
+  devops/           # Git / CI integration helpers
 ```
 
 A central architectural rule is:
 
-> **Interfaces parse and render. Application services orchestrate. Domain packages own business meaning. Platform adapters own provider-specific effects. Compatibility packages do not become new owners.**
+> **Interfaces parse and render. Application services orchestrate. Domain packages own business meaning. Platform adapters own provider-specific effects. There is one canonical workflow per lifecycle.**
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for package/model placement rules.
 

@@ -1,0 +1,235 @@
+name: SemaPact - data product CI/CD
+
+on:
+  pull_request:
+    paths:
+      - contract.yaml
+  push:
+    branches:
+      - main
+    paths:
+      - contract.yaml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: semapact-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.11"
+  CONTRACT_PATH: contract.yaml
+  DEV_SERVER: development
+  PROD_SERVER: production
+
+jobs:
+  candidate-assess:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install SemaPact
+        run: pip install "semapact[databricks]"
+
+      - name: Materialize base contract
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git show "${BASE_SHA}:${CONTRACT_PATH}" > /tmp/base-contract.yaml
+
+      - name: Assess candidate against development
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p artifacts
+          semapact deployment assess \
+            --base /tmp/base-contract.yaml \
+            --candidate "${CONTRACT_PATH}" \
+            --base-revision-ref "git:${BASE_SHA}" \
+            --candidate-revision-ref "git:${CANDIDATE_SHA}" \
+            --server "${DEV_SERVER}" \
+            --bundle-out artifacts/candidate.deployment.bundle.json \
+            --output json > artifacts/candidate.summary.json
+
+      - name: Upload candidate assessment
+        uses: actions/upload-artifact@v4
+        with:
+          name: semapact-candidate-assessment
+          path: artifacts/
+
+  release-assess:
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      !contains(github.event.head_commit.message, '[semapact-release]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install SemaPact
+        run: pip install semapact
+
+      - name: Materialize previous released contract
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: |
+          git show "${BASE_SHA}:${CONTRACT_PATH}" > /tmp/base-contract.yaml
+
+      - name: Build target-neutral formal release bundle
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p artifacts
+          semapact release assess \
+            --base /tmp/base-contract.yaml \
+            --candidate "${CONTRACT_PATH}" \
+            --base-revision-ref "git:${BASE_SHA}" \
+            --candidate-revision-ref "git:${CANDIDATE_SHA}" \
+            --bundle-out artifacts/release.bundle.json \
+            > artifacts/release.summary.json
+
+      - name: Upload exact release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: semapact-release-bundle
+          path: artifacts/
+
+  finalize-release:
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      !contains(github.event.head_commit.message, '[semapact-release]')
+    needs: release-assess
+    runs-on: ubuntu-latest
+    # Example policy: GitHub Environment protects formal release publication.
+    # SemaPact only persists an ApprovalRecord when its decision is REVIEW.
+    environment: contract-release
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install SemaPact
+        run: pip install semapact
+
+      - name: Download exact release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: semapact-release-bundle
+          path: artifacts
+
+      - name: Capture exact review approval when required
+        run: |
+          BUNDLE=artifacts/release.bundle.json
+          if [ "$(jq -r '.decision.decision' "${BUNDLE}")" = "REVIEW" ]; then
+            semapact release approve \
+              --bundle "${BUNDLE}" \
+              --actor-reference "github-environment:contract-release/run:${GITHUB_RUN_ID}" \
+              --recorded-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --approval-out artifacts/release.approval.json
+          fi
+
+      - name: Finalize release and materialize released contract
+        id: finalize
+        run: |
+          APPROVAL_ARGS=()
+          if [ -f artifacts/release.approval.json ]; then
+            APPROVAL_ARGS=(--approval artifacts/release.approval.json)
+          fi
+          semapact release finalize \
+            --bundle artifacts/release.bundle.json \
+            "${APPROVAL_ARGS[@]}" \
+            --output-contract "${CONTRACT_PATH}" \
+            --release-out artifacts/contract-release.json \
+            > artifacts/finalize.json
+
+      - name: Commit released contract and governance ledger once
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${CONTRACT_PATH}" .semapact/history
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(semapact): finalize contract release [semapact-release]"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - name: Upload release result
+        uses: actions/upload-artifact@v4
+        with:
+          name: semapact-finalized-release
+          path: |
+            artifacts/finalize.json
+            artifacts/contract-release.json
+
+  deploy-production:
+    needs: finalize-release
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_WAREHOUSE_ID: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+    steps:
+      - name: Checkout finalized release
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install SemaPact
+        run: pip install "semapact[databricks]"
+
+      - name: Download finalized release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: semapact-finalized-release
+          path: artifacts
+
+      - name: Assess finalized release against production
+        run: |
+          semapact deployment assess \
+            --release artifacts/contract-release.json \
+            --server "${PROD_SERVER}" \
+            --bundle-out artifacts/production.deployment.bundle.json
+
+      - name: Deploy exact target bundle
+        run: |
+          semapact deployment deploy \
+            --bundle artifacts/production.deployment.bundle.json \
+            --warehouse-id "${DATABRICKS_WAREHOUSE_ID}"
+
+      # Operational deployment history is config-first. If history.operational is
+      # configured in .semapact.yaml, deploy writes there automatically.

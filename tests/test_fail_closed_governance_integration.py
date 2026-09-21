@@ -15,18 +15,15 @@ from open_data_contract_standard.model import (
 
 from semapact.core.lifecycle_cli import apply_lifecycle
 from semapact.devops.ci_cd import evaluate_ci_gate
-from semapact.devops.release_workflow import (
-    build_batch_release_manifest,
-)
 from semapact.exceptions import GovernanceBlockedError, GovernanceReviewRequiredError
+from semapact.change_context import ChangeContext
 from semapact.governance import (
-    ChangeContext,
     GovernanceOperation,
     evaluate_governance_decision,
 )
 from semapact.interfaces.commands.merge_cmd import run_merge
 from semapact.interfaces.commands.plan_cmd import run_plan
-from semapact.interfaces.commands.release_cmd import run_release_classify, run_release_prepare
+from semapact.interfaces.commands.release_cmd import run_release_classify
 from semapact.orchestrator.pipeline import ContractPipeline
 from semapact.utils.schema_utils import contract_to_dict
 from semapact.utils.yaml_utils import dump_yaml
@@ -110,18 +107,6 @@ def test_injected_block_decision_prevents_side_effects(tmp_path, monkeypatch):
         apply_lifecycle(lifecycle_args, is_promote=True, context=TEST_CONTEXT)
     assert not (tmp_path / "lifecycle_out.yaml").exists()
 
-    # 3. release prepare: raises GovernanceBlockedError and does NOT write candidate
-    release_prep_args = SimpleNamespace(
-        base=str(base_path),
-        candidate=str(candidate_path),
-        release_tag="v2.0.0",
-        output=str(tmp_path / "release_out.yaml"),
-        runtime_context="auto",
-        effective_date=TEST_EFFECTIVE_DATE,
-    )
-    with pytest.raises(GovernanceBlockedError):
-        run_release_prepare(release_prep_args)
-    assert not (tmp_path / "release_out.yaml").exists()
 
     # 4. pipeline run: writes decision manifest FIRST, then raises GovernanceBlockedError without generating GE/merged contract
     pipeline = ContractPipeline()
@@ -272,127 +257,7 @@ def test_import_plugin_deepcopy_prevents_output_mutation(tmp_path, monkeypatch):
     assert written_data["id"] == "contract-1", "Written contract must not be mutated by plugin hook"
 
 
-def test_release_create_pr_block_prevents_all_side_effects(tmp_path):
-    """Verify create_release_pull_request with a BLOCK decision does not dump YAML, commit/push, or create PR."""
-    base = _make_contract(contract_id="contract-a", version="1.0.0", status="active")
-    candidate = _make_contract(contract_id="contract-a", version="1.0.0", status="active")
-    from open_data_contract_standard.model import DataQuality
-    candidate.schema_[0].properties[0].quality = [DataQuality(type="invalid_type")]
 
-    from semapact.devops.pr_creator import GitHubConfig
-    from semapact.devops.release_workflow import create_release_pull_request
-
-    config = GitHubConfig(owner="org", repo="repo", token="fake")
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir()
-    contract_repo_path = "contracts/my_contract.yaml"
-
-    with mock.patch("semapact.devops.pr_creator.PullRequestCreator.create_update_pr") as mock_pr:
-        with pytest.raises(GovernanceBlockedError) as exc_info:
-            create_release_pull_request(
-                config=config,
-                repo_path=str(repo_dir),
-                contract_repo_path=contract_repo_path,
-                base_contract=base,
-                candidate_contract=candidate,
-                release_tag="v1.0.1",
-                source_branch="release/v1.0.1",
-                target_branch="main",
-                context=TEST_CONTEXT,
-            )
-
-    assert exc_info.value.operation == GovernanceOperation.PROPOSE
-    assert not (repo_dir / contract_repo_path).exists(), "Candidate YAML must not be dumped when governance gate BLOCKS"
-    assert mock_pr.call_count == 0, "Pull request creator must not be called when governance gate BLOCKS"
-
-
-def test_batch_release_manifest_evaluates_governance_once_per_task(tmp_path, monkeypatch):
-    """Verify build_batch_release_manifest and create_release_pull_requests_from_manifest evaluate underlying policy exactly ONCE per task per phase without duplicate evaluations."""
-    base_dir = tmp_path / "base_root"
-    cand_dir = tmp_path / "cand_root"
-    repo_dir = tmp_path / "repo"
-    base_dir.mkdir()
-    cand_dir.mkdir()
-    repo_dir.mkdir()
-
-    for i in range(2):
-        base_c = _make_contract(contract_id=f"c{i}", version="1.0.0")
-        cand_c = _make_contract(contract_id=f"c{i}", version="1.0.0")
-        cand_c.schema_[0].properties.append(
-            SchemaProperty(name=f"new_{i}", logicalType="string", physicalType="varchar(10)", required=False)
-        )
-        dump_yaml(contract_to_dict(base_c), base_dir / f"c{i}.yaml")
-        dump_yaml(contract_to_dict(cand_c), cand_dir / f"c{i}.yaml")
-
-    policy_eval_calls = 0
-    from semapact.lifecycle.policy import evaluate_merge_policy
-    orig_eval_policy = evaluate_merge_policy
-
-    def counted_policy_eval(*args, **kwargs):
-        nonlocal policy_eval_calls
-        policy_eval_calls += 1
-        return orig_eval_policy(*args, **kwargs)
-
-    monkeypatch.setattr("semapact.governance.evaluator.evaluate_merge_policy", counted_policy_eval)
-
-    # 1. Build manifest (2 tasks created, exactly 2 policy evaluations)
-    build = build_batch_release_manifest(
-        base_root=str(base_dir),
-        candidate_root=str(cand_dir),
-        context=TEST_CONTEXT,
-    )
-    assert len(build.tasks) == 2
-    assert policy_eval_calls == 2, f"Expected 2 policy evaluations during build, got {policy_eval_calls}"
-
-    # 2. Run PR creation from manifest tasks (exactly 2 more policy evaluations: 1 per task in evaluate_governance_decision, 0 in apply_release_candidate)
-    monkeypatch.setattr("semapact.devops.pr_creator.PullRequestCreator.create_update_pr", lambda *a, **k: {})
-    from semapact.devops.pr_creator import GitHubConfig
-    from semapact.devops.release_workflow import create_release_pull_requests_from_manifest
-
-    config = GitHubConfig(owner="org", repo="repo", token="fake")
-    create_release_pull_requests_from_manifest(
-        config=config,
-        repo_path=str(repo_dir),
-        tasks=build.tasks,
-    )
-
-    assert policy_eval_calls == 4, f"Expected exactly 4 total policy evaluations across build+create (1 per task per phase), got {policy_eval_calls}"
-
-
-def test_batch_release_manifest_skips_blocked_contracts(tmp_path):
-    """Batch release manifest moves contracts with BLOCK decisions to skipped list."""
-    base_dir = tmp_path / "base_root"
-    cand_dir = tmp_path / "cand_root"
-    base_dir.mkdir()
-    cand_dir.mkdir()
-
-    base_contract = _make_contract(contract_id="contract-1", version="1.0.0")
-    cand_valid = _make_contract(contract_id="contract-1", version="1.0.0")
-    cand_valid.schema_[0].properties.append(
-        SchemaProperty(name="new_field", logicalType="string", physicalType="varchar(50)", required=False)
-    )
-    dump_yaml(contract_to_dict(base_contract), base_dir / "valid.yaml")
-    dump_yaml(contract_to_dict(cand_valid), cand_dir / "valid.yaml")
-
-    base_blocked = _make_contract(contract_id="contract-blocked", version="1.0.0")
-    cand_blocked = _make_contract(contract_id="contract-blocked", version="2.0.0")  # Version Mismatch -> BLOCK
-    dump_yaml(contract_to_dict(base_blocked), base_dir / "blocked.yaml")
-    dump_yaml(contract_to_dict(cand_blocked), cand_dir / "blocked.yaml")
-
-    build = build_batch_release_manifest(
-        base_root=str(base_dir),
-        candidate_root=str(cand_dir),
-        context=TEST_CONTEXT,
-    )
-
-    # Valid additive change produces a task
-    task_paths = [t.contract_path for t in build.tasks]
-    assert "valid.yaml" in task_paths
-    assert "blocked.yaml" not in task_paths
-
-    # Blocked contract is in skipped list
-    skipped_paths = [s.contract_repo_path for s in build.skipped]
-    assert "blocked.yaml" in skipped_paths
 
 
 def test_breaking_change_review_behavior(tmp_path, capsys):
@@ -426,24 +291,11 @@ def test_breaking_change_review_behavior(tmp_path, capsys):
         base=str(base_path),
         candidate=str(cand_path),
         runtime_context="auto",
-        effective_date=TEST_EFFECTIVE_DATE,
     )
     class_res = run_release_classify(classify_args)
     assert class_res["requiredBump"] == "minor"
     assert class_res["governanceDecision"]["decision"] == "REVIEW"
 
-    # 2. PROPOSE (release prepare): Allowed to produce candidate YAML for review
-    prep_args = SimpleNamespace(
-        base=str(base_path),
-        candidate=str(cand_path),
-        release_tag="v1.1.0",
-        output=str(tmp_path / "review_candidate.yaml"),
-        runtime_context="auto",
-        effective_date=TEST_EFFECTIVE_DATE,
-    )
-    prep_res = run_release_prepare(prep_args)
-    assert (tmp_path / "review_candidate.yaml").exists()
-    assert prep_res["governanceDecision"]["decision"] == "REVIEW"
 
     # 3. APPLY (lifecycle deprecate property): Deprecating property in active contract -> REVIEW -> Raises GovernanceReviewRequiredError
     lifecycle_args = SimpleNamespace(
@@ -459,7 +311,7 @@ def test_breaking_change_review_behavior(tmp_path, capsys):
     assert "Governance decision REVIEW required" in str(exc.value)
 
     # 4. CI (evaluate_ci_gate & pipeline): Returns allowed=False / raises GovernanceReviewRequiredError
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     ci_res = evaluate_ci_gate(decision)
     assert ci_res.allowed is False
     assert ci_res.reason == "review_required"
@@ -514,7 +366,7 @@ def test_prepare_ci_cd_artifacts_enforces_ci_gate_directly(tmp_path):
     from open_data_contract_standard.model import DataQuality
     candidate.schema_[0].properties[0].quality = [DataQuality(type="invalid_quality_type_xyz")]
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     assert decision.decision.value == "BLOCK"
 
     merged_out = tmp_path / "direct_merged.yaml"
@@ -544,35 +396,12 @@ def test_ci_cd_adapter_preserves_allowed_reason():
     """Verify that evaluate_ci_gate returns 'allowed' reason when allowed is True."""
     base = _make_contract(status="active")
     candidate = _make_contract(status="active")
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
 
     ci_dec = evaluate_ci_gate(decision)
     assert ci_dec.allowed is True
     assert ci_dec.reason == "allowed"
 
-
-def test_release_prepare_includes_breaking_changes(tmp_path):
-    """Verify run_release_prepare returns breaking changes when breaking policy violations exist."""
-    base = _make_contract(status="active")
-    candidate = _make_contract(status="active")
-    # Removing a property from active schema creates a breaking policy change
-    candidate.schema_[0].properties = []
-
-    base_path = dump_yaml(contract_to_dict(base), tmp_path / "base.yaml")
-    cand_path = dump_yaml(contract_to_dict(candidate), tmp_path / "cand.yaml")
-
-    prep_args = SimpleNamespace(
-        base=str(base_path),
-        candidate=str(cand_path),
-        release_tag="v2.0.0",
-        output=str(tmp_path / "prep_out.yaml"),
-        runtime_context="auto",
-        effective_date=TEST_EFFECTIVE_DATE,
-    )
-
-    res = run_release_prepare(prep_args)
-    assert len(res["breakingChanges"]) > 0
-    assert any("removed" in str(bc.get("message", "")).lower() or "breaking" in str(bc.get("message", "")).lower() for bc in res["breakingChanges"])
 
 
 def test_classify_repo_sets_blocked_status(tmp_path):
@@ -587,11 +416,10 @@ def test_classify_repo_sets_blocked_status(tmp_path):
     dump_yaml(contract_to_dict(base_blocked), base_dir / "blocked.yaml")
     dump_yaml(contract_to_dict(cand_blocked), cand_dir / "blocked.yaml")
 
-    from semapact.devops.release_workflow import classify_contracts_in_repo
+    from semapact.application.services.repository_classification import classify_contracts_in_repo
     changes = classify_contracts_in_repo(
         base_root=str(base_dir),
         candidate_root=str(cand_dir),
-        context=TEST_CONTEXT,
     )
     blocked_change = next(c for c in changes if c.contract_repo_path == "blocked.yaml")
     assert blocked_change.status == "blocked"
@@ -604,6 +432,3 @@ def test_apply_release_candidate_requires_opendatacontractstandard_runtime():
     base = _make_contract()
     candidate_dict = contract_to_dict(base)
 
-    from semapact.core.release import apply_release_candidate
-    with pytest.raises(TypeError, match="candidate_contract must be OpenDataContractStandard"):
-        apply_release_candidate(base, candidate_dict, "v1.0.1", required_bump="patch")  # type: ignore[arg-type]

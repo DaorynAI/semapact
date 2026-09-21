@@ -13,7 +13,8 @@ from open_data_contract_standard.model import (
 )
 
 from semapact.exceptions import GovernanceReviewRequiredError
-from semapact.governance import ChangeContext, enforce_governance_gate
+from semapact.change_context import ChangeContext
+from semapact.governance import enforce_governance_gate
 from semapact.governance.evaluator import evaluate_governance_decision
 from semapact.lifecycle.merge_engine import MergeResult
 from semapact.orchestrator.pipeline import ContractPipeline, _build_manifest_payload
@@ -69,7 +70,6 @@ def test_manifest_breaking_changes_project_authoritative_decision() -> None:
     decision = evaluate_governance_decision(
         base,
         candidate,
-        context=TEST_CONTEXT,
     )
     decision_payload = decision.model_dump(mode="json")
     manifest = _build_manifest_payload(decision)
@@ -92,7 +92,6 @@ def test_manifest_non_breaking_change_has_no_breaking_projection() -> None:
     decision = evaluate_governance_decision(
         base,
         candidate,
-        context=TEST_CONTEXT,
     )
     manifest = _build_manifest_payload(decision)
 

@@ -11,7 +11,6 @@ from open_data_contract_standard.model import (
 
 import semapact.application.services.governance as governance_service_module
 from semapact.application.services.governance import GovernanceService
-from semapact.change_context import ChangeContext
 from semapact.governance.models import GovernanceDecision
 from semapact.lifecycle.merge_engine import MergeConflict
 
@@ -51,7 +50,6 @@ def test_evaluate_proposal_evaluates_once_and_reuses_authoritative_changes(
         base_contract: OpenDataContractStandard,
         candidate_contract: OpenDataContractStandard,
         *,
-        context: ChangeContext,
         merge_conflicts: Sequence[MergeConflict] = (),
     ) -> GovernanceDecision:
         nonlocal calls
@@ -59,7 +57,6 @@ def test_evaluate_proposal_evaluates_once_and_reuses_authoritative_changes(
         return original(
             base_contract,
             candidate_contract,
-            context=context,
             merge_conflicts=merge_conflicts,
         )
 
@@ -72,7 +69,6 @@ def test_evaluate_proposal_evaluates_once_and_reuses_authoritative_changes(
     proposal = GovernanceService().evaluate_proposal(
         base,
         candidate,
-        effective_date="2026-09-09",
         base_revision_ref="git:abc123",
         candidate_revision_ref="git:def456",
         source="api",
@@ -81,7 +77,8 @@ def test_evaluate_proposal_evaluates_once_and_reuses_authoritative_changes(
 
     assert calls == 1
     assert proposal.change_set.changes == proposal.decision.changes
-    assert proposal.change_set.context == proposal.decision.context
+    assert not hasattr(proposal.change_set, "context")
+    assert not hasattr(proposal.decision, "context")
     assert proposal.change_set.base_revision_ref == "git:abc123"
     assert proposal.change_set.candidate_revision_ref == "git:def456"
     assert proposal.change_set.source == "api"
