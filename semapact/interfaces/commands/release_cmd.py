@@ -23,7 +23,6 @@ def run_release_assess(args: argparse.Namespace) -> dict[str, Any]:
     bundle = ReleaseWorkflowService().assess(
         base_contract,
         candidate_contract,
-        effective_date=args.effective_date,
         base_revision_ref=args.base_revision_ref,
         candidate_revision_ref=args.candidate_revision_ref,
         authority_reference=args.authority_reference,
@@ -130,7 +129,6 @@ def run_release_classify(args: argparse.Namespace) -> dict[str, Any]:
     decision = GovernanceService().evaluate(
         base_contract,
         candidate_contract,
-        effective_date=args.effective_date,
     )
     evaluate_governance_gate(decision, GovernanceOperation.ANALYZE)
 
@@ -188,11 +186,9 @@ def run_release_classify_repo(args: argparse.Namespace) -> dict[str, Any]:
         repository_change_to_dict,
     )
 
-    change_context = GovernanceService.create_context(args.effective_date)
     results = classify_contracts_in_repo(
         base_root=args.base_root,
         candidate_root=args.candidate_root,
-        context=change_context,
     )
     return {"contracts": [repository_change_to_dict(item) for item in results]}
 
