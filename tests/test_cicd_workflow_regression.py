@@ -147,7 +147,7 @@ def _server(name: str, schema_name: str) -> Server:
     )
 
 
-def _contract(*, include_created_at: bool = False) -> OpenDataContractStandard:
+def _contract(\n    *,\n    contract_id: str = "orders-product",\n    include_created_at: bool = False,\n) -> OpenDataContractStandard:
     properties = [
         SchemaProperty(
             name="id",
@@ -345,3 +345,164 @@ def test_data_product_sample_command_chain_executes_end_to_end(
     assert execution_adapter.apply_calls == 1
     assert execution_adapter.verify_calls == 1
     assert execution_adapter.metadata_calls == 1
+
+
+
+def test_central_repo_sample_fans_out_distinct_release_artifacts(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """Exercise central-repo classification, release fan-out, and deployment fan-out."""
+    base_root = tmp_path / "base" / "contracts"
+    candidate_root = tmp_path / "candidate" / "contracts"
+    paths = ("a/b.yaml", "a_b.yaml")
+    contract_ids = ("orders-nested", "orders-flat")
+
+    for relative_path, contract_id in zip(paths, contract_ids, strict=True):
+        dump_yaml(
+            _contract(contract_id=contract_id),
+            base_root / relative_path,
+        )
+        dump_yaml(
+            _contract(contract_id=contract_id, include_created_at=True),
+            candidate_root / relative_path,
+        )
+
+    execution_adapter = _ExecutionAdapter()
+
+    def _adapter_factory(platform: str, **kwargs):
+        assert platform == "databricks"
+        if kwargs.get("execution_config") is None:
+            return _PreviewAdapter()
+        return execution_adapter
+
+    monkeypatch.setattr(
+        "semapact.platforms.runtime_registry.create_deployment_adapter",
+        _adapter_factory,
+    )
+    monkeypatch.setattr(
+        "semapact.core.config.config_manager.get",
+        lambda *args, **kwargs: None,
+    )
+
+    code, classification_output = _run_cli(
+        monkeypatch,
+        capsys,
+        "release",
+        "classify-repo",
+        "--base-root",
+        str(base_root),
+        "--candidate-root",
+        str(candidate_root),
+        "--effective-date",
+        "2026-09-21",
+    )
+    assert code == 0
+    classification = json.loads(classification_output)
+    changed = [
+        item for item in classification["contracts"] if item["status"] == "changed"
+    ]
+    assert {item["contractRepoPath"] for item in changed} == set(paths)
+    artifact_keys = {item["artifactKey"] for item in changed}
+    assert len(artifact_keys) == 2
+    assert all(len(key) == 64 for key in artifact_keys)
+
+    finalized_ids: set[str] = set()
+    for item in changed:
+        relative_path = item["contractRepoPath"]
+        artifact_key = item["artifactKey"]
+        base_path = base_root / relative_path
+        candidate_path = candidate_root / relative_path
+        release_bundle = tmp_path / "release-bundles" / f"{artifact_key}.json"
+        release_artifact = tmp_path / "finalized" / f"{artifact_key}.json"
+        deployment_bundle = tmp_path / "deploy" / f"{artifact_key}.json"
+
+        code, _ = _run_cli(
+            monkeypatch,
+            capsys,
+            "release",
+            "assess",
+            "--base",
+            str(base_path),
+            "--candidate",
+            str(candidate_path),
+            "--base-revision-ref",
+            f"git:base:{relative_path}",
+            "--candidate-revision-ref",
+            f"git:candidate:{relative_path}",
+            "--effective-date",
+            "2026-09-21",
+            "--bundle-out",
+            str(release_bundle),
+        )
+        assert code == 0
+
+        code, _ = _run_cli(
+            monkeypatch,
+            capsys,
+            "release",
+            "approve",
+            "--bundle",
+            str(release_bundle),
+            "--actor-reference",
+            "github-environment:contract-release/run:central",
+            "--recorded-at",
+            "2026-09-21T04:00:00Z",
+            "--repository-root",
+            str(tmp_path),
+        )
+        assert code == 0
+
+        code, finalize_output = _run_cli(
+            monkeypatch,
+            capsys,
+            "release",
+            "finalize",
+            "--bundle",
+            str(release_bundle),
+            "--output-contract",
+            str(candidate_path),
+            "--release-out",
+            str(release_artifact),
+            "--repository-root",
+            str(tmp_path),
+        )
+        assert code == 0
+        finalized = json.loads(finalize_output)
+        finalized_ids.add(finalized["contractReleaseId"])
+
+        code, _ = _run_cli(
+            monkeypatch,
+            capsys,
+            "deployment",
+            "assess",
+            "--release",
+            str(release_artifact),
+            "--server",
+            "production",
+            "--bundle-out",
+            str(deployment_bundle),
+        )
+        assert code == 0
+
+        code, deploy_output = _run_cli(
+            monkeypatch,
+            capsys,
+            "deployment",
+            "deploy",
+            "--bundle",
+            str(deployment_bundle),
+            "--warehouse-id",
+            "warehouse-1",
+            "--output",
+            "json",
+        )
+        assert code == 0
+        assert json.loads(deploy_output)["status"] == "IN_SYNC"
+
+    assert len(finalized_ids) == 2
+    assert execution_adapter.preview_calls == 2
+    assert execution_adapter.apply_calls == 2
+    assert execution_adapter.verify_calls == 2
+    assert execution_adapter.metadata_calls == 2
