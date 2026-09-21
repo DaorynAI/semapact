@@ -368,40 +368,6 @@ def _build_parser() -> argparse.ArgumentParser:
     release_classify_repo_parser.add_argument("--candidate-root", required=True)
     _add_effective_date_argument(release_classify_repo_parser)
 
-    release_build_manifest_parser = release_subparsers.add_parser(
-        "build-manifest",
-        help="Build an editable per-contract release manifest from two contract roots",
-    )
-    release_build_manifest_parser.add_argument("--base-root", required=True)
-    release_build_manifest_parser.add_argument("--candidate-root", required=True)
-    release_build_manifest_parser.add_argument("--output", required=True)
-    release_build_manifest_parser.add_argument("--target-branch", default="release")
-    release_build_manifest_parser.add_argument(
-        "--source-branch-prefix", default="release/"
-    )
-    _add_effective_date_argument(release_build_manifest_parser)
-
-
-
-    release_prs_parser = release_subparsers.add_parser(
-        "create-prs",
-        help="Run explicit per-contract release PR automation from a batch manifest",
-    )
-    release_prs_parser.add_argument("--manifest", required=True)
-    release_prs_parser.add_argument("--repo-path", help="Local repository path")
-    release_prs_parser.add_argument(
-        "--git-provider",
-        choices=["azure", "github"],
-    )
-    release_prs_parser.add_argument("--organization")
-    release_prs_parser.add_argument("--github-owner")
-    release_prs_parser.add_argument("--github-repo")
-    release_prs_parser.add_argument("--github-token")
-    release_prs_parser.add_argument("--project")
-    release_prs_parser.add_argument("--repository-id")
-    release_prs_parser.add_argument("--pat-token")
-    release_prs_parser.add_argument("--push", action="store_true")
-
 
     doctor_parser = subparsers.add_parser(
         "doctor",
@@ -690,10 +656,8 @@ def main() -> int:
             from semapact.interfaces.commands.release_cmd import (
                 run_release_approve,
                 run_release_assess,
-                run_release_build_manifest,
                 run_release_classify,
                 run_release_classify_repo,
-                run_release_create_prs,
                 run_release_finalize,
                 run_release_plan,
             )
@@ -719,14 +683,6 @@ def main() -> int:
                 return 0
             if args.release_command == "classify-repo":
                 payload = run_release_classify_repo(args)
-                print(json.dumps(payload, indent=2, sort_keys=True))
-                return 0
-            if args.release_command == "build-manifest":
-                payload = run_release_build_manifest(args)
-                print(json.dumps(payload, indent=2, sort_keys=True))
-                return 0
-            if args.release_command == "create-prs":
-                payload = run_release_create_prs(args)
                 print(json.dumps(payload, indent=2, sort_keys=True))
                 return 0
 
