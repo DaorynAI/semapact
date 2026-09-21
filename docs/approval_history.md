@@ -102,25 +102,38 @@ record = service.record_review_action(
 Callers using another future persistence backend can provide the same
 `ApprovalHistoryRepository` capability without changing `ApprovalRecordService`.
 
-## Deployment approval resolution
+## Release approval handoff and resolution
 
-For a **formal REVIEW release** (`DeploymentBundle.release=true`), callers do not have to pass an approval file explicitly. Candidate/non-release deployments never create or resolve release approval records.
+Formal REVIEW approval belongs to the PUBLISH boundary, not to runtime deployment.
 
-When `semapact deployment deploy --bundle ...` receives a formal REVIEW release bundle without `--approval`, the CLI queries Git-backed approval history under `.semapact/history/approval_records` and resolves only records that match all of the following:
+The canonical CI/CD handoff is an exact `ApprovalRecord` artifact:
+
+```text
+release assess
+→ ReleaseBundle
+
+protected release environment
+→ release approve --approval-out release.approval.json
+
+release finalize --approval release.approval.json
+→ ContractRelease
+```
+
+The approval must match all of the following:
 
 - exact `decisionId`;
 - exact `changeSetId`;
 - exact `releasePlanId`;
 - exact `versionResolutionId`;
-- operation `DEPLOY`;
-- exact `deploymentPlanId` as scope;
-- exact `bundleDigest` in evidence references.
+- operation `PUBLISH`;
+- exact `ReleaseSnapshot` as `scopeReference`;
+- exact `ReleaseBundle` digest in `evidenceReferences`.
 
-A matching `APPROVE` record can therefore be recorded by a trusted GitHub/Azure DevOps/GitLab integration before CD begins, while `deployment deploy` consumes it automatically.
+`release approve` also persists the same approval in the Git governance ledger. That ledger is durable audit/conflict evidence, not the preferred in-pipeline transport.
 
-If exact scoped history contains conflicting review actions such as `REQUEST_CHANGES` or `REJECT`, resolution fails closed. SemaPact does not apply a hidden "latest review wins" rule.
+As a convenience fallback, `release finalize` may resolve the same exact PUBLISH approval from the Git ledger when `--approval` is omitted. If the exact scope contains conflicting review evidence such as `REQUEST_CHANGES` or `REJECT`, finalization fails closed. SemaPact does not apply a hidden "latest review wins" rule.
 
-Passing `--approval <record.json>` remains supported for custom/manual formal-release workflows and takes precedence over Git-history lookup. Supplying an approval to a non-release deployment is rejected.
+Runtime deployment has no SemaPact deployment-approval artifact. Whether `semapact deployment deploy` may run is controlled by the surrounding protected CI/CD execution context. Candidate deployment therefore does not create or resolve release approval records, and a finalized `ContractRelease` is provenance rather than DEPLOY authority.
 
 ## Trust boundary
 
