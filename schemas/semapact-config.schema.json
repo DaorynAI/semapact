@@ -24,7 +24,7 @@
     },
     "HistoryConfig": {
       "additionalProperties": false,
-      "description": "Typed history configuration while unrelated legacy config remains extensible.",
+      "description": "Typed history configuration while unrelated configuration remains extensible.",
       "properties": {
         "operational": {
           "anyOf": [
