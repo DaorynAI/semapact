@@ -4,15 +4,13 @@ from __future__ import annotations
 
 from semapact.deployment import (
     DeploymentAdapter,
-    DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
     DeploymentSourceSnapshot,
     DeploymentTarget,
     build_deployment_plan_from_source,
 )
-from semapact.deployment.models import validate_deployment_authorization_identity
-from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
+from semapact.exceptions import ValidationError
 from semapact.reconciliation import ReconciliationResult
 
 
@@ -44,31 +42,6 @@ class DeploymentService:
     ) -> None:
         """Apply one exact preview after the external execution boundary allows CD."""
         _validate_component_key(adapter.key, plan.target.platform, "deployment adapter")
-        adapter.apply(plan, preview)
-
-    def execute(
-        self,
-        plan: DeploymentPlan,
-        preview: DeploymentPreview,
-        authorization: DeploymentAuthorization,
-        *,
-        adapter: DeploymentAdapter,
-    ) -> None:
-        """Compatibility wrapper for legacy in-process authorization callers."""
-        _validate_component_key(adapter.key, plan.target.platform, "deployment adapter")
-        validate_deployment_authorization_identity(authorization)
-        if not authorization.allowed:
-            raise ContractOpsAuthorizationError(
-                "DeploymentAuthorization is not allowed"
-            )
-        if authorization.deployment_plan_id != plan.deployment_plan_id:
-            raise ContractOpsAuthorizationError(
-                "DeploymentAuthorization is not bound to this DeploymentPlan"
-            )
-        if authorization.source_snapshot_id != plan.source_snapshot_id:
-            raise ContractOpsAuthorizationError(
-                "DeploymentAuthorization source does not match DeploymentPlan"
-            )
         adapter.apply(plan, preview)
 
     def verify(
