@@ -36,7 +36,9 @@ Operational deployment history is config-first through `.semapact.yaml`. The exa
 do not repeat `--operational-history` on every deployment.
 
 The examples use two distinct GitHub Environment boundaries. `contract-release` supplies
-human PUBLISH approval for REVIEW releases, recorded with `semapact release approve`.
+human PUBLISH approval for REVIEW releases. `semapact release approve --approval-out`
+persists that fact to the governance ledger and emits the exact ApprovalRecord used by
+`release finalize --approval`; Git is not used as the in-pipeline transport.
 `production` protects whether the deployment job may run; SemaPact does not convert a
 finalized ContractRelease into DEPLOY authorization.
 
