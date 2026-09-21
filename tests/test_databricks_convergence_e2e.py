@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,7 +16,6 @@ from open_data_contract_standard.model import (
 
 from semapact.application.services.deployment import DeploymentService
 from semapact.application.services.deployment_workflow import DeploymentWorkflowService
-from semapact.change_context import ChangeContext
 from semapact.deployment import (
     DeploymentPlan,
     DeploymentPreview,
@@ -39,7 +38,6 @@ from semapact.platforms.databricks.deployment import DatabricksDeploymentAdapter
 from semapact.reconciliation import RuntimeDriftStatus, classify_reconciliation_status
 
 
-_CONTEXT = ChangeContext(effective_date=date(2026, 9, 19))
 _SOURCE = "workspace:golden"
 _RUNTIME_TARGET = "main.silver"
 _CAPTURED_AT = datetime(2026, 9, 19, 10, 0, tzinfo=timezone.utc)
@@ -297,7 +295,6 @@ def test_bundle_ci_to_cd_create_and_fresh_verify_converge() -> None:
     bundle = service.assess(
         base,
         candidate,
-        effective_date=_CONTEXT.effective_date,
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
         target=_target(),
@@ -331,7 +328,6 @@ def test_bundle_cd_replans_against_runtime_changed_after_ci() -> None:
     bundle = service.assess(
         base,
         candidate,
-        effective_date=_CONTEXT.effective_date,
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
         target=_target(),
