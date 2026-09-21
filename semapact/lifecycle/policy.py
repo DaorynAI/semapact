@@ -102,7 +102,7 @@ def evaluate_merge_policy(
                 brk = BreakingChange(
                     code=GovernanceReasonCode.CONTRACT_VERSION_MANUALLY_CHANGED,
                     path="version",
-                    message="Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change and use 'semapact release prepare'.",
+                    message="Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change; SemaPact sets the release version during 'semapact release finalize'.",
                 )
                 change_breaks.append(brk)
                 change_reasons.append(brk.code)
