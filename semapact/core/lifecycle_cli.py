@@ -40,7 +40,8 @@ def apply_lifecycle(
             args.schema,
             args.property,
             target_status,
-            )
+            context=context,
+        )
     elif getattr(args, "schema", None):
         _apply_schema(
             candidate_contract,
@@ -55,7 +56,6 @@ def apply_lifecycle(
     decision = evaluate_governance_decision(
         base_contract,
         candidate_contract,
-        context=context,
     )
     enforce_governance_gate(decision, GovernanceOperation.APPLY)
 
