@@ -13,7 +13,6 @@ from semapact.application.services.release_workflow import (
     ReleaseFinalizer,
     ReleaseWorkflowService,
 )
-from semapact.change_context import ChangeContext
 from semapact.contractops import (
     VersionAuthority,
     VersionAuthorityConfig,
@@ -30,7 +29,6 @@ from semapact.exceptions import ContractOpsAuthorizationError, GovernanceBlocked
 from semapact.governance import DecisionResult, evaluate_governance_decision
 
 
-CONTEXT = ChangeContext(effective_date=date(2026, 9, 11))
 
 
 def _contract(
@@ -78,7 +76,6 @@ def _allow_chain():
     bundle = workflow.assess(
         _contract(name="orders-old"),
         _contract(name="orders-new"),
-        effective_date="2026-09-11",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
     )
@@ -121,7 +118,6 @@ def test_review_release_requires_exact_publish_approval() -> None:
     bundle = workflow.assess(
         _contract(name="orders", include_created_at=False),
         _contract(name="orders", include_created_at=True),
-        effective_date="2026-09-11",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
     )
@@ -144,7 +140,7 @@ def test_review_release_requires_exact_publish_approval() -> None:
 def test_block_cannot_enter_release_chain() -> None:
     base = _contract()
     candidate = _contract(contract_id="other-product")
-    decision = evaluate_governance_decision(base, candidate, context=CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     change_set = build_change_set_from_decision(
         decision,
         base_revision_ref="git:base",
@@ -159,7 +155,7 @@ def test_block_cannot_enter_release_chain() -> None:
 def test_version_authorities_preserve_same_required_bump() -> None:
     base = _contract()
     candidate = _contract(include_created_at=True)
-    decision = evaluate_governance_decision(base, candidate, context=CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     change_set = build_change_set_from_decision(
         decision,
         base_revision_ref="git:base",
