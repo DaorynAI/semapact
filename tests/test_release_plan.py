@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
-
 import pytest
 from open_data_contract_standard.model import (
     OpenDataContractStandard,
@@ -10,7 +8,6 @@ from open_data_contract_standard.model import (
 )
 from pydantic import ValidationError as PydanticValidationError
 
-from semapact.change_context import ChangeContext
 from semapact.contractops import (
     ReleasePrecondition,
     build_change_set_from_decision,
@@ -18,9 +15,6 @@ from semapact.contractops import (
 )
 from semapact.exceptions import GovernanceBlockedError, ReleaseValidationError
 from semapact.governance import DecisionResult, evaluate_governance_decision
-
-
-CONTEXT = ChangeContext(effective_date=date(2026, 9, 9))
 
 
 def _contract(
@@ -64,7 +58,7 @@ def _proposal(
     base_revision_ref: str = "rev:base",
     candidate_revision_ref: str = "rev:candidate",
 ):
-    decision = evaluate_governance_decision(base, candidate, context=CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     change_set = build_change_set_from_decision(
         decision,
         base_revision_ref=base_revision_ref,
@@ -146,7 +140,6 @@ def test_release_plan_fails_closed_for_mismatched_proposal_artifacts() -> None:
     review_change_set, review_decision = _proposal(base, review_candidate)
     metadata_change_set, _ = _proposal(base, metadata_candidate)
 
-    assert review_change_set.context == metadata_change_set.context
     assert review_change_set.contract_id == metadata_change_set.contract_id
     assert review_change_set.changes != metadata_change_set.changes
 
