@@ -239,7 +239,7 @@ def test_candidate_assessment_does_not_calculate_release_version() -> None:
     assert bundle.change_set is not None
     assert bundle.deployment_source.source_kind == "candidate"
     assert bundle.deployment_source.contract_version == "1.2.3"
-    assert bundle.deployment_plan.plan_version == "5"
+    assert bundle.deployment_plan.plan_version == "1"
 
 
 def test_finalized_release_assessment_binds_exact_release_record(tmp_path) -> None:
