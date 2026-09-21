@@ -404,10 +404,12 @@ For REVIEW releases, record the exact external approval and then finalize the re
 semapact release approve \
   --bundle ./artifacts/orders.release.bundle.json \
   --actor-reference github-environment:contract-release \
-  --recorded-at 2026-09-20T10:00:00+10:00
+  --recorded-at 2026-09-20T10:00:00+10:00 \
+  --approval-out ./artifacts/orders.approval.json
 
 semapact release finalize \
   --bundle ./artifacts/orders.release.bundle.json \
+  --approval ./artifacts/orders.approval.json \
   --output-contract ./contracts/orders.yaml \
   --release-out ./artifacts/orders.contract-release.json
 ```
