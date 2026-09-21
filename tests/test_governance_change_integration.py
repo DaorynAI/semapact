@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 from typing import Any
 from open_data_contract_standard.model import (
     AuthoritativeDefinition,
@@ -17,7 +16,6 @@ from open_data_contract_standard.model import (
     Server,
 )
 
-from semapact.change_context import ChangeContext
 from semapact.lifecycle.change_classification import classify_contract_change
 from semapact.governance import DecisionResult, evaluate_governance_decision
 from semapact.governance_codes import GovernanceReasonCode
@@ -29,7 +27,6 @@ from semapact.lifecycle.merge_engine import MergeConflict
 from semapact.lifecycle.policy import evaluate_merge_policy
 
 
-TEST_CONTEXT = ChangeContext(effective_date=date(2026, 8, 15))
 
 
 def _make_active_contract(**kwargs: Any) -> OpenDataContractStandard:
@@ -448,7 +445,7 @@ class TestEvaluatorGovernanceChangeIntegration:
         ]
 
         decision = evaluate_governance_decision(
-            base, cand, context=TEST_CONTEXT, merge_conflicts=conflicts
+            base, cand, merge_conflicts=conflicts
         )
 
         assert decision.evidence.has_changes is True
@@ -478,7 +475,7 @@ class TestEvaluatorGovernanceChangeIntegration:
         ]
 
         decision = evaluate_governance_decision(
-            base, cand, context=TEST_CONTEXT, merge_conflicts=conflicts
+            base, cand, merge_conflicts=conflicts
         )
 
         assert any(
@@ -496,7 +493,7 @@ class TestEvaluatorGovernanceChangeIntegration:
             SchemaProperty(name="id", logicalType="string", physicalType="text")
         )
 
-        decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, cand)
 
         assert decision.decision == DecisionResult.BLOCK
         assert any(
@@ -514,7 +511,7 @@ class TestEvaluatorGovernanceChangeIntegration:
         cand = _make_active_contract(status="retired")
         cand.price = Pricing(priceAmount=999.0, priceCurrency="USD")
 
-        decision = evaluate_governance_decision(base, cand, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, cand)
 
         assert decision.decision == DecisionResult.BLOCK
         assert any(
