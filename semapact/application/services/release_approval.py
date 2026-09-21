@@ -17,16 +17,13 @@ class ReleaseApprovalResolver:
 
     def resolve(self, bundle: ReleaseBundle) -> ApprovalRecord | None:
         scoped = self._scoped_records(bundle)
-        if not scoped or self.has_conflict(bundle):
+        if not scoped or _contains_conflict(scoped):
             return None
         return min(scoped, key=lambda record: record.approval_id)
 
     def has_conflict(self, bundle: ReleaseBundle) -> bool:
         """Return whether exact persisted review evidence contains a non-approval."""
-        return any(
-            record.action is not ReviewEvidenceAction.APPROVE
-            for record in self._scoped_records(bundle)
-        )
+        return _contains_conflict(self._scoped_records(bundle))
 
     def _scoped_records(
         self,
@@ -45,3 +42,10 @@ class ReleaseApprovalResolver:
             if record.scope_reference == bundle.release_snapshot.release_snapshot_id
             and bundle.bundle_digest in record.evidence_references
         )
+
+
+def _contains_conflict(records: tuple[ApprovalRecord, ...]) -> bool:
+    return any(
+        record.action is not ReviewEvidenceAction.APPROVE
+        for record in records
+    )
