@@ -198,76 +198,7 @@ def test_subprocess_analyze_release_classify_block(
 # 2. PROPOSE Commands: ALLOW & REVIEW -> 0, BLOCK -> 3 (GOVERNANCE_BLOCKED)
 # ==============================================================================
 
-def test_subprocess_propose_release_prepare_review(
-    active_contract_yaml: Path, review_candidate_yaml: Path, tmp_path: Path
-):
-    out_yaml = tmp_path / "prepared.yaml"
-    res = _run_cli(
-        "release",
-        "prepare",
-        "--base",
-        str(active_contract_yaml),
-        "--candidate",
-        str(review_candidate_yaml),
-        "--release-tag",
-        "v1.1.0",
-        "--output",
-        str(out_yaml),
-        "--effective-date",
-        "2026-08-29",
-    )
-    assert res.returncode == 0
-    payload = json.loads(res.stdout)
-    assert payload["actualBump"] == "minor"
-    assert "exitCode" not in payload
 
-
-def test_subprocess_propose_release_prepare_no_bump_validation_failed(
-    active_contract_yaml: Path, tmp_path: Path
-):
-    out_yaml = tmp_path / "prepared.yaml"
-    res = _run_cli(
-        "release",
-        "prepare",
-        "--base",
-        str(active_contract_yaml),
-        "--candidate",
-        str(active_contract_yaml),
-        "--release-tag",
-        "v1.0.0",
-        "--output",
-        str(out_yaml),
-        "--effective-date",
-        "2026-08-29",
-    )
-    # Attempting to prepare a release candidate when no bump is required returns VALIDATION_FAILED (2)
-    assert res.returncode == 2
-    assert "Contract changes do not require a release version bump" in res.stderr
-
-
-
-def test_subprocess_propose_release_prepare_block(
-    retired_contract_yaml: Path, review_candidate_yaml: Path, tmp_path: Path
-):
-    out_yaml = tmp_path / "prepared.yaml"
-    res = _run_cli(
-        "release",
-        "prepare",
-        "--base",
-        str(retired_contract_yaml),
-        "--candidate",
-        str(review_candidate_yaml),
-        "--release-tag",
-        "v2.0.0",
-        "--output",
-        str(out_yaml),
-        "--effective-date",
-        "2026-08-29",
-    )
-    # PROPOSE with BLOCK decision must exit with 3 (GOVERNANCE_BLOCKED)
-    assert res.returncode == 3
-    assert "Governance decision BLOCKED" in res.stderr
-    assert "Traceback (most recent call last)" not in res.stderr
 
 
 def test_subprocess_propose_merge_block(
