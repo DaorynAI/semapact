@@ -28,7 +28,7 @@ class OperationalDeploymentEvent(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     event_id: str
-    event_version: Literal["2"] = "2"
+    event_version: Literal["1"] = "1"
     bundle_digest: str
     contract_release_id: str | None = None
     contract_id: str
@@ -150,7 +150,7 @@ def build_operational_deployment_event(
 ) -> OperationalDeploymentEvent:
     normalized_platform = platform.strip().casefold()
     event_id = compute_operational_deployment_event_id(
-        event_version="2",
+        event_version="1",
         bundle_digest=bundle_digest,
         contract_release_id=contract_release_id,
         contract_id=contract_id,
@@ -171,7 +171,7 @@ def build_operational_deployment_event(
     )
     return OperationalDeploymentEvent(
         event_id=event_id,
-        event_version="2",
+        event_version="1",
         bundle_digest=bundle_digest,
         contract_release_id=contract_release_id,
         contract_id=contract_id,
