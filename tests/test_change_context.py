@@ -13,7 +13,8 @@ from open_data_contract_standard.model import (
 )
 from pydantic import ValidationError as PydanticValidationError
 
-from semapact.governance import ChangeContext, evaluate_governance_decision
+from semapact.change_context import ChangeContext
+from semapact.governance import evaluate_governance_decision
 from semapact.lifecycle.merge_engine import ContractMergeEngine
 
 
@@ -82,45 +83,16 @@ def test_change_context_is_immutable_and_serializes_effective_date() -> None:
         context.effective_date = date(2026, 8, 14)  # type: ignore[misc]
 
 
-def test_same_inputs_and_context_produce_identical_decision() -> None:
+def test_governance_decision_is_independent_of_business_effective_date() -> None:
     base = _contract()
     candidate = _contract(include_legacy_property=False)
-    context = ChangeContext(effective_date=date(2026, 8, 13))
 
-    first = evaluate_governance_decision(base, candidate, context=context)
-    second = evaluate_governance_decision(base, candidate, context=context)
+    first = evaluate_governance_decision(base, candidate)
+    second = evaluate_governance_decision(base, candidate)
 
     assert first == second
     assert first.decision_id == second.decision_id
-    assert first.model_dump(mode="json") == second.model_dump(mode="json")
-    assert first.context == context
-
-
-def test_governance_evaluation_rejects_missing_upstream_context() -> None:
-    base = _contract()
-    candidate = _contract(include_legacy_property=False)
-
-    with pytest.raises(TypeError):
-        evaluate_governance_decision(base, candidate)  # type: ignore[call-arg]
-
-
-def test_effective_date_is_part_of_decision_identity_when_explicit() -> None:
-    base = _contract()
-    candidate = _contract(include_legacy_property=False)
-
-    first = evaluate_governance_decision(
-        base,
-        candidate,
-        context=ChangeContext(effective_date=date(2026, 8, 13)),
-    )
-    second = evaluate_governance_decision(
-        base,
-        candidate,
-        context=ChangeContext(effective_date=date(2026, 8, 14)),
-    )
-
-    assert first.decision == second.decision
-    assert first.decision_id != second.decision_id
+    assert "context" not in first.model_dump(mode="json")
 
 
 def test_auto_deprecation_uses_explicit_effective_date() -> None:
