@@ -11,12 +11,12 @@ from collections.abc import Mapping
 from typing import Any
 
 from semapact.contractops.execution_models import AppliedContractRelease, ReleaseSnapshot
-from semapact.contractops.integrity import validate_contractops_authorization_identity
-from semapact.contractops.models import AuthorizationReason, ContractOpsAuthorization
 from semapact.contractops.integrity import (
     validate_applied_release_identity,
+    validate_contractops_authorization_identity,
     validate_release_snapshot_identity,
 )
+from semapact.contractops.models import AuthorizationReason, ContractOpsAuthorization
 from semapact.deployment.models import (
     SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE,
     SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
