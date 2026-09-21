@@ -41,7 +41,7 @@ def build_deployment_plan_from_source(
         contract_version=source.contract_version,
         target=target,
         actions=ordered_actions,
-        plan_version="5",
+        plan_version="1",
     )
     return DeploymentPlan(
         deployment_plan_id=deployment_plan_id,
@@ -51,7 +51,7 @@ def build_deployment_plan_from_source(
         contract_version=source.contract_version,
         target=target,
         actions=ordered_actions,
-        plan_version="5",
+        plan_version="1",
     )
 
 def build_deployment_actions(
