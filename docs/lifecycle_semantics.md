@@ -1,156 +1,108 @@
 # SemaPact Lifecycle Governance Semantics
 
-This document describes the authoritative lifecycle model, resolution order, and governance scope rules for Open Data Contracts (ODCS) within SemaPact.
+This document defines the canonical lifecycle model and governance scope rules for Open Data Contract Standard (ODCS) contracts.
 
----
+## Supported lifecycle states
 
-## 1. Supported Lifecycle States
+SemaPact recognizes exactly four lifecycle states:
 
-SemaPact governance operates on four canonical lifecycle states:
-
-| State | Governance Meaning | Breaking Checks | Auto-Deprecation | Mutability |
+| State | Governance meaning | Breaking checks | Auto-deprecation | Mutability |
 |---|---|---|---|---|
-| `draft` | Development / non-production. | ❌ Skipped | ❌ Skipped | ✅ Free evolution |
-| `active` | Production contract. Strict governance applies. | ✅ Enforced | ✅ Applied | ⚠ Governed |
-| `deprecated` | Marked for decommissioning. | ❌ Skipped | ❌ Skipped | ⚠ Metadata only |
-| `retired` | End of life / decommissioned. | ❌ Skipped | ❌ Skipped | ❌ Immutable (BLOCK) |
+| `draft` | Development / non-production | skipped | skipped | free evolution |
+| `active` | Production contract | enforced | applied | governed |
+| `deprecated` | Marked for decommissioning | skipped | skipped | metadata only |
+| `retired` | End of life | skipped | skipped | immutable |
 
-### Read Normalization & Aliases
+Lifecycle strings are normalized case-insensitively with surrounding whitespace removed. Any value other than `draft`, `active`, `deprecated`, or `retired` is invalid.
 
-Lifecycle status strings are normalized case-insensitively with leading/trailing whitespace removed:
-- `"draft"` -> `LifecycleStatus.DRAFT`
-- `"proposed"` -> `LifecycleStatus.DRAFT`
-  > [!NOTE]
-  > `"proposed"` is a read-only governance interpretation alias for ODCS compliance; SemaPact does not rewrite ODCS `status: proposed` to `status: draft` in the contract YAML merely during resolution.
-- `"active"` -> `LifecycleStatus.ACTIVE`
-- `"deprecated"` -> `LifecycleStatus.DEPRECATED`
-- `"retired"` -> `LifecycleStatus.RETIRED`
+## Canonical lifecycle authority
 
-Any unknown or unsupported lifecycle status value is rejected by normalization and flagged by `ContractValidator` as a validation issue.
+Lifecycle authority depends on entity level.
 
----
+For the contract root, only the native ODCS `contract.status` field is authoritative. When it is absent, the resolver returns `DRAFT`. An explicitly invalid value is reported by `ContractValidator` and governance fails closed.
 
-## 2. Canonical Authority & Fallback Order
+For `SchemaObject` and `SchemaProperty` entities, including nested properties/items, SemaPact uses the entity's `customProperties.lifecycleStatus` annotation. Non-standard `schema.status` or `property.status` attributes are not governance authorities.
 
-Authority is defined by entity level:
+There is no second contract-root lifecycle representation.
 
-### Contract Root
-1. Native `contract.status` (canonical ODCS root status field)
-2. `contract.customProperties.lifecycleStatus` (legacy fallback)
-3. Default: `LifecycleStatus.DRAFT`
+## Declared and effective lifecycle
 
-### SchemaObject & SchemaProperty (including nested `properties[]` and `items`)
-1. Entity's own `customProperties.lifecycleStatus` only (canonical ODCS extension point)
-2. Note: Non-standard `schema.status` or `property.status` attributes are not governance authorities.
+Declared lifecycle is the status explicitly attached to one schema/property entity through `customProperties.lifecycleStatus`.
 
----
+Effective lifecycle includes parent governance scope:
 
-## 3. Declared vs. Effective Lifecycle
-
-SemaPact strictly differentiates between **declared lifecycle** and **effective lifecycle**:
-
-### Declared Lifecycle
-- The status explicitly annotated on an individual entity (`customProperties.lifecycleStatus`).
-- Resolved via `resolve_declared_entity_lifecycle(entity)`.
-- Used for release change classification to determine if an entity was newly marked deprecated.
-
-### Effective Governance Lifecycle
-- The status of an entity taking into account parent governance scope and hierarchy.
-- Resolved via:
-  - `resolve_contract_lifecycle(contract)`
-  - `resolve_schema_lifecycle(schema_obj, contract=contract)`
-  - `resolve_property_lifecycle(prop, parent_lifecycle=...)`
-
-### Recursive Inheritance Invariant
-> [!IMPORTANT]
-> **Inactive Ancestor Invariant**: An inactive ancestor (`draft`, `deprecated`, `retired`) places its entire subtree outside active governance scope. A child entity cannot reactivate itself past an inactive parent.
-
-#### Resolution Hierarchy:
-1. **Contract**: `contract.status` -> `contract.customProperties.lifecycleStatus` -> `DRAFT`.
-2. **Schema**:
-   - If `effective contract != ACTIVE` -> parent contract effective status wins.
-   - Else if schema has declared `lifecycleStatus` -> schema declared status.
-   - Else -> `ACTIVE`.
-3. **Property (Top-level or Nested `properties[]` / `items`)**:
-   - If `parent_lifecycle != ACTIVE` -> `parent_lifecycle` wins.
-   - Else if property has declared `lifecycleStatus` -> property declared status.
-   - Else -> `ACTIVE`.
-
----
-
-## 4. Governance Participation Matrix
-
-| Contract Status | Schema Declared | Property Declared | Effective Schema | Effective Property | Breaking Checks Scope |
-|---|---|---|---|---|---|
-| `active` | *(none)* | *(none)* | `active` | `active` | ✅ Included |
-| `active` | `draft` | `active` | `draft` | `draft` | ❌ Excluded (parent inactive) |
-| `active` | `deprecated` | `active` | `deprecated` | `deprecated` | ❌ Excluded (parent inactive) |
-| `active` | `active` | `draft` | `active` | `draft` | ❌ Excluded (property draft) |
-| `active` | `active` | `deprecated` | `active` | `deprecated` | ❌ Excluded (property deprecated) |
-| `draft` | `active` | `active` | `draft` | `draft` | ❌ Excluded (contract draft) |
-| `retired` | `active` | `active` | `retired` | `retired` | ❌ Excluded (contract retired) |
-
----
-
-## 5. Fail-Closed Validation Integration
-
-> [!NOTE]
-> **Total Resolvers vs. Validation Authority**:
-> Lifecycle resolvers are intentionally total for deterministic analysis; lifecycle validity is enforced by `ContractValidator`.
->
-> - `normalize_status()`: Strict parser (`ValueError` on unsupported values).
-> - Resolvers (`resolve_contract_lifecycle`, `resolve_schema_lifecycle`, `resolve_property_lifecycle`): Total / tolerant functions with safe fallbacks (`DRAFT` / `None`), preventing crashes in downstream analysis pipelines.
-> - `ContractValidator`: Authoritative validity check emitting `ValidationIssue(severity="error")` on invalid lifecycle values.
-> - `evaluate_governance_decision()`: Blocks changes with `VALIDATION_FAILED` whenever `ContractValidator` reports issues.
-
-When an unknown or malformed lifecycle status is provided (e.g. `status: "unknown"`):
-1. `ContractValidator` detects invalid status and records a `VALIDATION_FAILED` issue.
-2. `evaluate_governance_decision()` receives `ValidationOutcome(valid=False)` and emits a deterministic `GovernanceDecision(decision=DecisionResult.BLOCK)`.
-3. Evaluation and merge pipelines execute deterministically without leaking unhandled exceptions.
-
----
-
-## 6. Retired Contract Immutability
-
-`RETIRED` represents a terminal, end-of-life governed state. A governed contract whose effective lifecycle is `retired` is permanently frozen and immutable.
-
-### Invariant:
 ```text
-base effective lifecycle == RETIRED
+contract.status
+      ↓
+effective contract lifecycle
+      ↓
+schema declared lifecycle, when contract is ACTIVE
+      ↓
+property declared lifecycle, when parent is ACTIVE
+```
+
+The inactive-ancestor invariant is strict: a child cannot reactivate itself past a `draft`, `deprecated`, or `retired` ancestor.
+
+Resolution rules are therefore:
+
+1. Contract: native `contract.status`, otherwise `DRAFT`.
+2. Schema: if the contract is not `ACTIVE`, inherit the contract lifecycle; otherwise use the schema declaration when present, else `ACTIVE`.
+3. Property: if its parent is not `ACTIVE`, inherit the parent lifecycle; otherwise use the property declaration when present, else `ACTIVE`.
+
+## Governance participation matrix
+
+| Contract status | Schema declared | Property declared | Effective schema | Effective property | Breaking checks |
+|---|---|---|---|---|---|
+| `active` | none | none | `active` | `active` | included |
+| `active` | `draft` | `active` | `draft` | `draft` | excluded |
+| `active` | `deprecated` | `active` | `deprecated` | `deprecated` | excluded |
+| `active` | `active` | `draft` | `active` | `draft` | excluded |
+| `active` | `active` | `deprecated` | `active` | `deprecated` | excluded |
+| `draft` | `active` | `active` | `draft` | `draft` | excluded |
+| `deprecated` | `active` | `active` | `deprecated` | `deprecated` | excluded |
+| `retired` | `active` | `active` | `retired` | `retired` | excluded |
+
+## Fail-closed validation
+
+Lifecycle resolvers are total so deterministic analysis can continue, while `ContractValidator` is the validity authority.
+
+- `normalize_status()` raises on unsupported values.
+- `resolve_contract_lifecycle()` returns `DRAFT` when root status is absent or invalid.
+- schema/property declared-status resolution returns `None` when no valid declaration exists.
+- `ContractValidator` reports malformed lifecycle values.
+- `evaluate_governance_decision()` turns validation failure into `DecisionResult.BLOCK`.
+
+This separation prevents malformed input from crashing analysis without treating it as valid governed state.
+
+## Retired contract immutability
+
+`RETIRED` is terminal.
+
+```text
+base lifecycle == RETIRED
 AND
 base contract != candidate contract
-    ↓
+        ↓
 RETIRED_CONTRACT_MODIFIED
-    ↓
+        ↓
 DecisionResult.BLOCK
 ```
 
-Any semantic mutation against a retired base contract must be authoritatively blocked by `evaluate_governance_decision()` with `GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED`. This applies to all differences, including:
-- Technical schema changes (adding, removing, or modifying schemas/properties)
-- Business metadata changes (descriptions, tags, business names)
-- Schema and property lifecycle modifications
-- Quality rules and relationship changes
-- Root status changes (reactivation)
-- Version changes
-- Purely descriptive changes
+This applies to technical schema, business metadata, lifecycle annotations, quality rules, relationships, root status, version, and descriptive changes.
 
-### Operation Gating Matrix:
+Transitioning an existing non-retired contract into `retired` is a reviewable transition. Reactivating a retired contract is blocked. An unchanged retired contract remains readable and analyzable.
 
-| Operation Category | Operation / Entrypoint | Gate Evaluated | Decision / Result on Retired Contract |
-|---|---|---|---|
-| Read-only / Inspect | `ContractLoader.load()` | *(none)* | ✅ Allowed (loading/inspecting preserved) |
-| Analysis / Planning | `semapact plan`, `GovernanceService.evaluate()` | `ANALYZE` | ✅ Allowed (returns/displays `BLOCK` decision) |
-| Release Classification | `semapact release classify` | `ANALYZE` | ✅ Allowed (returns classification with `BLOCK`) |
-| Export Artifacts | `semapact export`, `export_ge` | *(none)* | ✅ Allowed (derives downstream views) |
-| Technical Merge Output | `semapact merge` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
-| Ingestion into Governed Contract | `semapact import --existing` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
-| Semantic Lifecycle Edit | `semapact lifecycle promote / deprecate` | `APPLY` | ❌ Blocked (`GovernanceBlockedError`) |
-| Release Preparation | `semapact release prepare` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
-| Release PR Creation | `semapact release create-pr` | `PROPOSE` | ❌ Blocked (`GovernanceBlockedError`) |
-| Batch Release Manifest | `semapact release build-manifest` | `PROPOSE` | ❌ Skipped from manifest tasks |
-| Automation Pipeline | `ContractPipeline.run()` | `CI` | ❌ Blocked (`GovernanceBlockedError`) |
+## Operation boundaries
 
-### Lifecycle Transitions & Reactivations:
-- **Transition into Retired**: `ACTIVE / DEPRECATED / DRAFT -> RETIRED` produces `DecisionResult.REVIEW` with `GovernanceReasonCode.CONTRACT_RETIRED_TRANSITION`. This is a valid lifecycle transition requiring review, not a mutation of an already-retired contract.
-- **Reactivation**: `RETIRED -> ACTIVE / DRAFT / DEPRECATED` produces `DecisionResult.BLOCK` with `GovernanceReasonCode.RETIRED_CONTRACT_MODIFIED`. No unretire/reactivation semantics exist.
-- **Unchanged Retired Contracts**: `retired base == retired candidate` produces `DecisionResult.ALLOW` (when no other violation exists), preserving history, export, and verification workflows.
+Read-only loading, analysis, classification, and export remain available when a decision is `BLOCK`; they report the decision rather than mutating state.
+
+Mutation-capable paths consume that decision at their canonical boundary:
+
+| Boundary | Canonical entry point | Authority |
+|---|---|---|
+| governed merge/import | merge/import application workflow | governance PROPOSE gate |
+| formal release | `semapact release assess → approve (REVIEW only) → finalize` | PUBLISH approval + exact ReleaseBundle |
+| candidate deployment | `semapact deployment assess → deploy` | governance provenance + protected runtime execution context |
+| finalized release deployment | `ContractRelease → deployment assess → deploy` | exact release provenance + protected runtime execution context |
+
+A `ContractRelease` never grants runtime execution permission.
