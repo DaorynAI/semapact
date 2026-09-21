@@ -6,13 +6,11 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
-from semapact.core.editor_contract import (
+from semapact.core.editor_semantics import (
     contract_description_part,
     contract_tags,
+    field_declared_lifecycle_status,
     field_examples_text,
-    field_lifecycle_status,
-)
-from semapact.core.editor_semantics import (
     contract_api_version,
     contract_data_product,
     contract_domain,
@@ -96,8 +94,8 @@ def test_field_helpers_support_odcs_model_and_ui_working_copy():
         "customProperties": [{"property": "lifecycleStatus", "value": "deprecated"}],
     }
 
-    assert field_lifecycle_status(field_model) == "active"
-    assert field_lifecycle_status(field_dict) == "deprecated"
+    assert field_declared_lifecycle_status(field_model) == "active"
+    assert field_declared_lifecycle_status(field_dict) == "deprecated"
     assert field_examples_text(field_model) == "a\nb"
     assert field_examples_text(field_dict) == "c\nd"
 
