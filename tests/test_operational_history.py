@@ -44,7 +44,7 @@ def test_sqlite_operational_history_is_idempotent(tmp_path) -> None:
 
     assert isinstance(sink, SQLiteOperationalHistorySink)
     event = _event()
-    assert event.event_version == "2"
+    assert event.event_version == "1"
     sink.record_deployment(event)
     sink.record_deployment(event)
 
