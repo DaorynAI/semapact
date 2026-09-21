@@ -66,11 +66,18 @@ def run_release_finalize(args: argparse.Namespace) -> dict[str, Any]:
     bundle = _load_model(args.bundle, ReleaseBundle)
     repository = GitWorkingTreeHistoryRepository(args.repository_root)
     approval = None
+    resolver = ReleaseApprovalResolver(repository)
     approval_path = getattr(args, "approval", None)
     if approval_path:
         approval = _load_model(approval_path, ApprovalRecord)
+        if resolver.has_conflict(bundle):
+            from semapact.exceptions import ValidationError
+
+            raise ValidationError(
+                "Persisted release approval history contains conflicting exact review evidence"
+            )
     elif bundle.decision.decision is DecisionResult.REVIEW:
-        approval = ReleaseApprovalResolver(repository).resolve(bundle)
+        approval = resolver.resolve(bundle)
 
     record = ReleaseFinalizer().finalize(
         bundle,
