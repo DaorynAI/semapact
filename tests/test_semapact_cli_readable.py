@@ -321,8 +321,6 @@ def test_cli_release_classify_outputs_per_contract_required_bump(
             str(base_path),
             "--candidate",
             str(candidate_path),
-            "--effective-date",
-            TEST_EFFECTIVE_DATE,
         ],
     )
 
@@ -362,8 +360,6 @@ def test_cli_release_classify_repo_outputs_per_contract_results(
             str(base_root),
             "--candidate-root",
             str(candidate_root),
-            "--effective-date",
-            TEST_EFFECTIVE_DATE,
         ],
     )
 
