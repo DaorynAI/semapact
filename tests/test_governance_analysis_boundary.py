@@ -22,7 +22,7 @@ from open_data_contract_standard.model import (
 import semapact.governance.evaluator as evaluator_module
 from semapact.change_context import ChangeContext
 from semapact.governance.evaluator import evaluate_governance_decision
-from semapact.services import GovernanceService
+from semapact.application.services.governance import GovernanceService
 
 
 TEST_CONTEXT = ChangeContext(effective_date=date(2026, 1, 1))
@@ -33,7 +33,6 @@ _FORBIDDEN_LAYER_IMPORT_PREFIXES = (
     "semapact.importers",
     "semapact.interfaces",
     "semapact.orchestrator",
-    "semapact.services",
 )
 _FORBIDDEN_SIDE_EFFECT_IMPORT_ROOTS = {
     "git",
