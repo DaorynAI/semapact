@@ -8,7 +8,7 @@ from semapact.deployment import (
     DeploymentPlan,
     DeploymentPreview,
     DeploymentSourceSnapshot,
-    DeploymentTarget
+    DeploymentTarget,
     build_deployment_plan_from_source,
 )
 from semapact.deployment.models import validate_deployment_authorization_identity
