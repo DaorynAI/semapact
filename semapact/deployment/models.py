@@ -22,9 +22,6 @@ from semapact.utils.deterministic import deterministic_uuid5
 SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE = uuid.UUID(
     "d59eaa31-997a-478d-9978-4659beee673d"
 )
-SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE = uuid.UUID(
-    "c1dd6b40-cb67-44c1-b0f2-5f133ba6a3f5"
-)
 SEMAPACT_DEPLOYMENT_PREVIEW_NAMESPACE = uuid.UUID(
     "0ee613b9-a9ef-4a95-ac87-25d6c706b16c"
 )
@@ -221,36 +218,6 @@ class DeploymentPreview(DeploymentModel):
         return self
 
 
-class DeploymentAuthorization(DeploymentModel):
-    """Canonical authorization bound to one exact DeploymentPlan source snapshot."""
-
-    deployment_authorization_id: str
-    deployment_plan_id: str
-    source_snapshot_id: str
-    allowed: bool = Field(strict=True)
-    authorization_kind: Literal["contractops", "governance"] = "contractops"
-    authorization_reference: str
-    authorization_version: Literal["2"] = "2"
-
-    @field_validator(
-        "deployment_authorization_id",
-        "deployment_plan_id",
-        "source_snapshot_id",
-        "authorization_reference",
-    )
-    @classmethod
-    def _require_authorization_text(cls, value: str) -> str:
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError("value must not be empty")
-        return cleaned
-
-    @model_validator(mode="after")
-    def _validate_identity(self) -> "DeploymentAuthorization":
-        validate_deployment_authorization_identity(self)
-        return self
-
-
 def compute_deployment_plan_id(
     *,
     source_snapshot_id: str,
@@ -273,34 +240,6 @@ def compute_deployment_plan_id(
             "target": target.model_dump(mode="json"),
             "actions": [action.model_dump(mode="json") for action in actions],
             "plan_version": plan_version,
-        },
-    )
-
-
-def compute_deployment_authorization_id(
-    *,
-    deployment_plan_id: str,
-    source_snapshot_id: str,
-    authorization_kind: str,
-    authorization_reference: str,
-    allowed: bool,
-    authorization_version: str = "2",
-) -> str:
-    if authorization_version != "2":
-        raise ValueError(
-            f"Unsupported canonical DeploymentAuthorization version: {authorization_version}"
-        )
-    if authorization_kind not in {"contractops", "governance"}:
-        raise ValueError("Unsupported deployment authorization kind")
-    return deterministic_uuid5(
-        SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE,
-        {
-            "authorization_kind": authorization_kind,
-            "authorization_reference": authorization_reference,
-            "deployment_plan_id": deployment_plan_id,
-            "source_snapshot_id": source_snapshot_id,
-            "allowed": allowed,
-            "authorization_version": authorization_version,
         },
     )
 
@@ -341,23 +280,6 @@ def validate_deployment_plan_identity(plan: DeploymentPlan) -> None:
     )
     if expected != plan.deployment_plan_id:
         raise ValueError("DeploymentPlan deterministic identity does not match content")
-
-
-def validate_deployment_authorization_identity(
-    authorization: DeploymentAuthorization,
-) -> None:
-    expected = compute_deployment_authorization_id(
-        deployment_plan_id=authorization.deployment_plan_id,
-        source_snapshot_id=authorization.source_snapshot_id,
-        authorization_kind=authorization.authorization_kind,
-        authorization_reference=authorization.authorization_reference,
-        allowed=authorization.allowed,
-        authorization_version=authorization.authorization_version,
-    )
-    if expected != authorization.deployment_authorization_id:
-        raise ValueError(
-            "DeploymentAuthorization deterministic identity does not match content"
-        )
 
 
 def validate_deployment_preview_identity(preview: DeploymentPreview) -> None:
