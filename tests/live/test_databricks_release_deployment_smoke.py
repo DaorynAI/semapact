@@ -27,7 +27,13 @@ from semapact.platforms.runtime_registry import create_deployment_adapter
 from semapact.reconciliation import RuntimeDriftStatus
 
 
-pytestmark = pytest.mark.live_databricks
+pytestmark = [
+    pytest.mark.live_databricks,
+    pytest.mark.skipif(
+        os.environ.get("SEMAPACT_RUN_LIVE_DATABRICKS") != "1",
+        reason="live Databricks smoke is opt-in",
+    ),
+]
 
 _RESERVED_TAGS = (
     "semapact_contract_id",
