@@ -156,8 +156,8 @@ def test_governance_decision_evaluation_is_pure_and_deterministic(
 
     _block_external_side_effects(monkeypatch)
 
-    first = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
-    second = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    first = evaluate_governance_decision(base, candidate)
+    second = evaluate_governance_decision(base, candidate)
 
     assert first == second
     assert first.decision_id == second.decision_id
@@ -182,6 +182,6 @@ def test_governance_service_evaluate_preserves_analysis_boundary(
         effective_date=TEST_CONTEXT.effective_date,
     )
 
-    assert decision.context == TEST_CONTEXT
+    assert not hasattr(decision, "context")
     assert base == base_before
     assert candidate == candidate_before
