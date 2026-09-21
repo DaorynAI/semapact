@@ -605,11 +605,10 @@ def test_denied_deployment_authorization_fails_before_native_mutation() -> None:
         update={
             "allowed": False,
             "deployment_authorization_id": compute_deployment_authorization_id(
-                contract_ops_authorization_id=(
-                    workflow.authorization.contract_ops_authorization_id
-                ),
                 deployment_plan_id=workflow.plan.deployment_plan_id,
                 source_snapshot_id=workflow.plan.source_snapshot_id,
+                authorization_kind="contractops",
+                authorization_reference=workflow.authorization.authorization_reference,
                 allowed=False,
             ),
         }
