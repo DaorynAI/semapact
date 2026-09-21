@@ -179,7 +179,6 @@ def test_governance_service_evaluate_preserves_analysis_boundary(
     decision = GovernanceService().evaluate(
         base,
         candidate,
-        effective_date=TEST_CONTEXT.effective_date,
     )
 
     assert not hasattr(decision, "context")
