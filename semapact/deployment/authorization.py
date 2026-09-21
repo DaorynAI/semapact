@@ -1,8 +1,4 @@
-"""Legacy in-process deployment authorization plus canonical provenance validation.
-
-Canonical bundle-driven CD uses the validate_* context functions below and leaves
-runtime execution permission to the surrounding protected deployment context.
-"""
+"""Canonical deployment provenance validation."""
 
 from __future__ import annotations
 
