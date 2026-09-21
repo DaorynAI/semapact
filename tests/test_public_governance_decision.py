@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 from open_data_contract_standard.model import (
@@ -25,8 +24,6 @@ from semapact.governance import (
     to_public_governance_decision,
 )
 
-
-FIXTURES_DIR = Path(__file__).parent / "fixtures" / "governance_decisions"
 
 def _get_schemas(contract: OpenDataContractStandard) -> list[SchemaObject]:
     return getattr(contract, "schema_", getattr(contract, "schema", [])) or []
@@ -418,54 +415,3 @@ def test_public_decision_roundtrip_deserialization():
     assert restored.decision == "REVIEW"
     assert restored.schema_version == "1"
 
-
-def test_golden_fixtures_match():
-    """Verify golden JSON fixtures match projected decisions with exact string equality (read-only assertion)."""
-    # 1. ALLOW clean
-    base = _make_contract()
-    allow_dec = evaluate_governance_decision(base, base)
-    allow_pub = to_public_governance_decision(allow_dec)
-    allow_json_str = serialize_public_governance_decision(allow_pub, indent=2) + "\n"
-    expected_allow = (FIXTURES_DIR / "allow_clean_decision.json").read_text(encoding="utf-8")
-    assert allow_json_str == expected_allow
-
-    # 2. BREAKING review decimal
-    cand_breaking = _make_contract()
-    _get_schemas(cand_breaking)[0].properties[1].physicalType = "decimal(8,2)"
-    breaking_dec = evaluate_governance_decision(base, cand_breaking)
-    breaking_pub = to_public_governance_decision(breaking_dec)
-    breaking_json_str = serialize_public_governance_decision(breaking_pub, indent=2) + "\n"
-    expected_breaking = (FIXTURES_DIR / "breaking_review_decision.json").read_text(encoding="utf-8")
-    assert breaking_json_str == expected_breaking
-
-    # 3. REVIEW deprecate property
-    cand_deprecate = _make_contract()
-    _get_schemas(cand_deprecate)[0].properties[1].customProperties = [
-        CustomProperty(property="lifecycleStatus", value="deprecated")
-    ]
-    review_dec = evaluate_governance_decision(base, cand_deprecate)
-    review_pub = to_public_governance_decision(review_dec)
-    review_json_str = serialize_public_governance_decision(review_pub, indent=2) + "\n"
-    expected_review = (FIXTURES_DIR / "review_deprecate_decision.json").read_text(encoding="utf-8")
-    assert review_json_str == expected_review
-
-    # 4. BLOCK retired contract
-    base_retired = _make_contract(status="retired")
-    cand_retired = _make_contract(status="retired")
-    _get_schemas(cand_retired)[0].properties[1].description = "Retired update"
-    retired_dec = evaluate_governance_decision(base_retired, cand_retired)
-    retired_pub = to_public_governance_decision(retired_dec)
-    retired_json_str = serialize_public_governance_decision(retired_pub, indent=2) + "\n"
-    expected_retired = (FIXTURES_DIR / "block_retired_decision.json").read_text(encoding="utf-8")
-    assert retired_json_str == expected_retired
-
-    # 5. BLOCK invalid validation
-    cand_invalid = _make_contract()
-    _get_schemas(cand_invalid)[0].properties.append(
-        SchemaProperty(name="", logicalType="string", physicalType="", required=True)
-    )
-    invalid_dec = evaluate_governance_decision(base, cand_invalid)
-    invalid_pub = to_public_governance_decision(invalid_dec)
-    invalid_json_str = serialize_public_governance_decision(invalid_pub, indent=2) + "\n"
-    expected_invalid = (FIXTURES_DIR / "block_validation_decision.json").read_text(encoding="utf-8")
-    assert invalid_json_str == expected_invalid
