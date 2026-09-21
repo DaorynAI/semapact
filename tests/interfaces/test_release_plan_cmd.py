@@ -22,8 +22,6 @@ def test_release_plan_parser_requires_explicit_revision_refs() -> None:
             "git:base-123",
             "--candidate-revision-ref",
             "git:candidate-456",
-            "--effective-date",
-            "2026-09-11",
         ]
     )
 
@@ -49,8 +47,6 @@ def test_release_plan_parser_accepts_git_authority_reference() -> None:
             "git:candidate",
             "--authority-reference",
             "v2.0.0",
-            "--effective-date",
-            "2026-09-11",
         ]
     )
 
@@ -83,8 +79,6 @@ def test_main_routes_release_plan_to_release_command_adapter(
             "git:base",
             "--candidate-revision-ref",
             "git:candidate",
-            "--effective-date",
-            "2026-09-11",
         ],
     )
 
@@ -120,8 +114,6 @@ def test_release_parser_exposes_assess_approve_finalize() -> None:
             "git:base",
             "--candidate-revision-ref",
             "git:candidate",
-            "--effective-date",
-            "2026-09-20",
             "--bundle-out",
             "release.bundle.json",
         ]
@@ -178,8 +170,6 @@ def test_main_routes_release_assess_to_release_command_adapter(
             "git:base",
             "--candidate-revision-ref",
             "git:candidate",
-            "--effective-date",
-            "2026-09-20",
         ],
     )
 
