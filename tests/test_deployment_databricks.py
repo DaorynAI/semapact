@@ -72,33 +72,30 @@ def _plan(*properties: SchemaProperty, source_reference: str = SOURCE_REFERENCE)
         source_reference=source_reference,
     )
     plan_id = compute_deployment_plan_id(
-        applied_release_id="applied:test",
+        source_snapshot_id="applied:test",
         contract_id="orders-product",
-        release_plan_id="release-plan:test",
-        released_revision_ref="rev:released",
-        selected_version="1.2.0",
+        revision_ref="rev:released",
+        contract_version="1.2.0",
         target=target,
         actions=(action,),
     )
     return DeploymentPlan(
         deployment_plan_id=plan_id,
         source_snapshot_id="applied:test",
-        release_id="applied:test",
         contract_id="orders-product",
-        release_plan_id="release-plan:test",
         revision_ref="rev:released",
         contract_version="1.2.0",
         target=target,
         actions=(action,),
-        plan_version="2",
     )
 
 
 def _authorization(plan: DeploymentPlan, allowed: bool = True) -> DeploymentAuthorization:
     authorization_id = compute_deployment_authorization_id(
-        contract_ops_authorization_id="contractops-auth:test",
+        authorization_kind="contractops",
+        authorization_reference="contractops-auth:test",
         deployment_plan_id=plan.deployment_plan_id,
-        applied_release_id=plan.applied_release_id,
+        source_snapshot_id=plan.source_snapshot_id,
         allowed=allowed,
     )
     return DeploymentAuthorization(
@@ -108,7 +105,6 @@ def _authorization(plan: DeploymentPlan, allowed: bool = True) -> DeploymentAuth
         allowed=allowed,
         authorization_kind="contractops",
         authorization_reference="contractops-auth:test",
-        authorization_version="1",
     )
 
 
