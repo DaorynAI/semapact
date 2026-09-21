@@ -10,7 +10,7 @@ import pytest
 from semapact.devops.audit import build_audit_metadata
 from semapact.devops.ci_cd import evaluate_ci_gate, write_ci_summary
 from semapact.devops.pr_creator import AzureDevOpsConfig, PullRequestCreator
-from semapact.governance import ChangeContext
+from semapact.change_context import ChangeContext
 
 TEST_CONTEXT = ChangeContext(effective_date=date(2026, 8, 13))
 
