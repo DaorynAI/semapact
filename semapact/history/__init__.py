@@ -1,21 +1,9 @@
-"""Durable governance-history persistence boundary.
-
-History stores canonical governance artifacts without becoming a second source of
-revision, governance, ContractOps, deployment, or reconciliation semantics.
-Legacy Git-backed operational-history symbols remain importable for compatibility
-but are intentionally excluded from the canonical public export surface.
-"""
+"""Durable governance-history persistence boundary."""
 
 from semapact.history.models import (
     ChangeSetDecisionLink,
-    ContractReleaseRecord,
-    DeploymentRecord,
-    DeploymentStatus,
     HistoryIntegrityIssueCode,
     HistoryStorageIntegrityIssue,
-    ReleaseRecord,
-    RuntimeObservationRecord,
-    RuntimeReconciliationRecord,
 )
 from semapact.history.repository import (
     ApprovalHistoryRepository,
@@ -25,19 +13,12 @@ from semapact.history.repository import (
     ContractRevisionHistoryRepository,
     ContractRevisionSourceHistoryRepository,
     DecisionHistoryRepository,
-    DeploymentAuthorizationHistoryRepository,
-    DeploymentPlanHistoryRepository,
-    DeploymentPreviewHistoryRepository,
-    DeploymentRecordHistoryRepository,
     HistoryConflictError,
     HistoryCorruptionError,
     HistoryIntegrityRepository,
     HistoryNotFoundError,
     HistoryRepositoryError,
     ReleasePlanHistoryRepository,
-    ReleaseRecordHistoryRepository,
-    RuntimeObservationHistoryRepository,
-    RuntimeReconciliationHistoryRepository,
 )
 
 __all__ = [
@@ -46,7 +27,6 @@ __all__ = [
     "ChangeSetDecisionLinkHistoryRepository",
     "ChangeSetHistoryRepository",
     "ContractReleaseHistoryRepository",
-    "ContractReleaseRecord",
     "ContractRevisionHistoryRepository",
     "ContractRevisionSourceHistoryRepository",
     "DecisionHistoryRepository",
