@@ -296,6 +296,60 @@ def test_bundle_rehydration_fails_closed_when_digest_is_tampered() -> None:
         type(bundle).model_validate(payload)
 
 
+def test_candidate_bundle_rejects_change_set_from_other_revision() -> None:
+    service = DeploymentWorkflowService()
+    first = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders"),
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate-a",
+        target=_target(),
+        adapter=_PreviewAdapter(),
+    )
+    second = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders"),
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate-b",
+        target=_target(),
+        adapter=_PreviewAdapter(),
+    )
+    assert second.change_set is not None
+
+    payload = first.model_dump(mode="json")
+    payload["change_set"] = second.change_set.model_dump(mode="json")
+
+    with pytest.raises(PydanticValidationError, match="candidate revision"):
+        type(first).model_validate(payload)
+
+
+def test_candidate_bundle_rejects_decision_from_different_change_set() -> None:
+    service = DeploymentWorkflowService()
+    first = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders"),
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=_target(),
+        adapter=_PreviewAdapter(),
+    )
+    second = service.assess(
+        _contract(name="Orders"),
+        _contract(name="Orders", include_created_at=True),
+        base_revision_ref="git:base",
+        candidate_revision_ref="git:candidate",
+        target=_target(),
+        adapter=_PreviewAdapter(),
+    )
+    assert second.decision is not None
+
+    payload = first.model_dump(mode="json")
+    payload["decision"] = second.decision.model_dump(mode="json")
+
+    with pytest.raises(PydanticValidationError, match="decision/change-set changes mismatch"):
+        type(first).model_validate(payload)
+
+
 def test_candidate_review_deployment_needs_no_release_approval() -> None:
     service = DeploymentWorkflowService()
     bundle = service.assess(
