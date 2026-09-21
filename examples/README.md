@@ -23,7 +23,7 @@ This folder contains reference assets for wiring SemaPact into CI/CD.
 - `github/semapact-enrich.yml`
   - on-demand LLM contract enrichment trigger
 - `github/semapact-release.yml`
-  - legacy release-promotion example
+  - release-promotion example
 
 ## Azure DevOps Examples
 
