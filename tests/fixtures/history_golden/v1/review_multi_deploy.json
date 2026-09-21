@@ -1,132 +1,293 @@
 {
-  "fixtureVersion": "history-v1",
-  "files": {
-    ".semapact/history/change_set_decisions/c2f4ee02-90e5-532a-ac8a-edd43e49f156/14295d1b-b52d-5d8b-8dad-2121529f099c.json": {
-      "checksum": "sha256:d77324f66e332dfdd6cb3ff081e65987a6eaa469d5b84bab2cb425d55e23dd62",
-      "topLevelKeys": ["change_set_id", "decision_id"]
-    },
-    ".semapact/history/change_sets/c2f4ee02-90e5-532a-ac8a-edd43e49f156.json": {
-      "checksum": "sha256:66861c622ee7f42f4340a761d17c16a006bf738ad682c39359c552376ce95005",
-      "topLevelKeys": ["actor_reference", "base_revision_ref", "candidate_revision_ref", "change_set_id", "changes", "context", "contract_id", "source"]
-    },
-    ".semapact/history/contract_revisions/290bd707-017f-56ca-a379-c8879b9ede13.json": {
-      "checksum": "sha256:e70f5404098efaf4cec40f9a021adbba17cad53ed0c57db6984126fdcb84373e",
-      "topLevelKeys": ["content_fingerprint", "contract", "revision_id"]
-    },
-    ".semapact/history/contract_revisions/352d83a9-4ee6-508a-981f-4bc9819263c9.json": {
-      "checksum": "sha256:bf1e3e1836fff7827bc014caccfefd36a01aaf480ecd17eae41c9a8245e5eb9e",
-      "topLevelKeys": ["content_fingerprint", "contract", "revision_id"]
-    },
-    ".semapact/history/contract_revisions/fb437fde-4baa-5dad-a382-c4df381ba412.json": {
-      "checksum": "sha256:be036b579fe23c3d47afb96978c1e05416564b5ad0e30df034803c2c86bbf9c2",
-      "topLevelKeys": ["content_fingerprint", "contract", "revision_id"]
-    },
-    ".semapact/history/decisions/14295d1b-b52d-5d8b-8dad-2121529f099c.json": {
-      "checksum": "sha256:5c0ddb33910feb477c32252d21c318e273e031185f52f4295aa0074dd78bf485",
-      "topLevelKeys": ["breaking", "changes", "context", "contract_id", "decision", "decision_id", "evidence", "policy", "reasons", "required_version_bump", "validation"]
-    },
-    ".semapact/history/deployment_authorizations/87ea9883-2583-51d7-8c25-fe4d1c643dc0.json": {
-      "checksum": "sha256:7a2ea0240736846da3a701253ad913f8a048066e30a20f7680d5385170a687c7",
-      "topLevelKeys": ["allowed", "applied_release_id", "contract_ops_authorization_id", "deployment_authorization_id", "deployment_plan_id"]
-    },
-    ".semapact/history/deployment_authorizations/a1a210ef-25d0-5d00-a105-7e7907d63acb.json": {
-      "checksum": "sha256:915e95cdac4b9eac879221c1ffeef9ab95a8538ed0efbaf1c8f446afc77090cb",
-      "topLevelKeys": ["allowed", "applied_release_id", "contract_ops_authorization_id", "deployment_authorization_id", "deployment_plan_id"]
-    },
-    ".semapact/history/deployment_plans/c684e277-793b-5628-ae09-0b67316306a8.json": {
-      "checksum": "sha256:f6c254152dbfe16ff017f1cc43f40390e5dc59452df730e9701cb81868a98deb",
-      "topLevelKeys": ["actions", "applied_release_id", "contract_id", "deployment_plan_id", "plan_version", "release_plan_id", "released_revision_ref", "selected_version", "target"]
-    },
-    ".semapact/history/deployment_plans/fecc2ad3-b5fe-58a1-99a5-3fb30e28a6c3.json": {
-      "checksum": "sha256:446646a122bfc65c085a084f4bbb52d6f1ac9f6c94a1724061c2f19308c58f2c",
-      "topLevelKeys": ["actions", "applied_release_id", "contract_id", "deployment_plan_id", "plan_version", "release_plan_id", "released_revision_ref", "selected_version", "target"]
-    },
-    ".semapact/history/deployment_previews/6eb94c8f-68ad-546a-8eb4-b1fb27ec21fa.json": {
-      "checksum": "sha256:8a42d5eeaacfed1c35fffd9da860bfb3b7ee6294d2887ac665ce0c6b2f7f500d",
-      "topLevelKeys": ["deployment_plan_id", "deployment_preview_id", "observation_fingerprint", "operations", "platform", "preview_version", "runtime_target", "source_identifier"]
-    },
-    ".semapact/history/deployment_previews/778b10a8-6133-572e-b89b-6d76be994154.json": {
-      "checksum": "sha256:ca3f88358aaea04096290f9cb3d6a4e39218a63aec986dd5b19f93ca8ecd9d9b",
-      "topLevelKeys": ["deployment_plan_id", "deployment_preview_id", "observation_fingerprint", "operations", "platform", "preview_version", "runtime_target", "source_identifier"]
-    },
-    ".semapact/history/deployment_records/61edafd1-bba0-5e2f-8fa1-f48ff7eeaafb.json": {
-      "checksum": "sha256:155b3dd66eca9cb519ccd3f5b3e0a6f3a4d4c430428d96ef0cddf5b6c3392aef",
-      "topLevelKeys": ["actor_reference", "completed_at", "deployment_authorization_id", "deployment_plan_id", "deployment_preview_id", "deployment_record_id", "external_reference", "platform", "release_record_id", "runtime_target", "source_reference", "started_at", "status"]
-    },
-    ".semapact/history/deployment_records/c1cbc2d8-f340-5944-827a-c5bbc8d73835.json": {
-      "checksum": "sha256:17f423508bb8500f00f85c0ae4a9f9d1900e78c9cfff7a2b936e6e1f14357af1",
-      "topLevelKeys": ["actor_reference", "completed_at", "deployment_authorization_id", "deployment_plan_id", "deployment_preview_id", "deployment_record_id", "external_reference", "platform", "release_record_id", "runtime_target", "source_reference", "started_at", "status"]
-    },
-    ".semapact/history/release_plans/45a429c1-9ff4-54da-897a-b02c7ee6027f.json": {
-      "checksum": "sha256:e1f6e06acd06a1b0ff719ddce44430f293b03d65e5586607f13907d6b617b237",
-      "topLevelKeys": ["change_set_id", "contract_id", "decision_id", "preconditions", "release_plan_id", "release_revision_ref", "required_version_bump"]
-    },
-    ".semapact/history/release_records/de7c4ed0-d54a-5a7a-b82e-c626eab39d23.json": {
-      "checksum": "sha256:961815c36c9f21e9ca1a277bb256bdc6571bcd94187a2712f333fa2bf6834b9d",
-      "topLevelKeys": ["actual_version_bump", "applied_release_id", "authority_reference", "authorization_id", "change_set_id", "contract_id", "contract_version", "decision_id", "release_plan_id", "release_record_id", "released_revision_id", "required_version_bump", "review_evidence_action", "review_evidence_reference", "version_authority", "version_resolution_id"]
-    },
-    ".semapact/history/runtime_observations/38695939-4fb5-583c-acfa-1a21397d89c8.json": {
-      "checksum": "sha256:dcad511a463004815942e9404e2d6ad5edd7efeb95afa14926f2b08b2c0bc389",
-      "topLevelKeys": ["observation", "observation_record_id"]
-    },
-    ".semapact/history/runtime_observations/e259c151-972f-532a-99d1-a14dcd78b166.json": {
-      "checksum": "sha256:d2af366ab491fdd0bfc123940f17f90257a456264343d017218c5791d2e1a6ad",
-      "topLevelKeys": ["observation", "observation_record_id"]
-    },
-    ".semapact/history/runtime_reconciliations/1e53fecd-750f-556e-97a8-060dc05e3cc2.json": {
-      "checksum": "sha256:87f4076f1428aa835565ced57aedd8371ff4d01de144ce6c34d395b2bd6d1a97",
-      "topLevelKeys": ["deployment_record_id", "observation_record_id", "release_record_id", "result", "runtime_reconciliation_record_id", "status"]
-    },
-    ".semapact/history/runtime_reconciliations/eeaf42b7-6d15-5b80-b1c3-ce51da73293f.json": {
-      "checksum": "sha256:041909fb90b3c4ad24e093883d4dfed0c18bb445fbb17e9a6c5c1a47e6b6b42e",
-      "topLevelKeys": ["deployment_record_id", "observation_record_id", "release_record_id", "result", "runtime_reconciliation_record_id", "status"]
-    }
-  },
   "evolution": {
+    "brokenReferences": [],
     "contractId": "orders-product",
     "proposals": [
       {
-        "changeSetId": "c2f4ee02-90e5-532a-ac8a-edd43e49f156",
-        "decisionId": "14295d1b-b52d-5d8b-8dad-2121529f099c",
-        "decision": "REVIEW",
         "baseRevisionId": "fb437fde-4baa-5dad-a382-c4df381ba412",
         "candidateRevisionId": "352d83a9-4ee6-508a-981f-4bc9819263c9",
+        "changeSetId": "c2f4ee02-90e5-532a-ac8a-edd43e49f156",
+        "decision": "REVIEW",
+        "decisionId": "14295d1b-b52d-5d8b-8dad-2121529f099c",
         "releases": [
           {
-            "releaseRecordId": "de7c4ed0-d54a-5a7a-b82e-c626eab39d23",
             "contractVersion": "1.3.0",
-            "releasedRevisionId": "290bd707-017f-56ca-a379-c8879b9ede13",
             "deployments": [
               {
-                "deploymentRecordId": "61edafd1-bba0-5e2f-8fa1-f48ff7eeaafb",
+                "deploymentRecordId": "2f2c8752-0abf-5d19-b097-af057b4a0fe1",
+                "runtime": [],
                 "runtimeTarget": "main.stage",
-                "status": "FAILED",
-                "runtime": []
+                "status": "FAILED"
               },
               {
-                "deploymentRecordId": "c1cbc2d8-f340-5944-827a-c5bbc8d73835",
-                "runtimeTarget": "main.prod",
-                "status": "SUCCEEDED",
+                "deploymentRecordId": "7fe4b74d-604c-58ec-94ba-f469651ea25a",
                 "runtime": [
                   {
-                    "reconciliationRecordId": "1e53fecd-750f-556e-97a8-060dc05e3cc2",
-                    "observationRecordId": "e259c151-972f-532a-99d1-a14dcd78b166",
-                    "status": "IN_SYNC"
+                    "observationRecordId": "38695939-4fb5-583c-acfa-1a21397d89c8",
+                    "reconciliationRecordId": "1e5b9772-02f3-5461-9a7b-a8cf73f6a609",
+                    "status": "DRIFT"
                   },
                   {
-                    "reconciliationRecordId": "eeaf42b7-6d15-5b80-b1c3-ce51da73293f",
-                    "observationRecordId": "38695939-4fb5-583c-acfa-1a21397d89c8",
-                    "status": "DRIFT"
+                    "observationRecordId": "e259c151-972f-532a-99d1-a14dcd78b166",
+                    "reconciliationRecordId": "7d8fcefb-3470-590b-ba48-1f1f9910be85",
+                    "status": "IN_SYNC"
                   }
-                ]
+                ],
+                "runtimeTarget": "main.prod",
+                "status": "SUCCEEDED"
               }
-            ]
+            ],
+            "releaseRecordId": "de7c4ed0-d54a-5a7a-b82e-c626eab39d23",
+            "releasedRevisionId": "290bd707-017f-56ca-a379-c8879b9ede13"
           }
         ]
       }
     ],
     "unlinkedReleaseIds": [],
-    "unlinkedRuntimeIds": [],
-    "brokenReferences": []
-  }
+    "unlinkedRuntimeIds": []
+  },
+  "files": {
+    ".semapact/history/change_set_decisions/c2f4ee02-90e5-532a-ac8a-edd43e49f156/14295d1b-b52d-5d8b-8dad-2121529f099c.json": {
+      "checksum": "sha256:d77324f66e332dfdd6cb3ff081e65987a6eaa469d5b84bab2cb425d55e23dd62",
+      "topLevelKeys": [
+        "change_set_id",
+        "decision_id"
+      ]
+    },
+    ".semapact/history/change_sets/c2f4ee02-90e5-532a-ac8a-edd43e49f156.json": {
+      "checksum": "sha256:66861c622ee7f42f4340a761d17c16a006bf738ad682c39359c552376ce95005",
+      "topLevelKeys": [
+        "actor_reference",
+        "base_revision_ref",
+        "candidate_revision_ref",
+        "change_set_id",
+        "changes",
+        "context",
+        "contract_id",
+        "source"
+      ]
+    },
+    ".semapact/history/contract_revisions/290bd707-017f-56ca-a379-c8879b9ede13.json": {
+      "checksum": "sha256:e70f5404098efaf4cec40f9a021adbba17cad53ed0c57db6984126fdcb84373e",
+      "topLevelKeys": [
+        "content_fingerprint",
+        "contract",
+        "revision_id"
+      ]
+    },
+    ".semapact/history/contract_revisions/352d83a9-4ee6-508a-981f-4bc9819263c9.json": {
+      "checksum": "sha256:bf1e3e1836fff7827bc014caccfefd36a01aaf480ecd17eae41c9a8245e5eb9e",
+      "topLevelKeys": [
+        "content_fingerprint",
+        "contract",
+        "revision_id"
+      ]
+    },
+    ".semapact/history/contract_revisions/fb437fde-4baa-5dad-a382-c4df381ba412.json": {
+      "checksum": "sha256:be036b579fe23c3d47afb96978c1e05416564b5ad0e30df034803c2c86bbf9c2",
+      "topLevelKeys": [
+        "content_fingerprint",
+        "contract",
+        "revision_id"
+      ]
+    },
+    ".semapact/history/decisions/14295d1b-b52d-5d8b-8dad-2121529f099c.json": {
+      "checksum": "sha256:5c0ddb33910feb477c32252d21c318e273e031185f52f4295aa0074dd78bf485",
+      "topLevelKeys": [
+        "breaking",
+        "changes",
+        "context",
+        "contract_id",
+        "decision",
+        "decision_id",
+        "evidence",
+        "policy",
+        "reasons",
+        "required_version_bump",
+        "validation"
+      ]
+    },
+    ".semapact/history/deployment_authorizations/2b383d08-7583-54dc-bd1a-2303a34ed38c.json": {
+      "checksum": "sha256:285a824c976aef723f1d77fcb406aefa13751511afc1be09f74cea8c90415130",
+      "topLevelKeys": [
+        "allowed",
+        "authorization_kind",
+        "authorization_reference",
+        "authorization_version",
+        "deployment_authorization_id",
+        "deployment_plan_id",
+        "source_snapshot_id"
+      ]
+    },
+    ".semapact/history/deployment_authorizations/e0c54b6a-f14a-5584-9134-9da2cd299ba3.json": {
+      "checksum": "sha256:a6d2770299e8676b38d467752ae32ac1b51d08add31bc0d5557ab60a4a193496",
+      "topLevelKeys": [
+        "allowed",
+        "authorization_kind",
+        "authorization_reference",
+        "authorization_version",
+        "deployment_authorization_id",
+        "deployment_plan_id",
+        "source_snapshot_id"
+      ]
+    },
+    ".semapact/history/deployment_plans/71cabdc5-f6df-549f-810b-58546a767986.json": {
+      "checksum": "sha256:a42942b9107e36b3eb0bc57f67196f45f615dd636a122c33d005b05a6480c4a7",
+      "topLevelKeys": [
+        "actions",
+        "contract_id",
+        "contract_version",
+        "deployment_plan_id",
+        "plan_version",
+        "revision_ref",
+        "source_snapshot_id",
+        "target"
+      ]
+    },
+    ".semapact/history/deployment_plans/bb2bddd8-ffc4-5cb2-bb50-5c963bc86772.json": {
+      "checksum": "sha256:423b6f8354fea81e1714366a79857b901ab423c713e6939952dcb05e757a11ca",
+      "topLevelKeys": [
+        "actions",
+        "contract_id",
+        "contract_version",
+        "deployment_plan_id",
+        "plan_version",
+        "revision_ref",
+        "source_snapshot_id",
+        "target"
+      ]
+    },
+    ".semapact/history/deployment_previews/50f0e4ff-e23c-5b19-a823-8c87c8557766.json": {
+      "checksum": "sha256:5946711e28c3910a23dca2bda3b5f7fa76722da2c3ba4b838f75837b4ca0f926",
+      "topLevelKeys": [
+        "deployment_plan_id",
+        "deployment_preview_id",
+        "observation_fingerprint",
+        "operations",
+        "platform",
+        "preview_version",
+        "runtime_target",
+        "source_identifier"
+      ]
+    },
+    ".semapact/history/deployment_previews/f3d22787-d634-50c7-b640-0e4deeb3a8bb.json": {
+      "checksum": "sha256:692825745edf96b9104d22a085ba0e369bbae48976f4e87b758365250c48aae4",
+      "topLevelKeys": [
+        "deployment_plan_id",
+        "deployment_preview_id",
+        "observation_fingerprint",
+        "operations",
+        "platform",
+        "preview_version",
+        "runtime_target",
+        "source_identifier"
+      ]
+    },
+    ".semapact/history/deployment_records/2f2c8752-0abf-5d19-b097-af057b4a0fe1.json": {
+      "checksum": "sha256:d88010da5c7fb72bf44fd9861a709ac13dd0339f64e2af8061057ddfc50c5b5f",
+      "topLevelKeys": [
+        "actor_reference",
+        "completed_at",
+        "deployment_authorization_id",
+        "deployment_plan_id",
+        "deployment_preview_id",
+        "deployment_record_id",
+        "external_reference",
+        "platform",
+        "release_record_id",
+        "runtime_target",
+        "source_reference",
+        "started_at",
+        "status"
+      ]
+    },
+    ".semapact/history/deployment_records/7fe4b74d-604c-58ec-94ba-f469651ea25a.json": {
+      "checksum": "sha256:c2c856bcf5a0301525b91291effcee95fbfb7a65a12e71fe0cf786df94d0e873",
+      "topLevelKeys": [
+        "actor_reference",
+        "completed_at",
+        "deployment_authorization_id",
+        "deployment_plan_id",
+        "deployment_preview_id",
+        "deployment_record_id",
+        "external_reference",
+        "platform",
+        "release_record_id",
+        "runtime_target",
+        "source_reference",
+        "started_at",
+        "status"
+      ]
+    },
+    ".semapact/history/release_plans/45a429c1-9ff4-54da-897a-b02c7ee6027f.json": {
+      "checksum": "sha256:e1f6e06acd06a1b0ff719ddce44430f293b03d65e5586607f13907d6b617b237",
+      "topLevelKeys": [
+        "change_set_id",
+        "contract_id",
+        "decision_id",
+        "preconditions",
+        "release_plan_id",
+        "release_revision_ref",
+        "required_version_bump"
+      ]
+    },
+    ".semapact/history/release_records/de7c4ed0-d54a-5a7a-b82e-c626eab39d23.json": {
+      "checksum": "sha256:961815c36c9f21e9ca1a277bb256bdc6571bcd94187a2712f333fa2bf6834b9d",
+      "topLevelKeys": [
+        "actual_version_bump",
+        "applied_release_id",
+        "authority_reference",
+        "authorization_id",
+        "change_set_id",
+        "contract_id",
+        "contract_version",
+        "decision_id",
+        "release_plan_id",
+        "release_record_id",
+        "released_revision_id",
+        "required_version_bump",
+        "review_evidence_action",
+        "review_evidence_reference",
+        "version_authority",
+        "version_resolution_id"
+      ]
+    },
+    ".semapact/history/runtime_observations/38695939-4fb5-583c-acfa-1a21397d89c8.json": {
+      "checksum": "sha256:dcad511a463004815942e9404e2d6ad5edd7efeb95afa14926f2b08b2c0bc389",
+      "topLevelKeys": [
+        "observation",
+        "observation_record_id"
+      ]
+    },
+    ".semapact/history/runtime_observations/e259c151-972f-532a-99d1-a14dcd78b166.json": {
+      "checksum": "sha256:d2af366ab491fdd0bfc123940f17f90257a456264343d017218c5791d2e1a6ad",
+      "topLevelKeys": [
+        "observation",
+        "observation_record_id"
+      ]
+    },
+    ".semapact/history/runtime_reconciliations/1e5b9772-02f3-5461-9a7b-a8cf73f6a609.json": {
+      "checksum": "sha256:fd71cdab46b7a848934f5a7cb7e21cc9e254cf1b9929987d49f2f684b76a54fc",
+      "topLevelKeys": [
+        "deployment_record_id",
+        "observation_record_id",
+        "release_record_id",
+        "result",
+        "runtime_reconciliation_record_id",
+        "status"
+      ]
+    },
+    ".semapact/history/runtime_reconciliations/7d8fcefb-3470-590b-ba48-1f1f9910be85.json": {
+      "checksum": "sha256:35c959957502dbe4a34f161582a9fc720b6010977b6a80bdcb81de7beba9f629",
+      "topLevelKeys": [
+        "deployment_record_id",
+        "observation_record_id",
+        "release_record_id",
+        "result",
+        "runtime_reconciliation_record_id",
+        "status"
+      ]
+    }
+  },
+  "fixtureVersion": "history-v1"
 }
