@@ -146,25 +146,21 @@ def _plan() -> DeploymentPlan:
         source_reference="source-1",
     )
     identity_kwargs = dict(
-        applied_release_id="release-1",
+        source_snapshot_id="release-1",
         contract_id="contract-1",
-        release_plan_id="release-plan-1",
-        released_revision_ref="revision-1",
-        selected_version="1.0.0",
+        revision_ref="revision-1",
+        contract_version="1.0.0",
         target=target,
         actions=(action,),
     )
     return DeploymentPlan(
         deployment_plan_id=compute_deployment_plan_id(**identity_kwargs),
         source_snapshot_id="release-1",
-        release_id="release-1",
         contract_id="contract-1",
-        release_plan_id="release-plan-1",
         revision_ref="revision-1",
         contract_version="1.0.0",
         target=target,
         actions=(action,),
-        plan_version="2",
     )
 
 
@@ -201,9 +197,10 @@ def test_generic_orchestrator_owns_observe_preview_freshness_and_execute() -> No
     assert preview.operations[0].statement == "CREATE_ASSET orders"
 
     authorization_id = compute_deployment_authorization_id(
-        contract_ops_authorization_id="contract-auth-1",
+        authorization_kind="contractops",
+        authorization_reference="contract-auth-1",
         deployment_plan_id=plan.deployment_plan_id,
-        applied_release_id=plan.applied_release_id,
+        source_snapshot_id=plan.source_snapshot_id,
         allowed=True,
     )
     authorization = DeploymentAuthorization(
@@ -213,7 +210,6 @@ def test_generic_orchestrator_owns_observe_preview_freshness_and_execute() -> No
         allowed=True,
         authorization_kind="contractops",
         authorization_reference="contract-auth-1",
-        authorization_version="1",
     )
 
     orchestrator.execute(plan, preview, authorization)
