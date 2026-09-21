@@ -16,7 +16,7 @@ import yaml
 
 from open_data_contract_standard.model import OpenDataContractStandard
 from semapact.change_context import ChangeContext
-from semapact.core.release import RequiredBump
+from semapact.versioning import RequiredBump
 from semapact.governance import (
     DecisionResult,
     evaluate_governance_decision,
