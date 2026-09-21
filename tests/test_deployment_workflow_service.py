@@ -207,7 +207,6 @@ def _finalized_release():
     bundle = workflow.assess(
         _contract(name="Orders"),
         _contract(name="Orders", include_created_at=True),
-        effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
     )
@@ -226,7 +225,6 @@ def test_candidate_assessment_does_not_calculate_release_version() -> None:
     bundle = DeploymentWorkflowService().assess(
         _contract(name="Orders old"),
         _contract(name="Orders new"),
-        effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
         target=_target(),
@@ -262,7 +260,6 @@ def test_finalized_release_assessment_binds_exact_release_record(tmp_path) -> No
 def test_same_candidate_inputs_produce_same_bundle_digest() -> None:
     service = DeploymentWorkflowService()
     kwargs = dict(
-        effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
         target=_target(),
@@ -287,7 +284,6 @@ def test_bundle_rehydration_fails_closed_when_digest_is_tampered() -> None:
     bundle = DeploymentWorkflowService().assess(
         _contract(name="Orders old"),
         _contract(name="Orders new"),
-        effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
         target=_target(),
@@ -305,7 +301,6 @@ def test_candidate_review_deployment_needs_no_release_approval() -> None:
     bundle = service.assess(
         _contract(name="Orders"),
         _contract(name="Orders", include_created_at=True),
-        effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
         target=_target(),
@@ -325,7 +320,6 @@ def test_cd_uses_fresh_preview_not_ci_review_preview() -> None:
     bundle = service.assess(
         _contract(name="Orders old"),
         _contract(name="Orders new"),
-        effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
         target=_target(),
@@ -348,7 +342,6 @@ def test_configured_operational_history_records_failed_candidate_deployment() ->
     bundle = service.assess(
         _contract(name="Orders old"),
         _contract(name="Orders new"),
-        effective_date="2026-09-20",
         base_revision_ref="git:base",
         candidate_revision_ref="git:candidate",
         target=_target(),
