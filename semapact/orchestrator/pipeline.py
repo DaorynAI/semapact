@@ -25,8 +25,8 @@ from open_data_contract_standard.model import OpenDataContractStandard
 
 from datacontract.data_contract import DataContract
 
+from semapact.change_context import ChangeContext
 from semapact.governance import (
-    ChangeContext,
     GovernanceDecision,
     GovernanceOperation,
     enforce_governance_gate,
@@ -293,12 +293,10 @@ class ContractPipeline:
         if merged_contract is None:
             raise ValueError("Merge did not produce a contract")
 
-        # Single-pass governance decision evaluation using the same explicit
-        # context as merge.
+        # Governance evaluation is independent of the mutation effective date.
         decision = evaluate_governance_decision(
             business_contract,
             merged_contract,
-            context=change_context,
             merge_conflicts=conflicts,
         )
 
