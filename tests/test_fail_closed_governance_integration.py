@@ -104,7 +104,7 @@ def test_injected_block_decision_prevents_side_effects(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("semapact.core.lifecycle_cli._apply_contract", lambda c, s: setattr(c, "version", "2.0.0"))
     with pytest.raises(GovernanceBlockedError):
-        apply_lifecycle(lifecycle_args, is_promote=True)
+        apply_lifecycle(lifecycle_args, is_promote=True, context=TEST_CONTEXT)
     assert not (tmp_path / "lifecycle_out.yaml").exists()
 
 
@@ -306,7 +306,7 @@ def test_breaking_change_review_behavior(tmp_path, capsys):
         property="amount",
     )
     with pytest.raises(GovernanceReviewRequiredError) as exc:
-        apply_lifecycle(lifecycle_args, is_promote=False)
+        apply_lifecycle(lifecycle_args, is_promote=False, context=TEST_CONTEXT)
     assert exc.value.operation == GovernanceOperation.APPLY
     assert "Governance decision REVIEW required" in str(exc.value)
 
