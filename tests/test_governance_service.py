@@ -12,7 +12,7 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
-from semapact.services import GovernanceService
+from semapact.application.services.governance import GovernanceService
 
 
 def _cp(key: str, value: str) -> CustomProperty:
