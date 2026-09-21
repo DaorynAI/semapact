@@ -28,12 +28,10 @@ def _cp(key: str, value: str) -> CustomProperty:
     return CustomProperty(property=key, value=value)
 
 
-def test_normalize_status_valid_and_aliases():
+def test_normalize_status_valid_values():
     assert normalize_status("draft") is LifecycleStatus.DRAFT
     assert normalize_status("DRAFT") is LifecycleStatus.DRAFT
     assert normalize_status("  draft  ") is LifecycleStatus.DRAFT
-    assert normalize_status("proposed") is LifecycleStatus.DRAFT
-    assert normalize_status("PROPOSED") is LifecycleStatus.DRAFT
     assert normalize_status("active") is LifecycleStatus.ACTIVE
     assert normalize_status("Active") is LifecycleStatus.ACTIVE
     assert normalize_status("deprecated") is LifecycleStatus.DEPRECATED
@@ -53,6 +51,9 @@ def test_normalize_status_invalid_inputs():
 
     with pytest.raises(ValueError, match="Unknown lifecycle status: 'invalid_val'"):
         normalize_status("invalid_val")
+
+    with pytest.raises(ValueError, match="Unknown lifecycle status: 'proposed'"):
+        normalize_status("proposed")
 
 
 def test_lifecycle_from_custom_properties():
@@ -92,7 +93,7 @@ def test_resolve_contract_lifecycle_precedence():
     )
     assert resolve_contract_lifecycle(c1) is LifecycleStatus.ACTIVE
 
-    # 2. Legacy customProperties fallback when root status is missing
+    # Root customProperties do not define contract lifecycle.
     c2 = OpenDataContractStandard(
         apiVersion="v3.1.0",
         kind="DataContract",
@@ -100,9 +101,9 @@ def test_resolve_contract_lifecycle_precedence():
         version="1.0.0",
         customProperties=[_cp("lifecycleStatus", "deprecated")],
     )
-    assert resolve_contract_lifecycle(c2) is LifecycleStatus.DEPRECATED
+    assert resolve_contract_lifecycle(c2) is LifecycleStatus.DRAFT
 
-    # 3. Canonical default when neither is provided
+    # Canonical default when status is absent
     c3 = OpenDataContractStandard(
         apiVersion="v3.1.0",
         kind="DataContract",
