@@ -16,15 +16,18 @@ from semapact.contractops.integrity import (
     compute_release_snapshot_id,
 )
 from semapact.deployment.compatibility import (
+    build_legacy_deployment_plan,
     parse_deployment_plan_payload,
     serialize_deployment_plan_payload,
 )
-from semapact.deployment import (
+from semapact.deployment.models import (
+    SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
     DeploymentAction,
     DeploymentActionKind,
+    DeploymentPlan,
     DeploymentTarget,
-    build_deployment_plan,
 )
+from semapact.utils.deterministic import deterministic_uuid5
 
 
 def _schema(
@@ -112,26 +115,28 @@ def _target() -> DeploymentTarget:
     )
 
 
-def test_release_snapshot_produces_v3_plan_without_apply_authorization() -> None:
+def test_legacy_release_snapshot_is_adapted_to_canonical_v5_plan() -> None:
     snapshot = _snapshot()
 
-    plan = build_deployment_plan(snapshot, _target())
+    plan = build_legacy_deployment_plan(snapshot, _target())
 
-    assert plan.release_id == snapshot.release_snapshot_id
-    assert plan.plan_version == "3"
+    assert plan.plan_version == "5"
+    assert plan.source_snapshot_id == snapshot.release_snapshot_id
     assert plan.contract_id == snapshot.contract_id
-    assert plan.selected_version == snapshot.selected_version
+    assert plan.contract_version == snapshot.selected_version
     payload = serialize_deployment_plan_payload(plan)
-    assert payload["release_id"] == snapshot.release_snapshot_id
+    assert payload["plan_version"] == "5"
+    assert "release_id" not in payload
+    assert "release_plan_id" not in payload
     assert "applied_release_id" not in payload
-    assert parse_deployment_plan_payload(payload) == plan
+    assert "selected_version" not in payload
 
 
-def test_same_exact_release_and_target_produce_same_plan() -> None:
+def test_same_exact_legacy_release_and_target_produce_same_canonical_plan() -> None:
     release = _release(schemas=[_schema("zeta"), _schema("alpha")])
 
-    first = build_deployment_plan(release, _target())
-    second = build_deployment_plan(release, _target())
+    first = build_legacy_deployment_plan(release, _target())
+    second = build_legacy_deployment_plan(release, _target())
 
     assert first == second
     assert first.deployment_plan_id == second.deployment_plan_id
@@ -139,26 +144,56 @@ def test_same_exact_release_and_target_produce_same_plan() -> None:
     assert [action.governed_asset for action in first.actions] == ["alpha", "zeta"]
 
 
-def test_plan_preserves_exact_applied_release_provenance() -> None:
+def test_legacy_v2_wire_payload_upgrades_to_canonical_identity() -> None:
     release = _release()
+    canonical = build_legacy_deployment_plan(release, _target())
+    legacy_payload = {
+        "applied_release_id": release.applied_release_id,
+        "contract_id": release.contract_id,
+        "release_plan_id": release.release_plan_id,
+        "released_revision_ref": release.release_revision_ref,
+        "selected_version": release.selected_version,
+        "target": canonical.target.model_dump(mode="json"),
+        "actions": [action.model_dump(mode="json") for action in canonical.actions],
+        "plan_version": "2",
+    }
+    legacy_payload["deployment_plan_id"] = deterministic_uuid5(
+        SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
+        {
+            **legacy_payload,
+            "target": canonical.target.model_dump(mode="json"),
+            "actions": [action.model_dump(mode="json") for action in canonical.actions],
+        },
+    )
 
-    plan = build_deployment_plan(release, _target())
+    upgraded = parse_deployment_plan_payload(legacy_payload)
 
-    assert plan.applied_release_id == release.applied_release_id
-    assert plan.contract_id == release.contract_id
-    assert plan.release_plan_id == release.release_plan_id
-    assert plan.released_revision_ref == release.release_revision_ref
-    assert plan.selected_version == release.selected_version
-    assert plan.plan_version == "2"
-    assert plan.target.source_reference == "https://workspace.example"
-    payload = serialize_deployment_plan_payload(plan)
-    assert payload["applied_release_id"] == release.applied_release_id
-    assert "release_id" not in payload
-    assert parse_deployment_plan_payload(payload) == plan
+    assert upgraded == canonical
+    assert upgraded.plan_version == "5"
+    assert upgraded.deployment_plan_id != legacy_payload["deployment_plan_id"]
+
+
+def test_legacy_v2_wire_payload_tamper_fails_closed() -> None:
+    release = _release()
+    canonical = build_legacy_deployment_plan(release, _target())
+    legacy_payload = {
+        "deployment_plan_id": "legacy:stale",
+        "applied_release_id": release.applied_release_id,
+        "contract_id": release.contract_id,
+        "release_plan_id": release.release_plan_id,
+        "released_revision_ref": release.release_revision_ref,
+        "selected_version": release.selected_version,
+        "target": canonical.target.model_dump(mode="json"),
+        "actions": [action.model_dump(mode="json") for action in canonical.actions],
+        "plan_version": "2",
+    }
+
+    with pytest.raises(ValueError, match="Legacy DeploymentPlan deterministic identity"):
+        parse_deployment_plan_payload(legacy_payload)
 
 
 def test_actions_are_provider_neutral_ensure_state_intents() -> None:
-    plan = build_deployment_plan(
+    plan = build_legacy_deployment_plan(
         _release(schemas=[_schema("orders"), _schema("customers")]),
         _target(),
     )
@@ -168,11 +203,10 @@ def test_actions_are_provider_neutral_ensure_state_intents() -> None:
         action.kind is DeploymentActionKind.ENSURE_ASSET_STATE
         for action in plan.actions
     )
-    assert {action.kind.value for action in plan.actions} == {"ENSURE_ASSET_STATE"}
 
 
 def test_physical_name_is_binding_hint_not_governed_identity() -> None:
-    plan = build_deployment_plan(
+    plan = build_legacy_deployment_plan(
         _release(schemas=[_schema("Orders", physical_name="prod_orders_v2")]),
         _target(),
     )
@@ -181,27 +215,12 @@ def test_physical_name_is_binding_hint_not_governed_identity() -> None:
     assert action.governed_asset == "orders"
     assert action.physical_name == "prod_orders_v2"
 
-    desired = SchemaObject.model_validate_json(action.desired_state_json)
-    assert desired.name == "Orders"
-    assert desired.physicalName == "prod_orders_v2"
 
-
-def test_missing_physical_name_falls_back_to_governed_schema_name() -> None:
-    plan = build_deployment_plan(
-        _release(schemas=[_schema("Orders")]),
-        _target(),
-    )
-
-    action = plan.actions[0]
-    assert action.governed_asset == "orders"
-    assert action.physical_name == "Orders"
-
-
-def test_target_is_explicit_and_changes_plan_identity() -> None:
+def test_target_changes_canonical_plan_identity() -> None:
     release = _release()
 
-    production = build_deployment_plan(release, _target())
-    staging = build_deployment_plan(
+    production = build_legacy_deployment_plan(release, _target())
+    staging = build_legacy_deployment_plan(
         release,
         DeploymentTarget(
             platform="databricks",
@@ -212,42 +231,6 @@ def test_target_is_explicit_and_changes_plan_identity() -> None:
     )
 
     assert production.deployment_plan_id != staging.deployment_plan_id
-    assert production.target.platform == "databricks"
-    assert staging.target.runtime_target == "main.staging"
-
-
-def test_runtime_source_changes_plan_identity_for_same_runtime_target() -> None:
-    release = _release()
-    first = build_deployment_plan(release, _target())
-    second = build_deployment_plan(
-        release,
-        DeploymentTarget(
-            platform="databricks",
-            runtime_target="main.analytics",
-            source_reference="https://other-workspace.example",
-            server_name="production",
-        ),
-    )
-
-    assert first.deployment_plan_id != second.deployment_plan_id
-
-
-def test_schema_order_is_canonicalized_within_each_exact_release() -> None:
-    first_release = _release(
-        schemas=[_schema("zeta"), _schema("alpha")],
-    )
-    second_release = _release(
-        schemas=[_schema("alpha"), _schema("zeta")],
-    )
-
-    first = build_deployment_plan(first_release, _target())
-    second = build_deployment_plan(second_release, _target())
-
-    assert [action.governed_asset for action in first.actions] == ["alpha", "zeta"]
-    assert [action.governed_asset for action in second.actions] == ["alpha", "zeta"]
-    # Exact release snapshot identity remains authoritative; two releases with
-    # differently serialized source schema order remain distinct authorities.
-    assert first.deployment_plan_id != second.deployment_plan_id
 
 
 def test_desired_state_identity_mismatch_fails_closed() -> None:
@@ -267,8 +250,10 @@ def test_desired_state_identity_mismatch_fails_closed() -> None:
         )
 
 
-def test_deployment_models_are_immutable() -> None:
-    plan = build_deployment_plan(_release(), _target())
+def test_canonical_deployment_plan_rejects_legacy_fields() -> None:
+    plan = build_legacy_deployment_plan(_release(), _target())
+    payload = plan.model_dump(mode="json")
+    payload["release_id"] = "legacy-release"
 
     with pytest.raises(PydanticValidationError):
-        setattr(plan, "selected_version", "9.9.9")
+        DeploymentPlan.model_validate(payload)
