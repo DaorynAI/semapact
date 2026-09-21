@@ -30,8 +30,6 @@ def test_deployment_parser_exposes_candidate_and_finalized_release_modes() -> No
             "git:base",
             "--candidate-revision-ref",
             "git:candidate",
-            "--effective-date",
-            "2026-09-20",
             "--server",
             "development",
             "--bundle-out",
@@ -143,7 +141,6 @@ def test_candidate_assessment_requires_candidate_arguments() -> None:
             "candidate": None,
             "base_revision_ref": None,
             "candidate_revision_ref": None,
-            "effective_date": None,
         },
     )()
 
@@ -160,7 +157,6 @@ def test_release_assessment_rejects_candidate_arguments() -> None:
             "candidate": None,
             "base_revision_ref": None,
             "candidate_revision_ref": None,
-            "effective_date": None,
         },
     )()
 
