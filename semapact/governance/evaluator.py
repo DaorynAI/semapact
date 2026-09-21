@@ -104,7 +104,6 @@ def evaluate_governance_decision(
         decision_id=decision_id,
         decision=decision_result,
         contract_id=contract_id,
-        context=context,
         breaking=bool(change_assessment.breaking_changes),
         required_version_bump=change_assessment.required_bump,
         reasons=reasons,
