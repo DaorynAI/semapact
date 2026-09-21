@@ -9,7 +9,6 @@ from semapact.contractops.execution_models import ReleaseSnapshot
 from semapact.contractops.integrity import compute_release_snapshot_id
 from semapact.contractops.models import (
     ChangeSet,
-    ContractOpsAuthorization,
     ReleasePlan,
     VersionResolution,
 )
