@@ -60,7 +60,6 @@ jobs:
             --candidate "${CONTRACT_PATH}" \
             --base-revision-ref "git:${BASE_SHA}" \
             --candidate-revision-ref "git:${CANDIDATE_SHA}" \
-            --effective-date "$(date -u +%F)" \
             --server "${DEV_SERVER}" \
             --bundle-out artifacts/candidate.deployment.bundle.json \
             --output json > artifacts/candidate.summary.json
@@ -108,7 +107,6 @@ jobs:
             --candidate "${CONTRACT_PATH}" \
             --base-revision-ref "git:${BASE_SHA}" \
             --candidate-revision-ref "git:${CANDIDATE_SHA}" \
-            --effective-date "$(date -u +%F)" \
             --bundle-out artifacts/release.bundle.json \
             > artifacts/release.summary.json
 
