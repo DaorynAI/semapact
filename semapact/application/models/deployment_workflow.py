@@ -54,11 +54,6 @@ class DeploymentBundle(BaseModel):
     def is_release(self) -> bool:
         return self.deployment_source.source_kind == "contract_release"
 
-    @property
-    def release(self) -> bool:
-        """Compatibility accessor; canonical mode lives in deployment_source."""
-        return self.is_release
-
     @model_validator(mode="after")
     def _validate_bundle_links(self) -> "DeploymentBundle":
         source = self.deployment_source
