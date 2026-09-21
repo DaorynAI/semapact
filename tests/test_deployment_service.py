@@ -12,25 +12,17 @@ from semapact.deployment import (
     DeploymentAction,
     DeploymentAdapter,
     DeploymentActionKind,
-    DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
     DeploymentTarget,
     NativeOperation,
     NativeOperationKind,
 )
-from semapact.deployment.compatibility import (
-    parse_deployment_authorization_payload,
-    serialize_deployment_authorization_payload,
-)
 from semapact.deployment.models import (
-    SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE,
-    compute_deployment_authorization_id,
     compute_deployment_plan_id,
     compute_deployment_preview_id,
 )
 from semapact.exceptions import ValidationError
-from semapact.utils.deterministic import deterministic_uuid5
 from semapact.observation import ObservedPlatformState, with_observed_state_fingerprint
 from semapact.reconciliation import ReconciliationResult
 from semapact.services.deployment_service import DeploymentService
@@ -69,9 +61,6 @@ class FakeDeploymentAdapter(DeploymentAdapter):
         self.execute_calls += 1
         self.executed = (plan, preview, None)
 
-    def execute(self, plan, preview, authorization) -> None:
-        self.execute_calls += 1
-        self.executed = (plan, preview, authorization)
 
 
 def _plan() -> DeploymentPlan:
@@ -174,55 +163,6 @@ def _adapter(plan: DeploymentPlan) -> FakeDeploymentAdapter:
     )
 
 
-def _authorization(plan: DeploymentPlan) -> DeploymentAuthorization:
-    authorization_id = compute_deployment_authorization_id(
-        authorization_kind="contractops",
-        authorization_reference="contractops-auth-1",
-        deployment_plan_id=plan.deployment_plan_id,
-        source_snapshot_id=plan.source_snapshot_id,
-        allowed=True,
-    )
-    return DeploymentAuthorization(
-        deployment_authorization_id=authorization_id,
-        deployment_plan_id=plan.deployment_plan_id,
-        source_snapshot_id=plan.source_snapshot_id,
-        allowed=True,
-        authorization_kind="contractops",
-        authorization_reference="contractops-auth-1",
-    )
-
-
-
-
-def test_legacy_authorization_wire_format_is_explicitly_adapted() -> None:
-    plan = _plan()
-    legacy_id = deterministic_uuid5(
-        SEMAPACT_DEPLOYMENT_AUTHORIZATION_NAMESPACE,
-        {
-            "contract_ops_authorization_id": "contractops-auth-1",
-            "deployment_plan_id": plan.deployment_plan_id,
-            "applied_release_id": plan.source_snapshot_id,
-            "allowed": True,
-        },
-    )
-    payload = {
-        "deployment_authorization_id": legacy_id,
-        "contract_ops_authorization_id": "contractops-auth-1",
-        "deployment_plan_id": plan.deployment_plan_id,
-        "applied_release_id": plan.source_snapshot_id,
-        "allowed": True,
-    }
-
-    upgraded = parse_deployment_authorization_payload(payload)
-
-    assert upgraded.authorization_version == "2"
-    assert upgraded.source_snapshot_id == plan.source_snapshot_id
-    assert upgraded.authorization_reference == "contractops-auth-1"
-    assert serialize_deployment_authorization_payload(upgraded) == upgraded.model_dump(
-        mode="json"
-    )
-    assert upgraded.deployment_authorization_id != legacy_id
-
 
 def test_preview_delegates_to_unified_adapter_entrypoint() -> None:
     plan = _plan()
@@ -250,22 +190,6 @@ def test_apply_delegates_exact_plan_and_preview_without_internal_authorization()
     assert adapter.executed == (plan, preview, None)
 
 
-def test_execute_compatibility_wrapper_validates_then_uses_canonical_apply() -> None:
-    plan = _plan()
-    preview = _preview(plan)
-    authorization = _authorization(plan)
-    adapter = _adapter(plan)
-
-    DeploymentService().execute(
-        plan,
-        preview,
-        authorization,
-        adapter=adapter,
-    )
-
-    assert adapter.execute_calls == 1
-    assert adapter.executed == (plan, preview, None)
-
 
 def test_verify_delegates_to_same_adapter_entrypoint() -> None:
     plan = _plan()
@@ -277,7 +201,7 @@ def test_verify_delegates_to_same_adapter_entrypoint() -> None:
     assert adapter.verify_calls == 1
 
 
-@pytest.mark.parametrize("operation", ["preview", "verify", "apply", "execute"])
+@pytest.mark.parametrize("operation", ["preview", "verify", "apply"])
 def test_service_rejects_adapter_platform_mismatch(operation: str) -> None:
     plan = _plan()
     adapter = _adapter(plan)
@@ -288,15 +212,8 @@ def test_service_rejects_adapter_platform_mismatch(operation: str) -> None:
             DeploymentService().preview(plan, adapter=adapter)
         elif operation == "verify":
             DeploymentService().verify(plan, adapter=adapter)
-        elif operation == "apply":
-            DeploymentService().apply(plan, _preview(plan), adapter=adapter)
         else:
-            DeploymentService().execute(
-                plan,
-                _preview(plan),
-                _authorization(plan),
-                adapter=adapter,
-            )
+            DeploymentService().apply(plan, _preview(plan), adapter=adapter)
 
     assert adapter.preview_calls == 0
     assert adapter.verify_calls == 0
