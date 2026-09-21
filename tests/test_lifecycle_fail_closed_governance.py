@@ -61,7 +61,7 @@ def test_invalid_root_lifecycle_evaluates_to_block():
     candidate = base.model_copy(deep=True)
     candidate.status = "invalid_status_xyz"
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     assert decision.decision == DecisionResult.BLOCK
     assert any(
         r.code == GovernanceReasonCode.VALIDATION_FAILED
@@ -77,7 +77,7 @@ def test_invalid_schema_lifecycle_evaluates_to_block():
         _cp("lifecycleStatus", "unknown_schema_status")
     ]
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     assert decision.decision == DecisionResult.BLOCK
     assert any(
         r.code == GovernanceReasonCode.VALIDATION_FAILED
@@ -93,7 +93,7 @@ def test_invalid_property_lifecycle_evaluates_to_block():
         _cp("lifecycleStatus", "invalid_prop_status")
     ]
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     assert decision.decision == DecisionResult.BLOCK
     assert any(
         r.code == GovernanceReasonCode.VALIDATION_FAILED
@@ -109,7 +109,7 @@ def test_invalid_nested_property_lifecycle_evaluates_to_block():
         _cp("lifecycleStatus", "garbage_nested_status")
     ]
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     assert decision.decision == DecisionResult.BLOCK
     assert any(
         r.code == GovernanceReasonCode.VALIDATION_FAILED
