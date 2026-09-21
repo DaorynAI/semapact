@@ -104,7 +104,7 @@ def test_injected_block_decision_prevents_side_effects(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("semapact.core.lifecycle_cli._apply_contract", lambda c, s: setattr(c, "version", "2.0.0"))
     with pytest.raises(GovernanceBlockedError):
-        apply_lifecycle(lifecycle_args, is_promote=True, context=TEST_CONTEXT)
+        apply_lifecycle(lifecycle_args, is_promote=True)
     assert not (tmp_path / "lifecycle_out.yaml").exists()
 
 
@@ -291,7 +291,6 @@ def test_breaking_change_review_behavior(tmp_path, capsys):
         base=str(base_path),
         candidate=str(cand_path),
         runtime_context="auto",
-        effective_date=TEST_EFFECTIVE_DATE,
     )
     class_res = run_release_classify(classify_args)
     assert class_res["requiredBump"] == "minor"
@@ -307,12 +306,12 @@ def test_breaking_change_review_behavior(tmp_path, capsys):
         property="amount",
     )
     with pytest.raises(GovernanceReviewRequiredError) as exc:
-        apply_lifecycle(lifecycle_args, is_promote=False, context=TEST_CONTEXT)
+        apply_lifecycle(lifecycle_args, is_promote=False)
     assert exc.value.operation == GovernanceOperation.APPLY
     assert "Governance decision REVIEW required" in str(exc.value)
 
     # 4. CI (evaluate_ci_gate & pipeline): Returns allowed=False / raises GovernanceReviewRequiredError
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     ci_res = evaluate_ci_gate(decision)
     assert ci_res.allowed is False
     assert ci_res.reason == "review_required"
@@ -367,7 +366,7 @@ def test_prepare_ci_cd_artifacts_enforces_ci_gate_directly(tmp_path):
     from open_data_contract_standard.model import DataQuality
     candidate.schema_[0].properties[0].quality = [DataQuality(type="invalid_quality_type_xyz")]
 
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     assert decision.decision.value == "BLOCK"
 
     merged_out = tmp_path / "direct_merged.yaml"
@@ -397,7 +396,7 @@ def test_ci_cd_adapter_preserves_allowed_reason():
     """Verify that evaluate_ci_gate returns 'allowed' reason when allowed is True."""
     base = _make_contract(status="active")
     candidate = _make_contract(status="active")
-    decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
 
     ci_dec = evaluate_ci_gate(decision)
     assert ci_dec.allowed is True
@@ -421,7 +420,6 @@ def test_classify_repo_sets_blocked_status(tmp_path):
     changes = classify_contracts_in_repo(
         base_root=str(base_dir),
         candidate_root=str(cand_dir),
-        context=TEST_CONTEXT,
     )
     blocked_change = next(c for c in changes if c.contract_repo_path == "blocked.yaml")
     assert blocked_change.status == "blocked"
