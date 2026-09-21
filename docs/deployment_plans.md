@@ -227,7 +227,6 @@ semapact deployment assess \
   --candidate ./contracts/orders.candidate.yaml \
   --base-revision-ref git:abc123 \
   --candidate-revision-ref git:def456 \
-  --effective-date 2026-09-20 \
   --server development \
   --bundle-out ./artifacts/orders-dev.deployment.bundle.json
 
@@ -248,7 +247,6 @@ semapact release assess \
   --candidate ./contracts/orders.candidate.yaml \
   --base-revision-ref git:abc123 \
   --candidate-revision-ref git:def456 \
-  --effective-date 2026-09-20 \
   --bundle-out ./artifacts/orders.release.bundle.json
 ```
 
