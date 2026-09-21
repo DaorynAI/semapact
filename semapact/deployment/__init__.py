@@ -11,7 +11,6 @@ from semapact.deployment.adapters import (
 )
 from semapact.deployment.authorization import (
     authorize_candidate_deployment,
-    authorize_deployment,
     validate_candidate_deployment_context,
     validate_contract_release_deployment_context,
 )
@@ -29,14 +28,12 @@ from semapact.deployment.models import (
 from semapact.deployment.orchestrator import DeploymentOrchestrator
 from semapact.deployment.planner import (
     build_deployment_actions,
-    build_deployment_plan,
     build_deployment_plan_from_source,
 )
 from semapact.deployment.source import (
     DeploymentSourceSnapshot,
     build_candidate_deployment_source,
     build_contract_release_deployment_source,
-    build_release_deployment_source,
 )
 from semapact.deployment.providers import (
     DeploymentExecutionConfig,
