@@ -48,7 +48,7 @@ class DeploymentBundle(BaseModel):
     decision: GovernanceDecision | None = None
     change_set: ChangeSet | None = None
     contract_release: ContractRelease | None = None
-    bundle_version: Literal["4"] = "4"
+    bundle_version: Literal["1"] = "1"
 
     @property
     def is_release(self) -> bool:
@@ -171,7 +171,7 @@ def compute_deployment_bundle_digest(
     decision: GovernanceDecision | None = None,
     change_set: ChangeSet | None = None,
     contract_release: ContractRelease | None = None,
-    bundle_version: str = "4",
+    bundle_version: str = "1",
 ) -> str:
     """Return the immutable digest for one target-specific deployment bundle."""
     payload = {
