@@ -38,7 +38,7 @@
       {
         "code": "CONTRACT_VERSION_MANUALLY_CHANGED",
         "details": {},
-        "message": "Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change and use 'semapact release prepare'.",
+        "message": "Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change; SemaPact sets the release version during 'semapact release finalize'.",
         "path": "version",
         "severity": "ERROR"
       }
@@ -59,7 +59,7 @@
     {
       "code": "CONTRACT_VERSION_MANUALLY_CHANGED",
       "details": {},
-      "message": "Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change and use 'semapact release prepare'.",
+      "message": "Contract version mismatch. Contract versions are release-managed and cannot be manually updated during normal import/merge. Please revert the version change; SemaPact sets the release version during 'semapact release finalize'.",
       "path": "version",
       "severity": "ERROR"
     }
