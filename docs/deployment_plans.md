@@ -55,7 +55,7 @@ The orchestration above is provider-neutral. Platform packages configure or impl
 
 A `DeploymentPlan` is a deterministic, provider-neutral statement of the runtime state that one exact deployment source intends to converge toward.
 
-Canonical plans are v5 and bind only the immutable `DeploymentSourceSnapshot` plus the target-specific convergence actions. Release provenance and candidate-versus-release mode live only in the source snapshot; they are not duplicated in `DeploymentPlan`. Legacy `AppliedContractRelease` / `ReleaseSnapshot` inputs and older plan payloads are verified and upgraded at the explicit compatibility boundary.
+Canonical plans are v5 and bind only the immutable `DeploymentSourceSnapshot` plus the target-specific convergence actions. Release provenance and candidate-versus-release mode live only in the source snapshot; they are not duplicated in `DeploymentPlan`. Older deployment-plan shapes are not part of the supported model.
 
 The initial action vocabulary deliberately contains only:
 
@@ -385,7 +385,7 @@ The CLI URI remains available for one-off/custom pipeline overrides, but ordinar
 
 Supported operational history backends in this slice are SQLite and Delta. The Delta backend is lazy and requires the `delta` optional extra. Operational event payloads carry an explicit schema version so the telemetry contract can evolve independently of governance-history models.
 
-Legacy Git-backed deployment/runtime history artifacts remain readable for compatibility, but the canonical bundle workflow does not create new operational records in Git.
+The Git ledger stores low-frequency governance facts only. Deployment/runtime telemetry is written only when an operational SQLite or Delta backend is configured.
 
 Operational events record concrete deployment occurrence facts including success/failure, exact bundle/plan/source provenance, target, timestamps, and reconciliation status when available.
 
