@@ -167,7 +167,7 @@ SemaPact currently supports deterministic change analysis and lifecycle-aware po
 - relationship change handling;
 - version-policy classification;
 - deterministic `GovernanceDecision` artifacts;
-- centralized governance and authorization boundaries for planning, publication, and deployment operations.
+- centralized governance and release-approval boundaries, with runtime deployment permission delegated to the protected execution environment.
 
 ### Canonical ContractOps release planning
 
@@ -472,16 +472,15 @@ Optional extras are intentionally separate from the base distribution. If an int
 
 ```text
 semapact/
-  core/             # loading, validation, compatibility workflow boundaries
+  core/             # loading, configuration and validation
   lifecycle/        # canonical identity, lifecycle and change policy
   governance/       # GovernanceDecision and centralized gate
-  contractops/      # deterministic release planning / authorization / apply / publish domain
-  deployment/       # provider-neutral deployment plans, authorization, preview contracts
+  contractops/      # deterministic release planning, approval and release artifacts
+  deployment/       # provider-neutral deployment source, plan and preview contracts
   runtime/          # provider-neutral governed runtime asset projection
   application/      # interface-independent use-case models + orchestration
     models/         # application result DTOs; no domain authority
     services/       # thin orchestration over canonical domain rules/ports
-  services/         # backward-compatible imports only
   observation/      # platform-neutral observed state + fingerprint
   reconciliation/   # governed desired vs observed comparison
   platforms/        # provider adapters such as Databricks
@@ -489,12 +488,12 @@ semapact/
   exporters/        # SQL / graph and other outputs
   quality/          # quality intent adapters
   interfaces/       # CLI and user-facing boundaries
-  devops/           # Git / CI compatibility helpers
+  devops/           # Git / CI integration helpers
 ```
 
 A central architectural rule is:
 
-> **Interfaces parse and render. Application services orchestrate. Domain packages own business meaning. Platform adapters own provider-specific effects. Compatibility packages do not become new owners.**
+> **Interfaces parse and render. Application services orchestrate. Domain packages own business meaning. Platform adapters own provider-specific effects. There is one canonical workflow per lifecycle.**
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for package/model placement rules.
 
