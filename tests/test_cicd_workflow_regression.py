@@ -239,8 +239,6 @@ def test_data_product_sample_command_chain_executes_end_to_end(
         "git:base",
         "--candidate-revision-ref",
         "git:candidate",
-        "--effective-date",
-        "2026-09-21",
         "--server",
         "development",
         "--bundle-out",
@@ -265,8 +263,6 @@ def test_data_product_sample_command_chain_executes_end_to_end(
         "git:base",
         "--candidate-revision-ref",
         "git:candidate",
-        "--effective-date",
-        "2026-09-21",
         "--bundle-out",
         str(release_bundle),
     )
@@ -399,8 +395,6 @@ def test_central_repo_sample_fans_out_distinct_release_artifacts(
         str(base_root),
         "--candidate-root",
         str(candidate_root),
-        "--effective-date",
-        "2026-09-21",
     )
     assert code == 0
     classification = json.loads(classification_output)
