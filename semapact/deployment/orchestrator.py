@@ -9,21 +9,19 @@ from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
     DeploymentAction,
     DeploymentActionKind,
-    DeploymentAuthorization,
     DeploymentPlan,
     DeploymentPreview,
     DeploymentTarget,
     NativeOperation,
     NativeOperationKind,
     compute_deployment_preview_id,
-    validate_deployment_authorization_identity,
     validate_deployment_plan_identity,
     validate_deployment_preview_identity,
 )
 from semapact.deployment.providers import NativeOperationExecutor
 from semapact.deployment.schema_transitions import SchemaTransitionPlanner
 from semapact.deployment.verification import verify_deployment_convergence
-from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
+from semapact.exceptions import ValidationError
 from semapact.observation.fingerprint import fingerprint_observed_state
 from semapact.observation.models import ObservedAssetIdentity, ObservedPlatformState
 from semapact.observation.providers import RuntimeAssetBinding, RuntimeProvider
@@ -152,28 +150,6 @@ class DeploymentOrchestrator(DeploymentAdapter):
             if operation.kind is NativeOperationKind.NO_OP:
                 continue
             self._executor.execute(operation)
-
-    def execute(
-        self,
-        plan: DeploymentPlan,
-        preview: DeploymentPreview,
-        authorization: DeploymentAuthorization,
-    ) -> None:
-        """Compatibility wrapper for legacy in-process DeploymentAuthorization."""
-        validate_deployment_authorization_identity(authorization)
-        if not authorization.allowed:
-            raise ContractOpsAuthorizationError(
-                "DeploymentAuthorization is not allowed"
-            )
-        if authorization.deployment_plan_id != plan.deployment_plan_id:
-            raise ContractOpsAuthorizationError(
-                "DeploymentAuthorization is not bound to this DeploymentPlan"
-            )
-        if authorization.source_snapshot_id != plan.source_snapshot_id:
-            raise ContractOpsAuthorizationError(
-                "DeploymentAuthorization source does not match DeploymentPlan"
-            )
-        self.apply(plan, preview)
 
     def _preview_from_observation(
         self,
