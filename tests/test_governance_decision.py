@@ -13,8 +13,8 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
+from semapact.change_context import ChangeContext
 from semapact.governance import (
-    ChangeContext,
     DecisionResult,
     GovernanceDecision,
     GovernanceReason,
@@ -38,7 +38,6 @@ def _evaluate(
     return evaluate_governance_decision(
         base,
         candidate,
-        context=TEST_CONTEXT,
         **kwargs,
     )
 
@@ -263,7 +262,6 @@ def test_governance_decision_allow_invariants_validator():
         decision_id="id1",
         decision=DecisionResult.ALLOW,
         contract_id="c1",
-        context=TEST_CONTEXT,
         breaking=False,
         required_version_bump="none",
         validation=val,
@@ -277,7 +275,6 @@ def test_governance_decision_allow_invariants_validator():
             decision_id="id2",
             decision=DecisionResult.ALLOW,
             contract_id="c1",
-            context=TEST_CONTEXT,
             breaking=True,
             required_version_bump="none",
             validation=val,
@@ -291,7 +288,6 @@ def test_governance_decision_allow_invariants_validator():
             decision_id="id3",
             decision=DecisionResult.ALLOW,
             contract_id="c1",
-            context=TEST_CONTEXT,
             breaking=False,
             required_version_bump="minor",
             validation=val,
@@ -348,8 +344,15 @@ def test_governance_decision_serialization_and_deserialization():
     assert decision == reconstructed
     assert reconstructed.decision == DecisionResult.REVIEW
     assert reconstructed.required_version_bump == "minor"
-    assert reconstructed.context == TEST_CONTEXT
+    assert not hasattr(reconstructed, "context")
     assert all(isinstance(reason["code"], str) for reason in dumped_json["reasons"])
+
+
+def test_governance_decision_has_no_execution_date_context():
+    decision = _evaluate(_make_contract(), _make_contract())
+
+    assert "context" not in decision.model_dump(mode="json")
+    assert not hasattr(decision, "context")
 
 
 def test_governance_decision_input_immutability():
