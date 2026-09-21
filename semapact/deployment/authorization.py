@@ -9,14 +9,12 @@ from __future__ import annotations
 from semapact.deployment.models import (
     DeploymentAuthorization,
     DeploymentPlan,
-    compute_deployment_authorization_id,
     validate_deployment_plan_identity,
 )
 from semapact.deployment.source import DeploymentSourceSnapshot
 from semapact.contractops import ContractRelease
 from semapact.governance import DecisionResult, GovernanceDecision
 from semapact.exceptions import ReleaseValidationError
-from semapact.governance.gate import GovernanceOperation
 
 
 def validate_candidate_deployment_context(
