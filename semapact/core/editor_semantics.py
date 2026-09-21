@@ -168,10 +168,6 @@ def field_declared_lifecycle_status(field_obj: PropertyInput) -> str:
     return ""
 
 
-# Compatibility alias
-field_lifecycle_status = field_declared_lifecycle_status
-
-
 def field_option_label(field_obj: PropertyInput, index: int) -> str:
     """Format a field label for display."""
     field_name = str(_property_model(field_obj).name or "").strip()
