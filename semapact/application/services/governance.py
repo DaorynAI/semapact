@@ -41,15 +41,12 @@ class GovernanceService:
         base_contract: OpenDataContractStandard,
         candidate_contract: OpenDataContractStandard,
         *,
-        effective_date: date | str,
         merge_conflicts: Sequence[MergeConflict] = (),
     ) -> GovernanceDecision:
-        """Evaluate one contract change from an application-level effective date."""
-        context = self.create_context(effective_date)
+        """Evaluate one contract change without execution-time inputs."""
         return evaluate_governance_decision(
             base_contract,
             candidate_contract,
-            context=context,
             merge_conflicts=merge_conflicts,
         )
 
@@ -58,7 +55,6 @@ class GovernanceService:
         base_contract: OpenDataContractStandard,
         candidate_contract: OpenDataContractStandard,
         *,
-        effective_date: date | str,
         base_revision_ref: str,
         candidate_revision_ref: str,
         merge_conflicts: Sequence[MergeConflict] = (),
@@ -66,11 +62,9 @@ class GovernanceService:
         actor_reference: str | None = None,
     ) -> GovernanceProposal:
         """Evaluate once and project the authoritative decision into a ChangeSet."""
-        context = self.create_context(effective_date)
         decision = evaluate_governance_decision(
             base_contract,
             candidate_contract,
-            context=context,
             merge_conflicts=merge_conflicts,
         )
         change_set = build_change_set_from_decision(
@@ -101,7 +95,6 @@ class GovernanceService:
         decision = evaluate_governance_decision(
             business_contract,
             merge_result.contract,
-            context=context,
             merge_conflicts=merge_result.conflicts,
         )
         return GovernanceAnalysis(
