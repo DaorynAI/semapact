@@ -43,6 +43,8 @@ def test_central_contract_repo_github_example_fans_out_and_commits_ledger_once()
 
     assert "release classify-repo" in workflow
     assert "fromJSON(needs.detect-contracts.outputs.matrix)" in workflow
+    assert "artifact: .artifactKey" in workflow
+    assert 'gsub("[^A-Za-z0-9_-]"; "_")' not in workflow
     assert "release assess" in workflow
     assert "release approve" in workflow
     assert "release finalize" in workflow
