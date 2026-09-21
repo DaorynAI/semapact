@@ -102,7 +102,7 @@ class TestRetiredKernelMatrix:
         base = _make_retired_contract()
         candidate = _make_retired_contract()
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.ALLOW
         assert decision.policy.retired_violation is False
@@ -118,7 +118,7 @@ class TestRetiredKernelMatrix:
         candidate.description = Description(usage="Updated description on retired contract")
         candidate.tags = ["legacy", "orders", "updated"]
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -140,7 +140,7 @@ class TestRetiredKernelMatrix:
             )
         )
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -159,7 +159,7 @@ class TestRetiredKernelMatrix:
             SchemaProperty(name="customer_id", logicalType="string", required=False)
         )
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -183,7 +183,7 @@ class TestRetiredKernelMatrix:
             )
         ]
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -206,7 +206,7 @@ class TestRetiredKernelMatrix:
             )
         ]
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -223,7 +223,7 @@ class TestRetiredKernelMatrix:
             CustomProperty(property="costCenter", value="finance")
         ]
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -240,7 +240,7 @@ class TestRetiredKernelMatrix:
             candidate = _make_retired_contract()
             candidate.status = target_status
 
-            decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+            decision = evaluate_governance_decision(base, candidate)
 
             assert decision.decision == DecisionResult.BLOCK
             assert decision.policy.retired_violation is True
@@ -255,7 +255,7 @@ class TestRetiredKernelMatrix:
         candidate = _make_retired_contract()
         candidate.version = "2.0.0"
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.policy.retired_violation is True
@@ -269,7 +269,7 @@ class TestRetiredKernelMatrix:
         base = _make_active_contract()
         candidate = _make_retired_contract()
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.REVIEW
         assert decision.policy.retired_violation is False
@@ -289,7 +289,7 @@ class TestRetiredKernelMatrix:
             base.status = start_status
             candidate = _make_retired_contract()
 
-            decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+            decision = evaluate_governance_decision(base, candidate)
 
             assert decision.decision == DecisionResult.REVIEW
             assert decision.policy.retired_violation is False
@@ -310,7 +310,7 @@ class TestRetiredKernelMatrix:
         candidate.status = "invalid_status_value"
         candidate.description = Description(usage="Mutated invalid contract")
 
-        decision = evaluate_governance_decision(base, candidate, context=TEST_CONTEXT)
+        decision = evaluate_governance_decision(base, candidate)
 
         assert decision.decision == DecisionResult.BLOCK
         assert decision.validation.valid is False
@@ -361,7 +361,6 @@ class TestRetiredMutationBoundaries:
             business=str(base_path),
             output=str(out_path),
             runtime_context="auto",
-            effective_date="2026-08-14",
         )
 
         with pytest.raises(GovernanceBlockedError) as exc_info:
@@ -546,7 +545,6 @@ class TestRetiredReadOnlyMatrix:
         decision = GovernanceService().evaluate(
             base_retired,
             candidate,
-            effective_date=date(2026, 8, 14),
         )
 
         gate_res = evaluate_governance_gate(decision, GovernanceOperation.ANALYZE)
