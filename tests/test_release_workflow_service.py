@@ -10,10 +10,12 @@ from open_data_contract_standard.model import (
 )
 from pydantic import ValidationError as PydanticValidationError
 
+from semapact.approval import build_approval_record
 from semapact.application.models.release import ReleaseBundle
 from semapact.application.services.release_approval import ReleaseApprovalResolver
 from semapact.application.services.release_workflow import ReleaseFinalizer, ReleaseWorkflowService
 from semapact.exceptions import ContractOpsAuthorizationError
+from semapact.contractops import ReviewEvidenceAction
 from semapact.governance import DecisionResult, GovernanceOperation
 from semapact.platforms.git import GitWorkingTreeHistoryRepository
 
@@ -137,3 +139,32 @@ def test_release_approval_resolver_finds_only_exact_bundle(tmp_path) -> None:
         update={"bundle_digest": "sha256:" + ("f" * 64)}
     )
     assert ReleaseApprovalResolver(repository).resolve(tampered) is None
+
+
+
+def test_release_approval_resolver_fails_closed_on_exact_conflict(tmp_path) -> None:
+    bundle = _bundle()
+    repository = GitWorkingTreeHistoryRepository(tmp_path)
+    approval = ReleaseWorkflowService().approve(
+        bundle,
+        actor_reference="github:user:reviewer",
+        recorded_at=datetime(2026, 9, 20, 2, tzinfo=timezone.utc),
+    )
+    rejection = build_approval_record(
+        decision_id=bundle.decision.decision_id,
+        change_set_id=bundle.change_set.change_set_id,
+        release_plan_id=bundle.release_plan.release_plan_id,
+        version_resolution_id=bundle.version_resolution.version_resolution_id,
+        operation=GovernanceOperation.PUBLISH,
+        action=ReviewEvidenceAction.REJECT,
+        actor_reference="github:user:owner",
+        recorded_at=datetime(2026, 9, 20, 3, tzinfo=timezone.utc),
+        scope_reference=bundle.release_snapshot.release_snapshot_id,
+        evidence_references=(bundle.bundle_digest,),
+    )
+    repository.put_approval_record(approval)
+    repository.put_approval_record(rejection)
+
+    resolver = ReleaseApprovalResolver(repository)
+    assert resolver.has_conflict(bundle) is True
+    assert resolver.resolve(bundle) is None
