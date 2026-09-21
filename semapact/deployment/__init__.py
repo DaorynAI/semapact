@@ -5,7 +5,7 @@ from semapact.deployment.adapters import (
     RuntimeReleaseMetadata,
     RuntimeReleaseMetadataProjector,
 )
-from semapact.deployment.authorization import (
+from semapact.deployment.provenance import (
     validate_candidate_deployment_context,
     validate_contract_release_deployment_context,
 )
