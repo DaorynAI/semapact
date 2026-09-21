@@ -106,6 +106,14 @@ class DeploymentBundle(BaseModel):
                 raise ValueError(
                     "DeploymentBundle source/decision contract mismatch"
                 )
+            if self.change_set.candidate_revision_ref != source.revision_ref:
+                raise ValueError(
+                    "DeploymentBundle candidate revision does not match ChangeSet"
+                )
+            if self.change_set.changes != self.decision.changes:
+                raise ValueError(
+                    "DeploymentBundle decision/change-set changes mismatch"
+                )
 
         if plan.source_snapshot_id != source.source_snapshot_id:
             raise ValueError(
