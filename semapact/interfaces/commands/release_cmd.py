@@ -181,47 +181,6 @@ def run_release_plan(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def run_release_prepare(args: argparse.Namespace) -> dict[str, Any]:
-    """Compatibility release-tag helper retained for existing Git workflows."""
-    from dataclasses import asdict
-
-    from semapact.core.loader import ContractLoader
-    from semapact.core.release import apply_release_candidate
-    from semapact.governance import GovernanceOperation, enforce_governance_gate
-    from semapact.utils.schema_utils import contract_to_dict
-    from semapact.utils.yaml_utils import dump_yaml
-
-    loader = ContractLoader(runtime_context=args.runtime_context)
-    base_contract = loader.load(args.base)
-    candidate_contract = loader.load(args.candidate)
-
-    decision = GovernanceService().evaluate(
-        base_contract,
-        candidate_contract,
-        effective_date=args.effective_date,
-    )
-    enforce_governance_gate(decision, GovernanceOperation.PROPOSE)
-
-    result = apply_release_candidate(
-        base_contract,
-        candidate_contract,
-        args.release_tag,
-        required_bump=decision.required_version_bump,
-    )
-    output_path = dump_yaml(contract_to_dict(result.contract), args.output)
-    return {
-        "contractId": str(result.contract.id or ""),
-        "currentVersion": result.current_version,
-        "targetVersion": result.target_version,
-        "requiredBump": result.required_bump,
-        "actualBump": result.actual_bump,
-        "releaseTag": result.release_tag,
-        "reasons": [r.message for r in decision.reasons],
-        "breakingChanges": [asdict(change) for change in decision.policy.breaking_changes],
-        "output": str(output_path),
-        "governanceDecision": decision.model_dump(mode="json"),
-    }
-
 
 def run_release_classify_repo(args: argparse.Namespace) -> dict[str, Any]:
     from semapact.devops.release_workflow import (
@@ -265,34 +224,6 @@ def run_release_build_manifest(args: argparse.Namespace) -> dict[str, Any]:
     payload["output"] = str(output_path)
     return payload
 
-
-def run_release_create_pr(args: argparse.Namespace) -> dict[str, Any]:
-    """Compatibility Git publication workflow retained until a publisher is selected."""
-    from semapact.core.loader import ContractLoader
-    from semapact.devops.release_workflow import create_release_pull_request
-
-    loader = ContractLoader(runtime_context=args.runtime_context)
-    base_contract = loader.load(args.base)
-    candidate_contract = loader.load(args.candidate)
-    change_context = GovernanceService.create_context(args.effective_date)
-
-    config = _build_git_config(args)
-    payload = create_release_pull_request(
-        config=config,
-        repo_path=_get_repo_path(args),
-        contract_repo_path=args.contract_path,
-        base_contract=base_contract,
-        candidate_contract=candidate_contract,
-        release_tag=args.release_tag,
-        source_branch=args.source_branch,
-        target_branch=args.target_branch,
-        context=change_context,
-        title=args.title,
-        description=args.description,
-        commit_message=args.commit_message,
-        push=args.push,
-    )
-    return payload
 
 
 def run_release_create_prs(args: argparse.Namespace) -> dict[str, Any]:
