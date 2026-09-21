@@ -292,7 +292,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--bundle-out",
         help="Write the immutable ReleaseBundle JSON artifact to this path",
     )
-    _add_effective_date_argument(release_assess_parser)
 
     release_approve_parser = release_subparsers.add_parser(
         "approve",
@@ -343,7 +342,6 @@ def _build_parser() -> argparse.ArgumentParser:
     release_classify_parser.add_argument("--base", required=True)
     release_classify_parser.add_argument("--candidate", required=True)
     release_classify_parser.add_argument("--runtime-context", default="auto")
-    _add_effective_date_argument(release_classify_parser)
 
     release_plan_parser = release_subparsers.add_parser(
         "plan",
@@ -358,7 +356,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Explicit Git release reference when release.versionAuthority=git",
     )
     release_plan_parser.add_argument("--runtime-context", default="auto")
-    _add_effective_date_argument(release_plan_parser)
 
     release_classify_repo_parser = release_subparsers.add_parser(
         "classify-repo",
@@ -366,7 +363,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     release_classify_repo_parser.add_argument("--base-root", required=True)
     release_classify_repo_parser.add_argument("--candidate-root", required=True)
-    _add_effective_date_argument(release_classify_repo_parser)
 
 
     doctor_parser = subparsers.add_parser(
@@ -490,7 +486,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default="text",
         help="Output format (default: text)",
     )
-    _add_effective_date_argument(deployment_assess_parser, required=False)
 
     deployment_deploy_parser = deployment_subparsers.add_parser(
         "deploy",
