@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 
 import pytest
 from open_data_contract_standard.model import (
@@ -15,7 +14,6 @@ from semapact.application.models.release import (
     build_contract_release,
     build_release_bundle,
 )
-from semapact.change_context import ChangeContext
 from semapact.contractops import (
     ChangeSet,
     ContractRelease,
@@ -31,7 +29,6 @@ from semapact.contractops import (
 from semapact.governance import evaluate_governance_decision
 
 
-CONTEXT = ChangeContext(effective_date=date(2026, 9, 11))
 
 
 def _contract(*, name: str) -> OpenDataContractStandard:
@@ -61,7 +58,7 @@ def _contract(*, name: str) -> OpenDataContractStandard:
 def _artifact_chain():
     base = _contract(name="orders-old")
     candidate = _contract(name="orders-new")
-    decision = evaluate_governance_decision(base, candidate, context=CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     change_set = build_change_set_from_decision(
         decision,
         base_revision_ref="git:base",
