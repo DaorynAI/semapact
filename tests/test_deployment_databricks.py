@@ -11,16 +11,14 @@ from semapact.deployment import RuntimeReleaseMetadata
 from semapact.deployment.models import (
     DeploymentAction,
     DeploymentActionKind,
-    DeploymentAuthorization,
     DeploymentPlan,
     DeploymentTarget,
     NativeOperation,
     NativeOperationKind,
-    compute_deployment_authorization_id,
     compute_deployment_plan_id,
     compute_deployment_preview_id,
 )
-from semapact.exceptions import ContractOpsAuthorizationError, ValidationError
+from semapact.exceptions import ValidationError
 from semapact.observation.fingerprint import with_observed_state_fingerprint
 from semapact.observation.models import (
     ObservedAsset,
@@ -89,23 +87,6 @@ def _plan(*properties: SchemaProperty, source_reference: str = SOURCE_REFERENCE)
         actions=(action,),
     )
 
-
-def _authorization(plan: DeploymentPlan, allowed: bool = True) -> DeploymentAuthorization:
-    authorization_id = compute_deployment_authorization_id(
-        authorization_kind="contractops",
-        authorization_reference="contractops-auth:test",
-        deployment_plan_id=plan.deployment_plan_id,
-        source_snapshot_id=plan.source_snapshot_id,
-        allowed=allowed,
-    )
-    return DeploymentAuthorization(
-        deployment_authorization_id=authorization_id,
-        deployment_plan_id=plan.deployment_plan_id,
-        source_snapshot_id=plan.source_snapshot_id,
-        allowed=allowed,
-        authorization_kind="contractops",
-        authorization_reference="contractops-auth:test",
-    )
 
 
 def _state(
@@ -284,28 +265,26 @@ def test_preview_rejects_cross_source_runtime_evidence() -> None:
         adapter.preview(plan)
 
 
-def test_execute_fails_closed_for_denied_stale_and_cross_source() -> None:
+def test_apply_fails_closed_for_stale_and_cross_source() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     before = _state(("id", "bigint", False))
     adapter, provider, _ = _adapter(before)
     preview = adapter.preview(plan)
 
-    with pytest.raises(ContractOpsAuthorizationError, match="not allowed"):
-        adapter.execute(plan, preview, _authorization(plan, False))
 
     provider.state = _state(
         ("id", "bigint", False),
         ("other", "string", True),
     )
     with pytest.raises(ValidationError, match="Runtime state changed"):
-        adapter.execute(plan, preview, _authorization(plan))
+        adapter.apply(plan, preview)
 
     provider.state = before.model_copy(update={"source_identifier": "workspace-b"})
     with pytest.raises(ValidationError, match="Runtime source changed"):
-        adapter.execute(plan, preview, _authorization(plan))
+        adapter.apply(plan, preview)
 
 
-def test_execute_rejects_tampered_plan_and_forged_native_command() -> None:
+def test_apply_rejects_tampered_plan_and_forged_native_command() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     current = _state(("id", "bigint", False))
     adapter, _, client = _adapter(current)
@@ -313,7 +292,7 @@ def test_execute_rejects_tampered_plan_and_forged_native_command() -> None:
 
     tampered = plan.model_copy(update={"contract_version": "9.9.9"})
     with pytest.raises(ValueError, match="DeploymentPlan deterministic identity"):
-        adapter.execute(tampered, preview, _authorization(plan))
+        adapter.apply(tampered, preview)
 
     forged_operations = (
         NativeOperation(
@@ -334,11 +313,11 @@ def test_execute_rejects_tampered_plan_and_forged_native_command() -> None:
         update={"deployment_preview_id": forged_id, "operations": forged_operations}
     )
     with pytest.raises(ValidationError, match="no longer equals"):
-        adapter.execute(plan, forged, _authorization(plan))
+        adapter.apply(plan, forged)
     assert client.statement_execution.calls == []
 
 
-def test_execute_runs_exact_preview_statement() -> None:
+def test_apply_runs_exact_preview_statement() -> None:
     plan = _plan(
         _property("id", "BIGINT", required=True),
         _property("note", "STRING"),
@@ -347,7 +326,7 @@ def test_execute_runs_exact_preview_statement() -> None:
     adapter, _, client = _adapter(current)
     preview = adapter.preview(plan)
 
-    adapter.execute(plan, preview, _authorization(plan))
+    adapter.apply(plan, preview)
 
     assert client.statement_execution.calls == [
         "ALTER TABLE `main`.`silver`.`orders` ADD COLUMNS (`note` STRING)"
@@ -395,18 +374,18 @@ def test_release_metadata_projection_requires_warehouse() -> None:
         )
 
 
-def test_no_op_execute_does_not_require_warehouse() -> None:
+def test_no_op_apply_does_not_require_warehouse() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     current = _state(("id", "bigint", False))
     adapter, _, client = _adapter(current, warehouse_id=None)
     preview = adapter.preview(plan)
 
     assert preview.operations[0].kind is NativeOperationKind.NO_OP
-    adapter.execute(plan, preview, _authorization(plan))
+    adapter.apply(plan, preview)
     assert client.statement_execution.calls == []
 
 
-def test_mutation_execute_without_warehouse_fails_closed() -> None:
+def test_mutation_apply_without_warehouse_fails_closed() -> None:
     plan = _plan(
         _property("id", "BIGINT", required=True),
         _property("note", "STRING"),
@@ -416,7 +395,7 @@ def test_mutation_execute_without_warehouse_fails_closed() -> None:
     preview = adapter.preview(plan)
 
     with pytest.raises(ValidationError, match="warehouse_id"):
-        adapter.execute(plan, preview, _authorization(plan))
+        adapter.apply(plan, preview)
     assert client.statement_execution.calls == []
 
 
