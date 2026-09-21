@@ -256,7 +256,7 @@ def test_finalized_release_assessment_binds_exact_release_record(tmp_path) -> No
     assert bundle.contract_release == release
     assert bundle.deployment_source.release_id == release.contract_release_id
     assert bundle.deployment_source.contract_version == release.contract_version
-    assert bundle.deployment_plan.release_id is None
+    assert not hasattr(bundle.deployment_plan, "release_id")
 
 
 def test_same_candidate_inputs_produce_same_bundle_digest() -> None:
@@ -411,4 +411,4 @@ def test_release_deployment_projects_finalized_version_after_in_sync(tmp_path) -
     plan, metadata = adapter.metadata_calls[0]
     assert metadata.contract_version == release.contract_version
     assert metadata.contract_release_id == release.contract_release_id
-    assert plan.release_id is None
+    assert not hasattr(plan, "release_id")
