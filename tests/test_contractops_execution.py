@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 
 import pytest
 from open_data_contract_standard.model import (
@@ -9,7 +8,6 @@ from open_data_contract_standard.model import (
     SchemaProperty,
 )
 
-from semapact.change_context import ChangeContext
 from semapact.contractops import (
     VersionAuthorityConfig,
     build_change_set_from_decision,
@@ -20,8 +18,6 @@ from semapact.contractops import (
 from semapact.exceptions import ReleaseValidationError
 from semapact.governance import evaluate_governance_decision
 
-
-CONTEXT = ChangeContext(effective_date=date(2026, 9, 9))
 
 
 def _contract(
@@ -65,7 +61,7 @@ def _release_context(*, include_created_at: bool = False):
         contract_name="orders-new",
         include_created_at=include_created_at,
     )
-    decision = evaluate_governance_decision(base, candidate, context=CONTEXT)
+    decision = evaluate_governance_decision(base, candidate)
     change_set = build_change_set_from_decision(
         decision,
         base_revision_ref="rev:base",
