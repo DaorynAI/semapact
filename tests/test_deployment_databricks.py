@@ -439,6 +439,33 @@ def test_release_metadata_replaces_only_reserved_stale_tags() -> None:
     ]
 
 
+def test_release_metadata_unsets_only_reserved_keys_that_exist() -> None:
+    plan = _plan(_property("id", "BIGINT", required=True))
+    current = _state(("id", "bigint", False))
+    adapter, _, client = _adapter(
+        current,
+        tags={
+            "semapact_contract_version": "1.1.0",
+            "business_owner": "sales",
+        },
+    )
+
+    adapter.project_release_metadata(
+        plan,
+        RuntimeReleaseMetadata(
+            contract_id="orders-product",
+            contract_version="1.2.0",
+            contract_release_id="release-record-1",
+            source_revision_ref="rev:released",
+        ),
+    )
+
+    assert client.statement_execution.calls[1] == (
+        "ALTER TABLE `main`.`silver`.`orders` "
+        "UNSET TAGS ('semapact_contract_version')"
+    )
+
+
 def test_release_metadata_projection_requires_warehouse() -> None:
     plan = _plan(_property("id", "BIGINT", required=True))
     current = _state(("id", "bigint", False))
