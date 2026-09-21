@@ -429,8 +429,6 @@ def test_central_repo_sample_fans_out_distinct_release_artifacts(
             f"git:base:{relative_path}",
             "--candidate-revision-ref",
             f"git:candidate:{relative_path}",
-            "--effective-date",
-            "2026-09-21",
             "--bundle-out",
             str(release_bundle),
         )
