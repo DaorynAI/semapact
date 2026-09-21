@@ -353,7 +353,6 @@ def test_merge_engine_rejects_retired_contract_modification():
     decision = evaluate_governance_decision(
         existing,
         result.contract,
-        context=TEST_CONTEXT,
         merge_conflicts=result.conflicts,
     )
     assert decision.decision == DecisionResult.BLOCK
