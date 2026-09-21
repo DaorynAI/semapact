@@ -146,21 +146,27 @@ jobs:
           name: semapact-release-bundle
           path: artifacts
 
-      - name: Persist exact review approval when required
+      - name: Capture exact review approval when required
         run: |
           BUNDLE=artifacts/release.bundle.json
           if [ "$(jq -r '.decision.decision' "${BUNDLE}")" = "REVIEW" ]; then
             semapact release approve \
               --bundle "${BUNDLE}" \
               --actor-reference "github-environment:contract-release/run:${GITHUB_RUN_ID}" \
-              --recorded-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              --recorded-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --approval-out artifacts/release.approval.json
           fi
 
       - name: Finalize release and materialize released contract
         id: finalize
         run: |
+          APPROVAL_ARGS=()
+          if [ -f artifacts/release.approval.json ]; then
+            APPROVAL_ARGS=(--approval artifacts/release.approval.json)
+          fi
           semapact release finalize \
             --bundle artifacts/release.bundle.json \
+            "${APPROVAL_ARGS[@]}" \
             --output-contract "${CONTRACT_PATH}" \
             --release-out artifacts/contract-release.json \
             > artifacts/finalize.json
