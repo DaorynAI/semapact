@@ -131,7 +131,7 @@ class DeploymentPlan(DeploymentModel):
     contract_version: str
     target: DeploymentTarget
     actions: tuple[DeploymentAction, ...]
-    plan_version: Literal["5"] = "5"
+    plan_version: Literal["1"] = "1"
 
     @field_validator(
         "deployment_plan_id",
@@ -226,9 +226,9 @@ def compute_deployment_plan_id(
     contract_version: str,
     target: DeploymentTarget,
     actions: Sequence[DeploymentAction],
-    plan_version: str = "5",
+    plan_version: str = "1",
 ) -> str:
-    if plan_version != "5":
+    if plan_version != "1":
         raise ValueError(f"Unsupported canonical DeploymentPlan version: {plan_version}")
     return deterministic_uuid5(
         SEMAPACT_DEPLOYMENT_PLAN_NAMESPACE,
