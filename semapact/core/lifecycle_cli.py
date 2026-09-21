@@ -7,8 +7,8 @@ from open_data_contract_standard.model import (
 )
 
 from semapact.core.loader import ContractLoader
+from semapact.change_context import ChangeContext
 from semapact.governance import (
-    ChangeContext,
     GovernanceOperation,
     enforce_governance_gate,
     evaluate_governance_decision,
@@ -40,8 +40,7 @@ def apply_lifecycle(
             args.schema,
             args.property,
             target_status,
-            context=context,
-        )
+            )
     elif getattr(args, "schema", None):
         _apply_schema(
             candidate_contract,
