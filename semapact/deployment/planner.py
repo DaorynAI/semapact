@@ -21,7 +21,7 @@ def build_deployment_plan_from_source(
     source: DeploymentSourceSnapshot,
     target: DeploymentTarget,
 ) -> DeploymentPlan:
-    """Build a v5 plan from one exact deployment source snapshot."""
+    """Build the canonical plan from one exact deployment source snapshot."""
     if not isinstance(source, DeploymentSourceSnapshot):
         raise TypeError(
             "source must be DeploymentSourceSnapshot, "
@@ -59,8 +59,8 @@ def build_deployment_actions(
 ) -> tuple[DeploymentAction, ...]:
     """Project candidate/released ODCS state into provider-neutral desired actions.
 
-    Actions are desired-state facts only. They are not executable authority until
-    they are bound into an exact DeploymentPlan derived from a release snapshot.
+    Actions are desired-state facts only. They are not an execution permission;
+    they become target-specific planning input only through an exact DeploymentPlan.
     """
     if not isinstance(contract, OpenDataContractStandard):
         raise TypeError(
