@@ -39,7 +39,6 @@ class ReleaseWorkflowService:
         base_contract: OpenDataContractStandard,
         candidate_contract: OpenDataContractStandard,
         *,
-        effective_date: str,
         base_revision_ref: str,
         candidate_revision_ref: str,
         authority_reference: str | None = None,
@@ -48,7 +47,6 @@ class ReleaseWorkflowService:
         planning = self._planning.plan(
             base_contract,
             candidate_contract,
-            effective_date=effective_date,
             base_revision_ref=base_revision_ref,
             candidate_revision_ref=candidate_revision_ref,
             authority_reference=authority_reference,
