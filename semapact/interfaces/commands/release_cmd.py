@@ -166,7 +166,6 @@ def run_release_plan(args: argparse.Namespace) -> dict[str, Any]:
     result = ReleasePlanningService().plan(
         base_contract,
         candidate_contract,
-        effective_date=args.effective_date,
         base_revision_ref=args.base_revision_ref,
         candidate_revision_ref=args.candidate_revision_ref,
         authority_reference=args.authority_reference,
