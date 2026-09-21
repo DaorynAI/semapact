@@ -11,6 +11,8 @@ from collections.abc import Mapping
 from typing import Any
 
 from semapact.contractops.execution_models import AppliedContractRelease, ReleaseSnapshot
+from semapact.contractops.integrity import validate_contractops_authorization_identity
+from semapact.contractops.models import AuthorizationReason, ContractOpsAuthorization
 from semapact.contractops.integrity import (
     validate_applied_release_identity,
     validate_release_snapshot_identity,
@@ -26,6 +28,8 @@ from semapact.deployment.models import (
     compute_deployment_plan_id,
 )
 from semapact.deployment.planner import build_deployment_actions
+from semapact.exceptions import ReleaseValidationError
+from semapact.governance.gate import GovernanceOperation
 from semapact.utils.deterministic import deterministic_uuid5
 
 
@@ -199,6 +203,87 @@ def build_legacy_deployment_plan(
         actions=actions,
     )
 
+
+
+def authorize_legacy_deployment(
+    plan: DeploymentPlan,
+    release: ReleaseSnapshot | AppliedContractRelease,
+    authorization: ContractOpsAuthorization,
+) -> DeploymentAuthorization:
+    """Adapt the legacy in-process DEPLOY authorization path to canonical v2."""
+    if isinstance(release, ReleaseSnapshot):
+        validate_release_snapshot_identity(release)
+        release_id = release.release_snapshot_id
+    elif isinstance(release, AppliedContractRelease):
+        validate_applied_release_identity(release)
+        release_id = release.applied_release_id
+    else:
+        raise TypeError(
+            "release must be ReleaseSnapshot or AppliedContractRelease, "
+            f"got {type(release).__name__}"
+        )
+    validate_contractops_authorization_identity(authorization)
+
+    if authorization.operation is not GovernanceOperation.DEPLOY:
+        raise ReleaseValidationError(
+            "Deployment requires operation-scoped DEPLOY authorization"
+        )
+    if plan.source_snapshot_id != release_id:
+        raise ReleaseValidationError(
+            "DeploymentPlan does not reference the supplied exact legacy release"
+        )
+    if plan.contract_id != release.contract_id:
+        raise ReleaseValidationError(
+            "DeploymentPlan and legacy release contract IDs do not match"
+        )
+    if plan.revision_ref != release.release_revision_ref:
+        raise ReleaseValidationError(
+            "DeploymentPlan revision does not match legacy release"
+        )
+    if plan.contract_version != release.selected_version:
+        raise ReleaseValidationError(
+            "DeploymentPlan version does not match legacy release"
+        )
+    if authorization.decision_id != release.decision_id:
+        raise ReleaseValidationError(
+            "DEPLOY authorization decision does not match legacy release"
+        )
+    if authorization.change_set_id != release.change_set_id:
+        raise ReleaseValidationError(
+            "DEPLOY authorization ChangeSet does not match legacy release"
+        )
+    if authorization.release_plan_id != release.release_plan_id:
+        raise ReleaseValidationError(
+            "DEPLOY authorization ReleasePlan does not match legacy release"
+        )
+    if authorization.version_resolution_id != release.version_resolution_id:
+        raise ReleaseValidationError(
+            "DEPLOY authorization version resolution does not match legacy release"
+        )
+    if (
+        authorization.allowed
+        and authorization.reason is AuthorizationReason.ALLOWED_BY_REVIEW
+        and authorization.scope_reference != plan.deployment_plan_id
+    ):
+        raise ReleaseValidationError(
+            "Review-based DEPLOY authorization is not scoped to this DeploymentPlan"
+        )
+
+    authorization_id = compute_deployment_authorization_id(
+        deployment_plan_id=plan.deployment_plan_id,
+        source_snapshot_id=plan.source_snapshot_id,
+        authorization_kind="contractops",
+        authorization_reference=authorization.authorization_id,
+        allowed=authorization.allowed,
+    )
+    return DeploymentAuthorization(
+        deployment_authorization_id=authorization_id,
+        deployment_plan_id=plan.deployment_plan_id,
+        source_snapshot_id=plan.source_snapshot_id,
+        allowed=authorization.allowed,
+        authorization_kind="contractops",
+        authorization_reference=authorization.authorization_id,
+    )
 
 def _infer_plan_version(value: Mapping[str, Any]) -> str:
     raw = value.get("plan_version")
