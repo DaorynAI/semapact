@@ -256,16 +256,18 @@ For a REVIEW release, an external workflow may persist exact approval with the c
 semapact release approve \
   --bundle ./artifacts/orders.release.bundle.json \
   --actor-reference github-environment:contract-release \
-  --recorded-at 2026-09-20T10:00:00+10:00
+  --recorded-at 2026-09-20T10:00:00+10:00 \
+  --approval-out ./artifacts/orders.approval.json
 ```
 
-The approval is `PUBLISH`-scoped to the exact `ReleaseSnapshot` and `ReleaseBundle` digest. ALLOW releases do not require an ApprovalRecord.
+The approval is `PUBLISH`-scoped to the exact `ReleaseSnapshot` and `ReleaseBundle` digest. The ApprovalRecord artifact is the CI/CD handoff; Git remains the durable governance ledger and is consulted only for conflict detection or fallback resolution. ALLOW releases do not require an ApprovalRecord.
 
 Finalize exactly once:
 
 ```bash
 semapact release finalize \
   --bundle ./artifacts/orders.release.bundle.json \
+  --approval ./artifacts/orders.approval.json \
   --output-contract ./contracts/orders.yaml \
   --release-out ./artifacts/orders.contract-release.json
 ```
