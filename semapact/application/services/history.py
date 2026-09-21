@@ -96,7 +96,5 @@ def _validate_proposal_links(
             "ChangeSet candidate_revision_ref must equal candidate ContractRevision ID"
         )
 
-    if change_set.context != decision.context:
-        raise ValueError("ChangeSet context does not match GovernanceDecision context")
     if change_set.changes != decision.changes:
         raise ValueError("ChangeSet changes do not match GovernanceDecision changes")
