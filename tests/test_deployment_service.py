@@ -98,25 +98,21 @@ def _plan() -> DeploymentPlan:
         source_reference=SOURCE_REFERENCE,
     )
     plan_id = compute_deployment_plan_id(
-        applied_release_id="release-1",
+        source_snapshot_id="release-1",
         contract_id="orders-contract",
-        release_plan_id="release-plan-1",
-        released_revision_ref="abc123",
-        selected_version="1.2.3",
+        revision_ref="abc123",
+        contract_version="1.2.3",
         target=target,
         actions=(action,),
     )
     return DeploymentPlan(
         deployment_plan_id=plan_id,
         source_snapshot_id="release-1",
-        release_id="release-1",
         contract_id="orders-contract",
-        release_plan_id="release-plan-1",
         revision_ref="abc123",
         contract_version="1.2.3",
         target=target,
         actions=(action,),
-        plan_version="2",
     )
 
 
@@ -163,7 +159,7 @@ def _verification(plan: DeploymentPlan) -> ReconciliationResult:
     assert observation.fingerprint is not None
     return ReconciliationResult(
         contract_id=plan.contract_id,
-        contract_version=plan.selected_version,
+        contract_version=plan.contract_version,
         observation_source_identifier=observation.source_identifier,
         observation_fingerprint=observation.fingerprint,
     )
@@ -178,9 +174,10 @@ def _adapter(plan: DeploymentPlan) -> FakeDeploymentAdapter:
 
 def _authorization(plan: DeploymentPlan) -> DeploymentAuthorization:
     authorization_id = compute_deployment_authorization_id(
-        contract_ops_authorization_id="contractops-auth-1",
+        authorization_kind="contractops",
+        authorization_reference="contractops-auth-1",
         deployment_plan_id=plan.deployment_plan_id,
-        applied_release_id=plan.applied_release_id,
+        source_snapshot_id=plan.source_snapshot_id,
         allowed=True,
     )
     return DeploymentAuthorization(
@@ -190,7 +187,6 @@ def _authorization(plan: DeploymentPlan) -> DeploymentAuthorization:
         allowed=True,
         authorization_kind="contractops",
         authorization_reference="contractops-auth-1",
-        authorization_version="1",
     )
 
 
