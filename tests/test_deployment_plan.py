@@ -91,7 +91,7 @@ def _target() -> DeploymentTarget:
     )
 
 
-def test_candidate_source_produces_canonical_v5_plan() -> None:
+def test_candidate_source_produces_canonical_v1_plan() -> None:
     source = build_candidate_deployment_source(
         _contract(),
         revision_ref="rev:candidate",
@@ -99,7 +99,7 @@ def test_candidate_source_produces_canonical_v5_plan() -> None:
 
     plan = build_deployment_plan_from_source(source, _target())
 
-    assert plan.plan_version == "5"
+    assert plan.plan_version == "1"
     assert plan.source_snapshot_id == source.source_snapshot_id
     assert plan.contract_id == source.contract_id
     assert plan.contract_version == source.contract_version
@@ -107,13 +107,13 @@ def test_candidate_source_produces_canonical_v5_plan() -> None:
     assert not hasattr(plan, "release_plan_id")
 
 
-def test_finalized_release_source_produces_canonical_v5_plan() -> None:
+def test_finalized_release_source_produces_canonical_v1_plan() -> None:
     release = _release()
     source = build_contract_release_deployment_source(release)
 
     plan = build_deployment_plan_from_source(source, _target())
 
-    assert plan.plan_version == "5"
+    assert plan.plan_version == "1"
     assert source.release_id == release.contract_release_id
     assert plan.source_snapshot_id == source.source_snapshot_id
     assert plan.contract_version == release.contract_version
