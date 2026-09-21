@@ -10,12 +10,10 @@ from semapact.deployment.compilers import TransitionCompiler
 from semapact.deployment.models import (
     DeploymentAction,
     DeploymentActionKind,
-    DeploymentAuthorization,
     DeploymentPlan,
     DeploymentTarget,
     NativeOperation,
     NativeOperationKind,
-    compute_deployment_authorization_id,
     compute_deployment_plan_id,
 )
 from semapact.deployment.orchestrator import DeploymentOrchestrator
@@ -177,7 +175,7 @@ def _observation() -> ObservedPlatformState:
 
 
 
-def test_generic_orchestrator_owns_observe_preview_freshness_and_execute() -> None:
+def test_generic_orchestrator_owns_observe_preview_freshness_and_apply() -> None:
     plan = _plan()
     runtime_provider = _RuntimeProvider(_observation())
     executor = _Executor()
@@ -196,23 +194,7 @@ def test_generic_orchestrator_owns_observe_preview_freshness_and_execute() -> No
     assert preview.operations[0].kind is NativeOperationKind.CREATE
     assert preview.operations[0].statement == "CREATE_ASSET orders"
 
-    authorization_id = compute_deployment_authorization_id(
-        authorization_kind="contractops",
-        authorization_reference="contract-auth-1",
-        deployment_plan_id=plan.deployment_plan_id,
-        source_snapshot_id=plan.source_snapshot_id,
-        allowed=True,
-    )
-    authorization = DeploymentAuthorization(
-        deployment_authorization_id=authorization_id,
-        deployment_plan_id=plan.deployment_plan_id,
-        source_snapshot_id=plan.source_snapshot_id,
-        allowed=True,
-        authorization_kind="contractops",
-        authorization_reference="contract-auth-1",
-    )
-
-    orchestrator.execute(plan, preview, authorization)
+    orchestrator.apply(plan, preview)
 
     assert runtime_provider.observe_calls == 2
     assert executor.operations == [preview.operations[0]]
