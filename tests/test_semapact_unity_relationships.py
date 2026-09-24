@@ -6,6 +6,7 @@ from semapact.constants import (
     UNITY_CONSTRAINT_NAME_KEY,
     UNITY_RELATIONSHIPS_COUNT_KEY,
     UNITY_RELATIONSHIPS_IMPORTED_KEY,
+    UNITY_RELATIONSHIPS_REASON_KEY,
 )
 from semapact.importers.unity_relationships import (
     enrich_unity_contract_relationships,
@@ -183,3 +184,34 @@ def test_unity_relationship_enrichment_ignores_non_foreign_key_constraints(
     props = _custom_props_map(enriched)
     assert props[UNITY_RELATIONSHIPS_IMPORTED_KEY] == "true"
     assert props[UNITY_RELATIONSHIPS_COUNT_KEY] == "0"
+
+
+def test_unity_relationship_enrichment_records_unmapped_table_failure(
+    sample_unity_contract_model,
+):
+    contract = sample_unity_contract_model.model_copy(deep=True)
+
+    enriched = enrich_unity_contract_relationships(
+        contract,
+        table_metadata={
+            "main.silver.missing": {
+                "table_constraints": [
+                    {
+                        "foreign_key_constraint": {
+                            "child_columns": ["id"],
+                            "parent_table": "main.ref.customers",
+                            "parent_columns": ["id"],
+                            "name": "fk_missing_customer",
+                        }
+                    }
+                ]
+            }
+        },
+    )
+
+    props = _custom_props_map(enriched)
+    assert props[UNITY_RELATIONSHIPS_IMPORTED_KEY] == "false"
+    assert props[UNITY_RELATIONSHIPS_COUNT_KEY] == "0"
+    assert "no matching governed asset" in str(
+        props[UNITY_RELATIONSHIPS_REASON_KEY]
+    )
