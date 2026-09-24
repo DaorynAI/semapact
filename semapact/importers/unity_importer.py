@@ -101,6 +101,13 @@ def import_unity_contract(
             raise TypeError("Databricks TableInfo.as_dict() must return a dict")
         table_metadata[table_name] = metadata
 
+    resolved_host = getattr(getattr(ws_client, "config", None), "host", None)
+    if not isinstance(resolved_host, str) or not resolved_host.strip():
+        raise ValueError("Databricks SDK did not resolve a workspace host")
+    for server in imported.servers or []:
+        if str(getattr(server, "type", "") or "").strip().casefold() == "databricks":
+            server.host = resolved_host.strip().rstrip("/")
+
     if is_schema_level:
         catalog, schema_name = parts
         imported.id = f"{catalog}-{schema_name}-product"
