@@ -52,67 +52,47 @@ def test_pipeline_import_schema_supports_delta_and_sql(monkeypatch):
     assert sql_contract.id == "from-importer"
 
 
-def test_pipeline_import_schema_requires_uc_credentials(monkeypatch):
-    monkeypatch.setenv("DATABRICKS_CONFIG_FILE", "/dev/null")
-    monkeypatch.delenv("DATABRICKS_HOST", raising=False)
-    monkeypatch.delenv("DATABRICKS_TOKEN", raising=False)
-    pipeline = ContractPipeline()
-
-    with pytest.raises(
-        Exception,
-        match=r"(cannot configure default credentials|Databricks workspace URL / host is required)",
-    ):
-        pipeline.import_schema("uc", "main.silver.orders")
-
-
-
-
-def test_pipeline_import_schema_supports_uc_when_credentials_are_given(monkeypatch):
+def test_pipeline_import_schema_delegates_uc_to_unity_importer(monkeypatch):
     captured: dict[str, object] = {}
+    imported = OpenDataContractStandard.model_validate(
+        {
+            "apiVersion": "v3.1.0",
+            "kind": "DataContract",
+            "id": "uc-id",
+            "name": "orders",
+            "version": "1.0.0",
+            "status": "draft",
+            "schema": [
+                {
+                    "name": "t1",
+                    "properties": [{"name": "id", "logicalType": "string"}],
+                }
+            ],
+        }
+    )
 
-    def fake_import(format: str, source: str | None = None, **_kwargs):  # noqa: ANN001
-        return OpenDataContractStandard.model_validate(
-            {
-                "apiVersion": "v3.1.0",
-                "kind": "DataContract",
-                "id": "uc-id",
-                "name": "orders",
-                "version": "1.0.0",
-                "status": "draft",
-                "schema": [
-                    {
-                        "name": "t1",
-                        "properties": [{"name": "id", "logicalType": "string"}],
-                    }
-                ],
-            }
-        )
-
-    def fake_enrich(contract, **kwargs):  # noqa: ANN001
+    def fake_unity_import(**kwargs):  # noqa: ANN003
         captured.update(kwargs)
-        return contract
+        return imported
 
     monkeypatch.setattr(
-        "semapact.importers.unity_importer.DataContract.import_from_source",
-        staticmethod(fake_import),
+        "semapact.orchestrator.pipeline.import_unity_contract",
+        fake_unity_import,
     )
-    monkeypatch.setattr(
-        "semapact.importers.unity_importer.enrich_unity_contract_relationships",
-        fake_enrich,
-    )
-    pipeline = ContractPipeline()
 
-    contract = pipeline.import_schema(
+    contract = ContractPipeline().import_schema(
         "uc",
         "main.silver.orders",
         uc_workspace_url="https://adb.example",
         uc_token="token",
     )
 
-    assert contract.id == "uc-id"
-    assert captured["table_fqn"] == "main.silver.orders"
-    assert captured["workspace_url"] == "https://adb.example"
-    assert captured["token"] == "token"
+    assert contract is imported
+    assert captured == {
+        "table_fqn": "main.silver.orders",
+        "workspace_url": "https://adb.example",
+        "token": "token",
+    }
 
 
 def test_pipeline_import_schema_rejects_unknown_source_type():
@@ -655,9 +635,8 @@ def test_pipeline_run_executes_real_unity_workflow(
         )
     )
 
-    def fake_import_from_source(format, source=None, **kwargs):  # noqa: ANN001
-        assert format == "unity"
-        assert kwargs["unity_table_full_name"] == ["main.silver.orders"]
+    def fake_unity_import(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
         return imported_contract
 
     def fake_export_to_path(
@@ -667,25 +646,21 @@ def test_pipeline_run_executes_real_unity_workflow(
         path.write_text('{"expectations": []}', encoding="utf-8")
         return path
 
-    def fake_enrich(contract, **kwargs):  # noqa: ANN001
-        captured.update(kwargs)
-        return contract
-
     monkeypatch.setattr(
-        "semapact.importers.unity_importer.DataContract.import_from_source",
-        staticmethod(fake_import_from_source),
+        "semapact.orchestrator.pipeline.import_unity_contract",
+        fake_unity_import,
     )
     monkeypatch.setattr(
         "semapact.orchestrator.pipeline.GreatExpectationsExporter.export_to_path",
         fake_export_to_path,
     )
     monkeypatch.setattr(
-        "semapact.importers.unity_importer.enrich_unity_contract_relationships",
-        fake_enrich,
-    )
-    monkeypatch.setattr(
         "semapact.governance.gate.evaluate_governance_gate",
-        lambda d, op: GovernanceGateResult(allowed=True, reason="allowed", decision_id="test-allow"),
+        lambda d, op: GovernanceGateResult(
+            allowed=True,
+            reason="allowed",
+            decision_id="test-allow",
+        ),
     )
     artifacts = ContractPipeline().run(
         source_type="uc",
@@ -711,9 +686,11 @@ def test_pipeline_run_executes_real_unity_workflow(
     assert manifest["policyValid"] is True
     assert merged_schema.description == "Imported Unity orders table"
     assert "processed_at" in merged_props
-    assert captured["table_fqn"] == "main.silver.orders"
-    assert captured["workspace_url"] == "https://adb.example"
-    assert captured["token"] == "token"
+    assert captured == {
+        "table_fqn": "main.silver.orders",
+        "workspace_url": "https://adb.example",
+        "token": "token",
+    }
 
 
 def test_pipeline_run_blocks_root_version_change_outside_release_flow(
