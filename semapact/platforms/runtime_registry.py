@@ -196,21 +196,13 @@ def _create_databricks_client_and_provider(
     *,
     contract_server: Server | None = None,
 ):
-    from semapact.platforms.databricks import (
-        DatabricksRuntimeProvider,
-        create_databricks_workspace_client,
-    )
+    from semapact.platforms.databricks import DatabricksRuntimeProvider
     from semapact.platforms.databricks.configuration import (
-        resolve_databricks_connection_hints,
+        create_configured_databricks_workspace_client,
     )
 
-    hints = resolve_databricks_connection_hints(
+    client = create_configured_databricks_workspace_client(
         workspace_url=_clean(contract_server.host) if contract_server else None
-    )
-    client = create_databricks_workspace_client(
-        workspace_url=hints.workspace_url,
-        token=hints.token,
-        profile=hints.profile,
     )
     source_identifier = getattr(getattr(client, "config", None), "host", None)
     if not isinstance(source_identifier, str) or not source_identifier.strip():
