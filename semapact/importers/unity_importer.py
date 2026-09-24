@@ -56,10 +56,14 @@ def import_unity_contract(
     )
     from semapact.platforms.databricks.discovery import discover_databricks_tables
 
-    ws_client = client or create_configured_databricks_workspace_client(
-        workspace_url=workspace_url,
-        token=token,
-        profile=profile,
+    ws_client = (
+        client
+        if client is not None
+        else create_configured_databricks_workspace_client(
+            workspace_url=workspace_url,
+            token=token,
+            profile=profile,
+        )
     )
 
     is_schema_level = len(parts) == 2
