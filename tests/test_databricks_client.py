@@ -73,3 +73,29 @@ def test_create_databricks_workspace_client_omits_blank_hints(
 
     assert isinstance(client, _FakeWorkspaceClient)
     assert client.kwargs == {}
+
+
+def test_create_databricks_workspace_client_uses_config_manager_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _use_fake_workspace_client(monkeypatch)
+
+    config_vals = {
+        "databricks.workspace_url": "https://config.example",
+        "databricks.token": "config-token",
+        "databricks.profile": "config-profile",
+    }
+    monkeypatch.setattr(
+        "semapact.core.config.config_manager.get",
+        lambda key, *args, **kwargs: config_vals.get(key, kwargs.get("default")),
+    )
+
+    client = create_databricks_workspace_client()
+
+    assert isinstance(client, _FakeWorkspaceClient)
+    assert client.kwargs == {
+        "host": "https://config.example",
+        "token": "config-token",
+        "profile": "config-profile",
+    }
+

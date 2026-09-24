@@ -24,30 +24,47 @@ def create_databricks_workspace_client(
     token: str | None = None,
     profile: str | None = None,
 ) -> WorkspaceClient:
-    """Create a Databricks SDK client from the auth hints the caller has.
+    """Create a Databricks SDK client from caller hints, ConfigManager, or SDK defaults.
 
-    SemaPact does not choose an authentication provider. Non-empty values are
-    forwarded to ``WorkspaceClient`` and omitted values are left for the SDK to
-    resolve from its standard configuration/authentication chain. Calling this
-    function with no arguments is therefore equivalent to ``WorkspaceClient()``.
+    Precedence for each hint:
+    1. Explicit caller arguments (workspace_url, token, profile)
+    2. Product configuration via ConfigManager (databricks.workspace_url / host, databricks.token, databricks.profile)
+    3. Databricks SDK Unified Authentication chain (DATABRICKS_HOST, ~/.databrickscfg)
 
     The function performs no credential logging or serialization.
     """
+    from semapact.core.config import config_manager
+
+    resolved_workspace_url = (
+        _clean_optional(workspace_url)
+        or _clean_optional(
+            config_manager.get(
+                "databricks.workspace_url",
+                env_var="SEMAPACT_DATABRICKS_WORKSPACE_URL",
+            )
+        )
+        or _clean_optional(config_manager.get("databricks.host"))
+    )
+    resolved_token = _clean_optional(token) or _clean_optional(
+        config_manager.get("databricks.token", env_var="SEMAPACT_DATABRICKS_TOKEN")
+    )
+    resolved_profile = _clean_optional(profile) or _clean_optional(
+        config_manager.get("databricks.profile", env_var="SEMAPACT_DATABRICKS_PROFILE")
+    )
+
     kwargs: dict[str, str] = {}
+    if resolved_workspace_url:
+        kwargs["host"] = resolved_workspace_url.rstrip("/")
 
-    host = _clean_optional(workspace_url)
-    if host:
-        kwargs["host"] = host.rstrip("/")
+    if resolved_token:
+        kwargs["token"] = resolved_token
 
-    if token and token.strip():
-        kwargs["token"] = token
-
-    selected_profile = _clean_optional(profile)
-    if selected_profile:
-        kwargs["profile"] = selected_profile
+    if resolved_profile:
+        kwargs["profile"] = resolved_profile
 
     workspace_client_cls = _load_workspace_client_class()
     return workspace_client_cls(**kwargs)
+
 
 
 def _clean_optional(value: str | None) -> str | None:

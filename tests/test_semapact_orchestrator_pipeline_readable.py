@@ -52,11 +52,19 @@ def test_pipeline_import_schema_supports_delta_and_sql(monkeypatch):
     assert sql_contract.id == "from-importer"
 
 
-def test_pipeline_import_schema_requires_uc_credentials():
+def test_pipeline_import_schema_requires_uc_credentials(monkeypatch):
+    monkeypatch.setenv("DATABRICKS_CONFIG_FILE", "/dev/null")
+    monkeypatch.delenv("DATABRICKS_HOST", raising=False)
+    monkeypatch.delenv("DATABRICKS_TOKEN", raising=False)
     pipeline = ContractPipeline()
 
-    with pytest.raises(Exception, match="databricks.workspace_url and databricks.token"):
+    with pytest.raises(
+        Exception,
+        match=r"(cannot configure default credentials|Databricks workspace URL / host is required)",
+    ):
         pipeline.import_schema("uc", "main.silver.orders")
+
+
 
 
 def test_pipeline_import_schema_supports_uc_when_credentials_are_given(monkeypatch):
