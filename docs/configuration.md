@@ -9,6 +9,41 @@ SemaPact loads configuration in this order:
 
 Operational deployment history is disabled when no backend is configured.
 
+## Databricks connection hints
+
+SemaPact can provide optional Databricks connection hints without replacing the
+official SDK unified-authentication chain.
+
+Project configuration:
+
+```yaml
+databricks:
+  workspace_url: https://adb-<workspace>.<region>.azuredatabricks.net
+  profile: DEFAULT
+```
+
+A token is also a supported typed field when required:
+
+```yaml
+databricks:
+  token: <token>
+```
+
+Do not commit long-lived credentials to a repository. Prefer a Databricks
+profile, workload identity/service-principal authentication, or environment
+secrets for CI/CD.
+
+Connection hints resolve in this order:
+
+1. explicit caller/CLI value;
+2. `SEMAPACT_DATABRICKS_WORKSPACE_URL`, `SEMAPACT_DATABRICKS_TOKEN`, or `SEMAPACT_DATABRICKS_PROFILE`;
+3. local/global SemaPact `databricks` configuration;
+4. if still omitted, the Databricks SDK unified-authentication chain, including its standard `DATABRICKS_*` environment variables and profile configuration.
+
+The low-level `create_databricks_workspace_client` factory remains
+configuration-neutral. Config resolution happens at SemaPact composition
+boundaries before the SDK client is constructed.
+
 ## Operational history
 
 SQLite:
