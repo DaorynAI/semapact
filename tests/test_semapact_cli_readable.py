@@ -190,31 +190,13 @@ def test_cli_import_uc_runs_unity_enrichment(
 ):
     captured: dict[str, Any] = {}
 
-    def _fake_import_from_source(**kwargs):
-        captured["import_kwargs"] = kwargs
+    def _fake_unity_import(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
         return sample_unity_contract_model.model_copy(deep=True)
 
-    def _fake_enrich(contract, **kwargs):  # noqa: ANN001
-        captured["enrich_kwargs"] = kwargs
-        return contract
-
     monkeypatch.setattr(
-        "semapact.importers.unity_importer.DataContract.import_from_source",
-        _fake_import_from_source,
-    )
-    monkeypatch.setattr(
-        "semapact.importers.unity_importer.enrich_unity_contract_relationships",
-        _fake_enrich,
-    )
-
-    # Mock the config manager with fallback values that should be overridden
-    config_vals = {
-        "databricks.workspace_url": "https://fallback.example",
-        "databricks.token": "fallback-token",
-    }
-    monkeypatch.setattr(
-        "semapact.core.config.config_manager.get",
-        lambda key, *args, **kwargs: config_vals.get(key, kwargs.get("default")),
+        "semapact.importers.unity_importer.import_unity_contract",
+        _fake_unity_import,
     )
 
     output_path = tmp_path / "out.yaml"
@@ -239,43 +221,24 @@ def test_cli_import_uc_runs_unity_enrichment(
     exit_code = cli.main()
 
     assert exit_code == 0
-    assert captured["import_kwargs"]["format"] == "unity"
-    assert captured["import_kwargs"]["unity_table_full_name"] == ["main.silver.orders"]
-    assert captured["enrich_kwargs"]["table_fqn"] == "main.silver.orders"
-    assert captured["enrich_kwargs"]["workspace_url"] == "https://adb.example"
-    assert captured["enrich_kwargs"]["token"] == "token"
+    assert captured["table_fqn"] == "main.silver.orders"
+    assert captured["workspace_url"] == "https://adb.example"
+    assert captured["token"] == "token"
+    assert captured["sql_http_path"] is None
+    assert captured["extract_lineage"] is False
 
-
-def test_cli_import_uc_uses_config_fallback(
+def test_cli_import_uc_leaves_missing_connection_hints_to_importer(
     sample_unity_contract_model, tmp_path, monkeypatch
 ):
     captured: dict[str, Any] = {}
 
-    def _fake_import_from_source(**kwargs):
-        captured["import_kwargs"] = kwargs
+    def _fake_unity_import(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
         return sample_unity_contract_model.model_copy(deep=True)
 
-    def _fake_enrich(contract, **kwargs):  # noqa: ANN001
-        captured["enrich_kwargs"] = kwargs
-        return contract
-
     monkeypatch.setattr(
-        "semapact.importers.unity_importer.DataContract.import_from_source",
-        _fake_import_from_source,
-    )
-    monkeypatch.setattr(
-        "semapact.importers.unity_importer.enrich_unity_contract_relationships",
-        _fake_enrich,
-    )
-
-    # Mock the config manager
-    config_vals = {
-        "databricks.workspace_url": "https://fallback.example",
-        "databricks.token": "fallback-token",
-    }
-    monkeypatch.setattr(
-        "semapact.core.config.config_manager.get",
-        lambda key, *args, **kwargs: config_vals.get(key, kwargs.get("default")),
+        "semapact.importers.unity_importer.import_unity_contract",
+        _fake_unity_import,
     )
 
     output_path = tmp_path / "out.yaml"
@@ -296,9 +259,8 @@ def test_cli_import_uc_uses_config_fallback(
     exit_code = cli.main()
 
     assert exit_code == 0
-    assert captured["enrich_kwargs"]["workspace_url"] == "https://fallback.example"
-    assert captured["enrich_kwargs"]["token"] == "fallback-token"
-
+    assert captured["workspace_url"] is None
+    assert captured["token"] is None
 
 def test_cli_release_classify_outputs_per_contract_required_bump(
     sample_odcs_model, tmp_path, capsys, monkeypatch
