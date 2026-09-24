@@ -4,7 +4,6 @@ from semapact.constants import (
     UNITY_CONSTRAINT_NAME_KEY,
     UNITY_RELATIONSHIPS_COUNT_KEY,
     UNITY_RELATIONSHIPS_IMPORTED_KEY,
-    UNITY_RELATIONSHIPS_REASON_KEY,
 )
 from semapact.importers.unity_relationships import (
     enrich_unity_contract_relationships,
@@ -19,7 +18,7 @@ def _custom_props_map(contract) -> dict[str, object]:  # noqa: ANN001
     }
 
 
-def test_unity_relationship_enrichment_imports_property_and_schema_relationships(
+def test_unity_relationship_enrichment_imports_sdk_foreign_keys(
     sample_unity_contract_model,
 ):
     contract = sample_unity_contract_model.model_copy(deep=True)
@@ -52,37 +51,29 @@ def test_unity_relationship_enrichment_imports_property_and_schema_relationships
         )
     )
 
-    def fake_fetcher(
-        workspace_url: str, token: str, table_fqn: str
-    ) -> dict[str, object]:
-        assert workspace_url == "https://adb.example"
-        assert token == "token"
-        assert table_fqn == "main.silver.orders"
-        return {
-            "tableConstraints": [
-                {
-                    "constraintType": "FOREIGN_KEY",
-                    "columns": ["id"],
-                    "referencedTable": "main.ref.customers",
-                    "referencedColumns": ["customer_id"],
-                    "name": "fk_orders_customer",
-                },
-                {
-                    "constraintType": "FOREIGN_KEY",
-                    "columns": ["parent_tenant", "parent_code"],
-                    "referencedTable": "main.ref.parents",
-                    "referencedColumns": ["tenant", "code"],
-                    "name": "fk_orders_parent",
-                },
-            ]
-        }
-
     enriched = enrich_unity_contract_relationships(
         contract,
         table_fqn="main.silver.orders",
-        workspace_url="https://adb.example",
-        token="token",
-        fetcher=fake_fetcher,
+        metadata={
+            "table_constraints": [
+                {
+                    "foreign_key_constraint": {
+                        "child_columns": ["id"],
+                        "parent_table": "main.ref.customers",
+                        "parent_columns": ["customer_id"],
+                        "name": "fk_orders_customer",
+                    }
+                },
+                {
+                    "foreign_key_constraint": {
+                        "child_columns": ["parent_tenant", "parent_code"],
+                        "parent_table": "main.ref.parents",
+                        "parent_columns": ["tenant", "code"],
+                        "name": "fk_orders_parent",
+                    }
+                },
+            ]
+        },
     )
 
     assert enriched.schema_ is not None
@@ -108,37 +99,32 @@ def test_unity_relationship_enrichment_imports_property_and_schema_relationships
         "main.ref.parents.tenant",
         "main.ref.parents.code",
     ]
-    assert enriched_schema.relationships[0].customProperties is not None
-    schema_rel_props = {
-        item.property: item.value
-        for item in enriched_schema.relationships[0].customProperties
-        if item.property
-    }
-    assert schema_rel_props[UNITY_CONSTRAINT_NAME_KEY] == "fk_orders_parent"
 
     props = _custom_props_map(enriched)
     assert props[UNITY_RELATIONSHIPS_IMPORTED_KEY] == "true"
     assert props[UNITY_RELATIONSHIPS_COUNT_KEY] == "2"
 
 
-def test_unity_relationship_enrichment_records_fallback_on_fetch_error(
+def test_unity_relationship_enrichment_ignores_non_foreign_key_constraints(
     sample_unity_contract_model,
 ):
     contract = sample_unity_contract_model.model_copy(deep=True)
 
-    def broken_fetcher(
-        _workspace_url: str, _token: str, _table_fqn: str
-    ) -> dict[str, object]:
-        raise RuntimeError("metadata endpoint unavailable")
-
     enriched = enrich_unity_contract_relationships(
         contract,
         table_fqn="main.silver.orders",
-        workspace_url="https://adb.example",
-        token="token",
-        fetcher=broken_fetcher,
+        metadata={
+            "table_constraints": [
+                {
+                    "primary_key_constraint": {
+                        "child_columns": ["id"],
+                        "name": "pk_orders",
+                    }
+                }
+            ]
+        },
     )
 
     props = _custom_props_map(enriched)
-    assert props[UNITY_RELATIONSHIPS_IMPORTED_KEY] == "false"
-    assert "metadata endpoint unavailable" in str(props[UNITY_RELATIONSHIPS_REASON_KEY])
+    assert props[UNITY_RELATIONSHIPS_IMPORTED_KEY] == "true"
+    assert props[UNITY_RELATIONSHIPS_COUNT_KEY] == "0"
