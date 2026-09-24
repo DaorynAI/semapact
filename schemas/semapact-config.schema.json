@@ -1,5 +1,49 @@
 {
   "$defs": {
+    "DatabricksConfig": {
+      "additionalProperties": false,
+      "description": "Project/global Databricks connection hints.\n\nThese are composition hints only. Missing values are intentionally left to\nthe Databricks SDK unified-authentication chain.",
+      "properties": {
+        "workspace_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Url"
+        },
+        "token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profile"
+        }
+      },
+      "title": "DatabricksConfig",
+      "type": "object"
+    },
     "DeltaOperationalHistoryConfig": {
       "additionalProperties": false,
       "description": "Delta Lake operational history configuration.",
@@ -84,6 +128,17 @@
   "additionalProperties": true,
   "description": "Incremental root schema for project/global SemaPact configuration.",
   "properties": {
+    "databricks": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DatabricksConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "history": {
       "anyOf": [
         {
