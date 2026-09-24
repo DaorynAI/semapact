@@ -55,14 +55,24 @@ class _Client:
 
 def _install_mapper(monkeypatch: pytest.MonkeyPatch) -> None:
     def create_odcs():
-        return OpenDataContractStandard(
-            apiVersion="v3.1.0",
-            kind="DataContract",
-            id="imported",
-            name="Imported",
-            version="1.0.0",
-            status="draft",
-            schema=[],
+        return OpenDataContractStandard.model_validate(
+            {
+                "apiVersion": "v3.1.0",
+                "kind": "DataContract",
+                "id": "imported",
+                "name": "Imported",
+                "version": "1.0.0",
+                "status": "draft",
+                "servers": [
+                    {
+                        "server": "databricks",
+                        "type": "databricks",
+                        "catalog": "main",
+                        "schema": "gold",
+                    }
+                ],
+                "schema": [],
+            }
         )
 
     def convert_unity_schema(contract, table_info):  # noqa: ANN001
@@ -113,6 +123,8 @@ def test_schema_level_import_builds_one_data_product_from_all_discovered_assets(
 
     assert contract.id == "main-gold-product"
     assert contract.status == "draft"
+    assert contract.servers is not None
+    assert contract.servers[0].host == "https://adb.example"
     assert [schema.name for schema in contract.schema_ or []] == [
         "customer_view",
         "orders",
