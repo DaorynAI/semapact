@@ -125,6 +125,10 @@ def _apply_foreign_keys(
 ) -> int:
     schema_obj = _resolve_target_schema(contract, table_fqn=table_fqn)
     if schema_obj is None:
+        if foreign_keys:
+            raise ValueError(
+                f"Unity relationship metadata has no matching governed asset: {table_fqn}"
+            )
         return 0
 
     imported_count = 0
