@@ -51,26 +51,16 @@ def import_unity_contract(
         create_odcs,
     )
 
-    from semapact.platforms.databricks.client import (
-        create_databricks_workspace_client,
-    )
     from semapact.platforms.databricks.configuration import (
-        resolve_databricks_connection_hints,
+        create_configured_databricks_workspace_client,
     )
     from semapact.platforms.databricks.discovery import discover_databricks_tables
 
-    ws_client = client
-    if ws_client is None:
-        hints = resolve_databricks_connection_hints(
-            workspace_url=workspace_url,
-            token=token,
-            profile=profile,
-        )
-        ws_client = create_databricks_workspace_client(
-            workspace_url=hints.workspace_url,
-            token=hints.token,
-            profile=hints.profile,
-        )
+    ws_client = client or create_configured_databricks_workspace_client(
+        workspace_url=workspace_url,
+        token=token,
+        profile=profile,
+    )
 
     is_schema_level = len(parts) == 2
     if is_schema_level:
