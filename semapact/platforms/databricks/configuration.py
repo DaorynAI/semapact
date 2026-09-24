@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError as PydanticValidationError
 
 from semapact.core.config import config_manager
 from semapact.core.config_schema import parse_databricks_config
 from semapact.exceptions import ValidationError
+
+if TYPE_CHECKING:
+    from databricks.sdk import WorkspaceClient
 
 
 @dataclass(frozen=True)
@@ -59,13 +63,12 @@ def resolve_databricks_connection_hints(
     )
 
 
-
 def create_configured_databricks_workspace_client(
     *,
     workspace_url: str | None = None,
     token: str | None = None,
     profile: str | None = None,
-):
+) -> WorkspaceClient:
     """Construct a WorkspaceClient after resolving SemaPact connection hints."""
     from semapact.platforms.databricks.client import (
         create_databricks_workspace_client,
@@ -81,6 +84,7 @@ def create_configured_databricks_workspace_client(
         token=hints.token,
         profile=hints.profile,
     )
+
 
 def _first_nonblank(*values: str | None) -> str | None:
     for value in values:
