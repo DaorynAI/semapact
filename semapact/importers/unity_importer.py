@@ -113,11 +113,7 @@ def import_unity_contract(
         imported.name = f"{catalog.capitalize()} {schema_name.capitalize()} Data Product"
         imported.status = "active"
 
-    for table_name in tables_to_import:
-        imported = enrich_unity_contract_relationships(
-            imported,
-            table_fqn=table_name,
-            metadata=table_metadata[table_name],
-        )
-
-    return imported
+    return enrich_unity_contract_relationships(
+        imported,
+        table_metadata=table_metadata,
+    )
