@@ -105,7 +105,6 @@ def import_unity_contract(
         catalog, schema_name = parts
         imported.id = f"{catalog}-{schema_name}-product"
         imported.name = f"{catalog.capitalize()} {schema_name.capitalize()} Data Product"
-        imported.status = "active"
 
     return enrich_unity_contract_relationships(
         imported,
