@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from open_data_contract_standard.model import SchemaObject
+
 from semapact.constants import (
     UNITY_CONSTRAINT_NAME_KEY,
     UNITY_RELATIONSHIPS_COUNT_KEY,
@@ -26,53 +28,54 @@ def test_unity_relationship_enrichment_imports_sdk_foreign_keys(
     schema = contract.schema_[0]
     assert schema.properties is not None
     template = schema.properties[0]
-    schema.properties.append(
-        template.model_copy(
-            update={
-                "id": "parent_tenant",
-                "name": "parent_tenant",
-                "physicalName": "parent_tenant",
-                "logicalType": "string",
-                "physicalType": "STRING",
-                "required": True,
-            }
-        )
-    )
-    schema.properties.append(
-        template.model_copy(
-            update={
-                "id": "parent_code",
-                "name": "parent_code",
-                "physicalName": "parent_code",
-                "logicalType": "string",
-                "physicalType": "STRING",
-                "required": True,
-            }
-        )
+    schema.properties.extend(
+        [
+            template.model_copy(
+                update={
+                    "id": "parent_tenant",
+                    "name": "parent_tenant",
+                    "physicalName": "parent_tenant",
+                    "logicalType": "string",
+                    "physicalType": "STRING",
+                    "required": True,
+                }
+            ),
+            template.model_copy(
+                update={
+                    "id": "parent_code",
+                    "name": "parent_code",
+                    "physicalName": "parent_code",
+                    "logicalType": "string",
+                    "physicalType": "STRING",
+                    "required": True,
+                }
+            ),
+        ]
     )
 
     enriched = enrich_unity_contract_relationships(
         contract,
-        table_fqn="main.silver.orders",
-        metadata={
-            "table_constraints": [
-                {
-                    "foreign_key_constraint": {
-                        "child_columns": ["id"],
-                        "parent_table": "main.ref.customers",
-                        "parent_columns": ["customer_id"],
-                        "name": "fk_orders_customer",
-                    }
-                },
-                {
-                    "foreign_key_constraint": {
-                        "child_columns": ["parent_tenant", "parent_code"],
-                        "parent_table": "main.ref.parents",
-                        "parent_columns": ["tenant", "code"],
-                        "name": "fk_orders_parent",
-                    }
-                },
-            ]
+        table_metadata={
+            "main.silver.orders": {
+                "table_constraints": [
+                    {
+                        "foreign_key_constraint": {
+                            "child_columns": ["id"],
+                            "parent_table": "main.ref.customers",
+                            "parent_columns": ["customer_id"],
+                            "name": "fk_orders_customer",
+                        }
+                    },
+                    {
+                        "foreign_key_constraint": {
+                            "child_columns": ["parent_tenant", "parent_code"],
+                            "parent_table": "main.ref.parents",
+                            "parent_columns": ["tenant", "code"],
+                            "name": "fk_orders_parent",
+                        }
+                    },
+                ]
+            }
         },
     )
 
@@ -105,6 +108,57 @@ def test_unity_relationship_enrichment_imports_sdk_foreign_keys(
     assert props[UNITY_RELATIONSHIPS_COUNT_KEY] == "2"
 
 
+def test_unity_relationship_enrichment_aggregates_across_data_product(
+    sample_unity_contract_model,
+):
+    contract = sample_unity_contract_model.model_copy(deep=True)
+    assert contract.schema_ is not None
+    first = contract.schema_[0]
+    assert first.properties is not None
+    contract.schema_.append(
+        SchemaObject(
+            name="items",
+            physicalName="items",
+            physicalType="table",
+            properties=[first.properties[0].model_copy(deep=True)],
+        )
+    )
+
+    enriched = enrich_unity_contract_relationships(
+        contract,
+        table_metadata={
+            "main.silver.orders": {
+                "table_constraints": [
+                    {
+                        "foreign_key_constraint": {
+                            "child_columns": ["id"],
+                            "parent_table": "main.ref.customers",
+                            "parent_columns": ["id"],
+                            "name": "fk_orders_customer",
+                        }
+                    }
+                ]
+            },
+            "main.silver.items": {
+                "table_constraints": [
+                    {
+                        "foreign_key_constraint": {
+                            "child_columns": ["id"],
+                            "parent_table": "main.ref.products",
+                            "parent_columns": ["id"],
+                            "name": "fk_items_product",
+                        }
+                    }
+                ]
+            },
+        },
+    )
+
+    props = _custom_props_map(enriched)
+    assert props[UNITY_RELATIONSHIPS_IMPORTED_KEY] == "true"
+    assert props[UNITY_RELATIONSHIPS_COUNT_KEY] == "2"
+
+
 def test_unity_relationship_enrichment_ignores_non_foreign_key_constraints(
     sample_unity_contract_model,
 ):
@@ -112,16 +166,17 @@ def test_unity_relationship_enrichment_ignores_non_foreign_key_constraints(
 
     enriched = enrich_unity_contract_relationships(
         contract,
-        table_fqn="main.silver.orders",
-        metadata={
-            "table_constraints": [
-                {
-                    "primary_key_constraint": {
-                        "child_columns": ["id"],
-                        "name": "pk_orders",
+        table_metadata={
+            "main.silver.orders": {
+                "table_constraints": [
+                    {
+                        "primary_key_constraint": {
+                            "child_columns": ["id"],
+                            "name": "pk_orders",
+                        }
                     }
-                }
-            ]
+                ]
+            }
         },
     )
 
