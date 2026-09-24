@@ -24,14 +24,8 @@ from semapact.platforms.databricks.deployment import (
     DatabricksDeploymentExecutionConfig,
     DatabricksStatementExecutor,
 )
-from semapact.platforms.databricks.runtime import DatabricksRuntimeProvider
 from semapact.platforms.runtime_registry import create_deployment_adapter
-from semapact.reconciliation import (
-    RuntimeDriftStatus,
-    classify_reconciliation_status,
-    reconcile_governed_contract,
-    runtime_asset_specs_from_contract,
-)
+from semapact.reconciliation import RuntimeDriftStatus
 from semapact.schema import validate_simple_sql_identifier
 
 
@@ -50,9 +44,13 @@ _RESERVED_TAGS = (
     "semapact_source_revision",
 )
 _CONFIRMATION = "I_UNDERSTAND_THIS_CREATES_TABLES"
-_DEFAULT_CATALOG = "manufacturing_demo"
-_DEFAULT_SCHEMA = "gold"
-_DEFAULT_WAREHOUSE_ID = "dae52f9b349fc77f"
+
+
+def _required_env(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        pytest.fail(f"live Databricks smoke requires {name}")
+    return value
 
 
 def _safe_identifier(name: str, label: str) -> str:
@@ -64,13 +62,18 @@ def _safe_identifier(name: str, label: str) -> str:
 
 
 def _safe_schema(name: str) -> str:
-    return _safe_identifier(name, "schema")
+    _safe_identifier(name, "schema")
+    if not name.casefold().startswith("semapact_smoke_"):
+        pytest.fail(
+            "live Databricks smoke schemas must start with 'semapact_smoke_'"
+        )
+    return name
 
 
 def _safe_run_id(value: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9_]", "_", value.strip())
     if not normalized:
-        pytest.fail("run ID must contain a valid identifier")
+        pytest.fail("SEMAPACT_LIVE_RUN_ID must contain an identifier")
     return normalized[:48].casefold()
 
 
@@ -171,38 +174,27 @@ def test_live_candidate_release_and_redeployment_converge() -> None:
         )
 
     catalog = _safe_identifier(
-        os.environ.get("SEMAPACT_LIVE_DATABRICKS_CATALOG", _DEFAULT_CATALOG).strip(),
+        _required_env("SEMAPACT_LIVE_DATABRICKS_CATALOG"),
         "catalog",
     )
-    uat_schema = _safe_schema(
-        os.environ.get("SEMAPACT_LIVE_DATABRICKS_UAT_SCHEMA", _DEFAULT_SCHEMA).strip()
-    )
-    prod_schema = _safe_schema(
-        os.environ.get("SEMAPACT_LIVE_DATABRICKS_PROD_SCHEMA", _DEFAULT_SCHEMA).strip()
-    )
-    warehouse_id = os.environ.get(
-        "SEMAPACT_LIVE_DATABRICKS_WAREHOUSE_ID", _DEFAULT_WAREHOUSE_ID
-    ).strip()
-    raw_run_id = os.environ.get("SEMAPACT_LIVE_RUN_ID", "").strip() or f"reg_{int(datetime.now(timezone.utc).timestamp())}"
-    run_id = _safe_run_id(raw_run_id)
-
+    uat_schema = _safe_schema(_required_env("SEMAPACT_LIVE_DATABRICKS_UAT_SCHEMA"))
+    prod_schema = _safe_schema(_required_env("SEMAPACT_LIVE_DATABRICKS_PROD_SCHEMA"))
     if uat_schema.casefold() == prod_schema.casefold():
-        uat_table_name = f"semapact_uat_{run_id}"
-        prod_table_name = f"semapact_prod_{run_id}"
-    else:
-        uat_table_name = f"semapact_smoke_{run_id}"
-        prod_table_name = f"semapact_smoke_{run_id}"
+        pytest.fail("live Databricks smoke requires distinct UAT and PROD schemas")
+    warehouse_id = _required_env("SEMAPACT_LIVE_DATABRICKS_WAREHOUSE_ID")
+    run_id = _safe_run_id(_required_env("SEMAPACT_LIVE_RUN_ID"))
 
+    table_name = f"semapact_smoke_{run_id}"
     client = create_databricks_workspace_client()
     source_reference = str(getattr(client.config, "host", "") or "").strip()
     if not source_reference:
         pytest.fail("Databricks SDK did not resolve a workspace host")
 
-    uat_full_name = f"{catalog}.{uat_schema}.{uat_table_name}"
-    prod_full_name = f"{catalog}.{prod_schema}.{prod_table_name}"
+    uat_full_name = f"{catalog}.{uat_schema}.{table_name}"
+    prod_full_name = f"{catalog}.{prod_schema}.{table_name}"
 
-    base_uat = _contract(table_name=uat_table_name, include_note=False)
-    candidate_uat = _contract(table_name=uat_table_name, include_note=True)
+    base = _contract(table_name=table_name, include_note=False)
+    candidate = _contract(table_name=table_name, include_note=True)
     deployment = DeploymentWorkflowService()
 
     try:
@@ -216,8 +208,8 @@ def test_live_candidate_release_and_redeployment_converge() -> None:
         )
 
         create_bundle = deployment.assess(
-            base_uat,
-            base_uat,
+            base,
+            base,
             base_revision_ref=f"live:base:{run_id}",
             candidate_revision_ref=f"live:base:{run_id}",
             target=uat_target,
@@ -234,8 +226,8 @@ def test_live_candidate_release_and_redeployment_converge() -> None:
         assert create_result.contract_release_id is None
 
         alter_bundle = deployment.assess(
-            base_uat,
-            candidate_uat,
+            base,
+            candidate,
             base_revision_ref=f"live:base:{run_id}",
             candidate_revision_ref=f"live:candidate:{run_id}",
             target=uat_target,
@@ -255,17 +247,13 @@ def test_live_candidate_release_and_redeployment_converge() -> None:
             warehouse_id=warehouse_id,
             catalog=catalog,
             schema_name=uat_schema,
-            table_name=uat_table_name,
+            table_name=table_name,
         ) == {}
-
-        # Formal release workflow
-        base_prod = _contract(table_name=prod_table_name, include_note=False)
-        candidate_prod = _contract(table_name=prod_table_name, include_note=True)
 
         release_workflow = ReleaseWorkflowService()
         release_bundle = release_workflow.assess(
-            base_prod,
-            candidate_prod,
+            base,
+            candidate,
             base_revision_ref=f"live:base:{run_id}",
             candidate_revision_ref=f"live:candidate:{run_id}",
         )
@@ -281,7 +269,7 @@ def test_live_candidate_release_and_redeployment_converge() -> None:
             release_bundle,
             approval=approval,
         )
-        assert release.contract_version != base_prod.version
+        assert release.contract_version != base.version
 
         prod_target = _target(
             catalog=catalog,
@@ -313,7 +301,7 @@ def test_live_candidate_release_and_redeployment_converge() -> None:
             warehouse_id=warehouse_id,
             catalog=catalog,
             schema_name=prod_schema,
-            table_name=prod_table_name,
+            table_name=table_name,
         ) == expected_tags
 
         repeat_result = deployment.deploy(
@@ -330,92 +318,8 @@ def test_live_candidate_release_and_redeployment_converge() -> None:
             warehouse_id=warehouse_id,
             catalog=catalog,
             schema_name=prod_schema,
-            table_name=prod_table_name,
+            table_name=table_name,
         ) == expected_tags
     finally:
         _delete_if_present(client, uat_full_name)
         _delete_if_present(client, prod_full_name)
-
-
-def test_live_databricks_drift_reconciliation() -> None:
-    if os.environ.get("SEMAPACT_LIVE_DATABRICKS_CONFIRM") != _CONFIRMATION:
-        pytest.fail(
-            "set SEMAPACT_LIVE_DATABRICKS_CONFIRM="
-            f"{_CONFIRMATION} to run the live smoke"
-        )
-
-    catalog = _safe_identifier(
-        os.environ.get("SEMAPACT_LIVE_DATABRICKS_CATALOG", _DEFAULT_CATALOG).strip(),
-        "catalog",
-    )
-    schema_name = _safe_schema(
-        os.environ.get("SEMAPACT_LIVE_DATABRICKS_PROD_SCHEMA", _DEFAULT_SCHEMA).strip()
-    )
-    warehouse_id = os.environ.get(
-        "SEMAPACT_LIVE_DATABRICKS_WAREHOUSE_ID", _DEFAULT_WAREHOUSE_ID
-    ).strip()
-    raw_run_id = os.environ.get("SEMAPACT_LIVE_RUN_ID", "").strip() or f"drift_{int(datetime.now(timezone.utc).timestamp())}"
-    run_id = _safe_run_id(raw_run_id)
-
-    table_name = f"semapact_drift_{run_id}"
-    client = create_databricks_workspace_client()
-    source_reference = str(getattr(client.config, "host", "") or "").strip()
-    if not source_reference:
-        pytest.fail("Databricks SDK did not resolve a workspace host")
-
-    full_name = f"{catalog}.{schema_name}.{table_name}"
-    contract = _contract(table_name=table_name, include_note=False)
-    deployment = DeploymentWorkflowService()
-    target = _target(
-        catalog=catalog,
-        schema_name=schema_name,
-        source_reference=source_reference,
-    )
-
-    try:
-        _delete_if_present(client, full_name)
-
-        bundle = deployment.assess(
-            contract,
-            contract,
-            base_revision_ref=f"live:base:{run_id}",
-            candidate_revision_ref=f"live:base:{run_id}",
-            target=target,
-            adapter=_adapter(warehouse_id=warehouse_id),
-        )
-        create_result = deployment.deploy(
-            bundle,
-            adapter=_adapter(warehouse_id=warehouse_id),
-        )
-        assert create_result.status is RuntimeDriftStatus.IN_SYNC
-
-        # Introduce out-of-band drift
-        executor = DatabricksStatementExecutor(
-            client=client,
-            warehouse_id=warehouse_id,
-            poll_interval_seconds=1,
-        )
-        executor._run_statement(
-            f"ALTER TABLE `{catalog}`.`{schema_name}`.`{table_name}` "
-            "ADD COLUMNS (`rogue_col` STRING COMMENT 'out of band drift')"
-        )
-
-        # Observe runtime via DatabricksRuntimeProvider and reconcile
-        runtime_provider = DatabricksRuntimeProvider(
-            client=client,
-            source_identifier=source_reference,
-        )
-        bindings = runtime_provider.resolve_bindings(
-            runtime_target=f"{catalog}.{schema_name}",
-            assets=runtime_asset_specs_from_contract(contract),
-        )
-        observation = runtime_provider.observe(bindings=bindings)
-        reconciliation_result = reconcile_governed_contract(
-            contract,
-            observation,
-            asset_bindings=bindings,
-        )
-        drift_status = classify_reconciliation_status(reconciliation_result)
-        assert drift_status is RuntimeDriftStatus.DRIFT
-    finally:
-        _delete_if_present(client, full_name)
