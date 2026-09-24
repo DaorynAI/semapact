@@ -6,7 +6,9 @@ import time
 from typing import Any
 
 from semapact.application.models.readiness import ReadinessCheck, ReadinessStatus
-from semapact.platforms.databricks.client import create_databricks_workspace_client
+from semapact.platforms.databricks.configuration import (
+    create_configured_databricks_workspace_client,
+)
 
 
 _TERMINAL_STATES = {"SUCCEEDED", "FAILED", "CANCELED", "CLOSED"}
@@ -34,7 +36,7 @@ class DatabricksReadinessProbe:
 
     def run(self) -> tuple[ReadinessCheck, ...]:
         try:
-            client = create_databricks_workspace_client(
+            client = create_configured_databricks_workspace_client(
                 workspace_url=self._workspace_url,
             )
         except Exception as exc:
