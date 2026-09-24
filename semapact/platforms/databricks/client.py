@@ -1,1 +1,64 @@
-"""Databricks authenticated-client construction boundary.\n\nThis module owns construction of an initialized Databricks WorkspaceClient.\nConnection-hint resolution belongs to the calling composition boundary; missing\nhints are intentionally left to the Databricks SDK unified-authentication chain.\n"""\n\nfrom __future__ import annotations\n\nfrom typing import TYPE_CHECKING, Any\n\nif TYPE_CHECKING:\n    from databricks.sdk import WorkspaceClient\n\n\ndef create_databricks_workspace_client(\n    *,\n    workspace_url: str | None = None,\n    token: str | None = None,\n    profile: str | None = None,\n) -> WorkspaceClient:\n    """Create a Databricks SDK client from explicit optional hints.\n\n    This function does not read SemaPact configuration or mutate process-global\n    environment variables. Callers that want project/global SemaPact settings\n    resolve them before crossing this boundary.\n\n    Omitted values are left for the SDK to resolve from its standard unified\n    authentication chain.\n    """\n    kwargs: dict[str, str] = {}\n\n    host = _clean_optional(workspace_url)\n    if host:\n        kwargs["host"] = host.rstrip("/")\n\n    resolved_token = _clean_optional(token)\n    if resolved_token:\n        kwargs["token"] = resolved_token\n\n    selected_profile = _clean_optional(profile)\n    if selected_profile:\n        kwargs["profile"] = selected_profile\n\n    workspace_client_cls = _load_workspace_client_class()\n    return workspace_client_cls(**kwargs)\n\n\ndef _clean_optional(value: str | None) -> str | None:\n    if value is None:\n        return None\n    cleaned = value.strip()\n    return cleaned or None\n\n\ndef _load_workspace_client_class() -> Any:\n    """Load the optional Databricks SDK only when client construction is used."""\n    try:\n        from databricks.sdk import WorkspaceClient\n    except ImportError as exc:\n        raise RuntimeError(\n            'Databricks support requires the optional extra: pip install "semapact[databricks]"'\n        ) from exc\n    return WorkspaceClient\n
+"""Databricks authenticated-client construction boundary.
+
+This module owns construction of an initialized Databricks WorkspaceClient.
+Connection-hint resolution belongs to the calling composition boundary; missing
+hints are intentionally left to the Databricks SDK unified-authentication chain.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from databricks.sdk import WorkspaceClient
+
+
+def create_databricks_workspace_client(
+    *,
+    workspace_url: str | None = None,
+    token: str | None = None,
+    profile: str | None = None,
+) -> WorkspaceClient:
+    """Create a Databricks SDK client from explicit optional hints.
+
+    This function does not read SemaPact configuration or mutate process-global
+    environment variables. Callers that want project/global SemaPact settings
+    resolve them before crossing this boundary.
+
+    Omitted values are left for the SDK to resolve from its standard unified
+    authentication chain.
+    """
+    kwargs: dict[str, str] = {}
+
+    host = _clean_optional(workspace_url)
+    if host:
+        kwargs["host"] = host.rstrip("/")
+
+    resolved_token = _clean_optional(token)
+    if resolved_token:
+        kwargs["token"] = resolved_token
+
+    selected_profile = _clean_optional(profile)
+    if selected_profile:
+        kwargs["profile"] = selected_profile
+
+    workspace_client_cls = _load_workspace_client_class()
+    return workspace_client_cls(**kwargs)
+
+
+def _clean_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _load_workspace_client_class() -> Any:
+    """Load the optional Databricks SDK only when client construction is used."""
+    try:
+        from databricks.sdk import WorkspaceClient
+    except ImportError as exc:
+        raise RuntimeError(
+            'Databricks support requires the optional extra: pip install "semapact[databricks]"'
+        ) from exc
+    return WorkspaceClient
