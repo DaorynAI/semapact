@@ -19,7 +19,9 @@ from semapact.application.services.release_workflow import (
 from semapact.deployment import DeploymentTarget, NativeOperationKind
 from semapact.exceptions import ValidationError
 from semapact.governance import DecisionResult
-from semapact.platforms.databricks import create_databricks_workspace_client
+from semapact.platforms.databricks.configuration import (
+    create_configured_databricks_workspace_client,
+)
 from semapact.platforms.databricks.deployment import (
     DatabricksDeploymentExecutionConfig,
     DatabricksStatementExecutor,
@@ -185,7 +187,7 @@ def test_live_candidate_release_and_redeployment_converge() -> None:
     run_id = _safe_run_id(_required_env("SEMAPACT_LIVE_RUN_ID"))
 
     table_name = f"semapact_smoke_{run_id}"
-    client = create_databricks_workspace_client()
+    client = create_configured_databricks_workspace_client()
     source_reference = str(getattr(client.config, "host", "") or "").strip()
     if not source_reference:
         pytest.fail("Databricks SDK did not resolve a workspace host")
