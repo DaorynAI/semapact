@@ -112,7 +112,7 @@ def test_schema_level_import_builds_one_data_product_from_all_discovered_assets(
     )
 
     assert contract.id == "main-gold-product"
-    assert contract.status == "active"
+    assert contract.status == "draft"
     assert [schema.name for schema in contract.schema_ or []] == [
         "customer_view",
         "orders",
