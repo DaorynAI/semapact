@@ -1,20 +1,10 @@
-"""Single implementation for Unity Catalog contract imports.
-
-This module consolidates the Unity import logic that was previously duplicated
-in ``semapact.interfaces.cli`` and ``semapact.orchestrator.pipeline``.
-
-Environment variable mutation is isolated inside a context manager so it cannot
-leak into concurrent operations.
-"""
+"""Unity Catalog metadata import into canonical ODCS contracts."""
 
 from __future__ import annotations
 
-import contextlib
 import logging
-import os
-from typing import Iterator
+from typing import Any
 
-from datacontract.data_contract import DataContract
 from open_data_contract_standard.model import OpenDataContractStandard
 
 from semapact.importers.unity_relationships import (
@@ -24,84 +14,106 @@ from semapact.importers.unity_relationships import (
 LOGGER = logging.getLogger(__name__)
 
 
-@contextlib.contextmanager
-def _databricks_env(
-    workspace_url: str | None, token: str | None, profile: str | None
-) -> Iterator[None]:
-    """Temporarily set Databricks env vars and restore them on exit.
-
-    This context manager ensures the process-global environment is restored
-    even when the import raises, preventing credential leaks across calls.
-    """
-    env_keys = (
-        "DATACONTRACT_DATABRICKS_SERVER_HOSTNAME",
-        "DATACONTRACT_DATABRICKS_TOKEN",
-        "DATABRICKS_CONFIG_PROFILE",
-    )
-    backup = {key: os.environ.get(key) for key in env_keys}
-    if workspace_url:
-        os.environ["DATACONTRACT_DATABRICKS_SERVER_HOSTNAME"] = workspace_url
-    if token:
-        os.environ["DATACONTRACT_DATABRICKS_TOKEN"] = token
-    if profile:
-        os.environ["DATABRICKS_CONFIG_PROFILE"] = profile
-    try:
-        yield
-    finally:
-        for key, value in backup.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-
-
 def import_unity_contract(
     *,
     table_fqn: str,
     workspace_url: str | None = None,
     token: str | None = None,
+    profile: str | None = None,
     sql_http_path: str | None = None,
     extract_lineage: bool = False,
+    client: Any | None = None,
 ) -> OpenDataContractStandard:
-    """Import Unity Catalog metadata into ODCS using datacontract-cli.
+    """Import one UC table or one entire UC schema as an ODCS data product.
 
-    Runtime lineage is deliberately excluded from this importer. The legacy
-    lineage-related keyword arguments remain temporarily accepted so existing
-    callers fail with an explicit boundary error instead of a Python signature
-    error. They must not trigger ODCS mutation.
+    Authentication/configuration is resolved at this import composition boundary.
+    The importer itself uses only the official Databricks SDK client and never
+    mutates process-global environment variables.
 
-    Raises ``ValueError`` when credentials are missing or lineage enrichment is
-    requested through the import boundary.
+    Runtime lineage remains observation evidence and is not projected into ODCS.
     """
     del sql_http_path
 
     if extract_lineage:
         raise ValueError(
-            "Unity lineage is runtime observation evidence and can no longer be "
+            "Unity lineage is runtime observation evidence and cannot be "
             "projected into ODCS during import"
         )
 
-    from semapact.core.config import config_manager
-
-    workspace_url = workspace_url or config_manager.get("databricks.workspace_url")
-    token = token or config_manager.get("databricks.token")
-    profile = config_manager.get("databricks.profile")
-
-    if not profile and (not workspace_url or not token):
+    parts = tuple(part.strip() for part in table_fqn.split("."))
+    if len(parts) not in {2, 3} or not all(parts):
         raise ValueError(
-            "databricks.workspace_url and databricks.token (or databricks.profile) are required for Unity Catalog imports"
+            "Unity import source must use catalog.schema or catalog.schema.table"
         )
 
-    LOGGER.info("Importing Unity Catalog contract: %s", table_fqn)
-    with _databricks_env(workspace_url, token, profile):
-        imported = DataContract.import_from_source(
-            format="unity",
-            source=None,
-            unity_table_full_name=[table_fqn],
-        )
-        return enrich_unity_contract_relationships(
-            imported,
-            table_fqn=table_fqn,
+    from datacontract.imports.unity_importer import (
+        convert_unity_schema,
+        create_odcs,
+    )
+
+    from semapact.platforms.databricks.configuration import (
+        create_configured_databricks_workspace_client,
+    )
+    from semapact.platforms.databricks.discovery import discover_databricks_tables
+
+    ws_client = (
+        client
+        if client is not None
+        else create_configured_databricks_workspace_client(
             workspace_url=workspace_url,
             token=token,
+            profile=profile,
         )
+    )
+
+    is_schema_level = len(parts) == 2
+    if is_schema_level:
+        catalog, schema_name = parts
+        tables_to_import = discover_databricks_tables(
+            client=ws_client,
+            catalog_name=catalog,
+            schema_name=schema_name,
+        )
+        if not tables_to_import:
+            raise ValueError(
+                f"No tables discovered in Unity Catalog schema {table_fqn}"
+            )
+    else:
+        tables_to_import = (table_fqn,)
+
+    LOGGER.info(
+        "Importing %d Unity Catalog table(s) from %s",
+        len(tables_to_import),
+        table_fqn,
+    )
+
+    imported = create_odcs()
+    imported.schema_ = []
+    table_metadata: dict[str, dict[str, Any]] = {}
+    for table_name in tables_to_import:
+        table_info = ws_client.tables.get(table_name)
+        imported = convert_unity_schema(imported, table_info)
+        as_dict = getattr(table_info, "as_dict", None)
+        if not callable(as_dict):
+            raise TypeError("Databricks TableInfo must expose as_dict()")
+        metadata = as_dict()
+        if not isinstance(metadata, dict):
+            raise TypeError("Databricks TableInfo.as_dict() must return a dict")
+        table_metadata[table_name] = metadata
+
+    resolved_host = getattr(getattr(ws_client, "config", None), "host", None)
+    if not isinstance(resolved_host, str) or not resolved_host.strip():
+        raise ValueError("Databricks SDK did not resolve a workspace host")
+    for server in imported.servers or []:
+        if str(getattr(server, "type", "") or "").strip().casefold() == "databricks":
+            server.host = resolved_host.strip().rstrip("/")
+
+    if is_schema_level:
+        catalog, schema_name = parts
+        imported.id = f"{catalog}-{schema_name}-product"
+        imported.name = f"{catalog.capitalize()} {schema_name.capitalize()} Data Product"
+
+    return enrich_unity_contract_relationships(
+        imported,
+        table_metadata=table_metadata,
+    )

@@ -1,13 +1,8 @@
 """Databricks authenticated-client construction boundary.
 
-This module owns construction of an initialized Databricks ``WorkspaceClient``.
-Downstream platform capabilities such as observation consume the resulting
-client and remain independent from the authentication mechanism used to create
-it.
-
-SemaPact forwards only the connection/authentication hints supplied by the
-caller. The Databricks SDK remains responsible for selecting and validating the
-authentication mechanism, including its default/unified authentication chain.
+This module owns construction of an initialized Databricks WorkspaceClient.
+Connection-hint resolution belongs to the calling composition boundary; missing
+hints are intentionally left to the Databricks SDK unified-authentication chain.
 """
 
 from __future__ import annotations
@@ -24,14 +19,14 @@ def create_databricks_workspace_client(
     token: str | None = None,
     profile: str | None = None,
 ) -> WorkspaceClient:
-    """Create a Databricks SDK client from the auth hints the caller has.
+    """Create a Databricks SDK client from explicit optional hints.
 
-    SemaPact does not choose an authentication provider. Non-empty values are
-    forwarded to ``WorkspaceClient`` and omitted values are left for the SDK to
-    resolve from its standard configuration/authentication chain. Calling this
-    function with no arguments is therefore equivalent to ``WorkspaceClient()``.
+    This function does not read SemaPact configuration or mutate process-global
+    environment variables. Callers that want project/global SemaPact settings
+    resolve them before crossing this boundary.
 
-    The function performs no credential logging or serialization.
+    Omitted values are left for the SDK to resolve from its standard unified
+    authentication chain.
     """
     kwargs: dict[str, str] = {}
 
@@ -39,8 +34,9 @@ def create_databricks_workspace_client(
     if host:
         kwargs["host"] = host.rstrip("/")
 
-    if token and token.strip():
-        kwargs["token"] = token
+    resolved_token = _clean_optional(token)
+    if resolved_token:
+        kwargs["token"] = resolved_token
 
     selected_profile = _clean_optional(profile)
     if selected_profile:

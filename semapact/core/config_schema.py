@@ -1,10 +1,36 @@
-"""Typed configuration schema for optional operational deployment history."""
+"""Typed configuration schema for supported SemaPact configuration sections."""
 
 from __future__ import annotations
 
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
+
+
+def _clean_optional_string(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+class DatabricksConfig(BaseModel):
+    """Project/global Databricks connection hints.
+
+    These are composition hints only. Missing values are intentionally left to
+    the Databricks SDK unified-authentication chain.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    workspace_url: str | None = None
+    token: str | None = None
+    profile: str | None = None
+
+    @field_validator("workspace_url", "token", "profile")
+    @classmethod
+    def _normalize_optional_hint(cls, value: str | None) -> str | None:
+        return _clean_optional_string(value)
 
 
 class _OperationalHistoryConfig(BaseModel):
@@ -76,9 +102,18 @@ class SemaPactConfigSchema(BaseModel):
         },
     )
 
+    databricks: DatabricksConfig | None = None
     history: HistoryConfig | None = None
 
+
 _OPERATIONAL_HISTORY_ADAPTER = TypeAdapter(OperationalHistoryConfig)
+
+
+def parse_databricks_config(value: object) -> DatabricksConfig | None:
+    """Validate the databricks config subsection fail closed."""
+    if value is None:
+        return None
+    return DatabricksConfig.model_validate(value)
 
 
 def parse_operational_history_config(

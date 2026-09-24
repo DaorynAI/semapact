@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Sequence, Tuple
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+from typing import Any, Iterable, Mapping, Sequence, Tuple
 
 from open_data_contract_standard.model import (
     CustomProperty,
@@ -33,147 +29,70 @@ class UnityForeignKey:
 def enrich_unity_contract_relationships(
     contract: OpenDataContractStandard,
     *,
-    table_fqn: str,
-    workspace_url: str,
-    token: str,
-    fetcher: Callable[[str, str, str], dict[str, Any]] | None = None,
+    table_metadata: Mapping[str, Mapping[str, Any]],
 ) -> OpenDataContractStandard:
-    """Best-effort Unity relationship enrichment using table metadata.
+    """Project SDK-returned Unity foreign keys for an entire data product.
 
-    If Unity relationship metadata is unavailable, this function does not fail import.
-    Instead it records fallback metadata on the contract customProperties.
+    Relationship extraction is best effort per table. A contract-level summary
+    records the total imported relationships and any table-specific failures.
+    No second HTTP client or bearer-token path is introduced here.
     """
-    table_metadata_fetcher = fetcher or _fetch_unity_table_metadata
-    try:
-        metadata = table_metadata_fetcher(workspace_url, token, table_fqn)
-        foreign_keys = _extract_foreign_keys(metadata)
-        imported_count = _apply_foreign_keys(
-            contract, table_fqn=table_fqn, foreign_keys=foreign_keys
-        )
-        _upsert_contract_custom_property(
-            contract, UNITY_RELATIONSHIPS_IMPORTED_KEY, "true"
-        )
-        _upsert_contract_custom_property(
-            contract, UNITY_RELATIONSHIPS_COUNT_KEY, str(imported_count)
-        )
-    except Exception as exc:  # pragma: no cover - behavior validated via unit tests
-        import logging
+    imported_count = 0
+    failures: list[str] = []
 
-        logging.getLogger(__name__).debug(f"Failed to fetch unity relationships: {exc}")
+    for table_fqn in sorted(table_metadata, key=lambda value: (value.casefold(), value)):
+        try:
+            foreign_keys = _extract_foreign_keys(table_metadata[table_fqn])
+            imported_count += _apply_foreign_keys(
+                contract,
+                table_fqn=table_fqn,
+                foreign_keys=foreign_keys,
+            )
+        except Exception as exc:  # pragma: no cover - validated through unit tests
+            failures.append(f"{table_fqn}: {exc}")
+
+    _upsert_contract_custom_property(
+        contract,
+        UNITY_RELATIONSHIPS_IMPORTED_KEY,
+        "false" if failures else "true",
+    )
+    _upsert_contract_custom_property(
+        contract,
+        UNITY_RELATIONSHIPS_COUNT_KEY,
+        str(imported_count),
+    )
+    if failures:
         _upsert_contract_custom_property(
-            contract, UNITY_RELATIONSHIPS_IMPORTED_KEY, "false"
-        )
-        _upsert_contract_custom_property(
-            contract, UNITY_RELATIONSHIPS_REASON_KEY, str(exc)
+            contract,
+            UNITY_RELATIONSHIPS_REASON_KEY,
+            "; ".join(failures),
         )
     return contract
 
-
-def _fetch_unity_table_metadata(
-    workspace_url: str, token: str, table_fqn: str
-) -> dict[str, Any]:
-    if not workspace_url or not token:
-        raise ValueError(
-            "workspace_url and token are required for Unity relationship import"
-        )
-
-    base_url = workspace_url.rstrip("/")
-    endpoint = f"{base_url}/api/2.1/unity-catalog/tables/{quote(table_fqn, safe='')}"
-    request = Request(
-        endpoint,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json",
-        },
-        method="GET",
-    )
-
-    try:
-        with urlopen(request, timeout=8) as response:
-            payload = response.read().decode("utf-8")
-    except HTTPError as exc:
-        from semapact.exceptions import StorageError
-
-        raise StorageError(
-            f"Unity table metadata request failed: HTTP {exc.code}"
-        ) from exc
-    except URLError as exc:
-        from semapact.exceptions import StorageError
-
-        raise StorageError(
-            f"Unity table metadata request failed: {exc.reason}"
-        ) from exc
-
-    parsed = json.loads(payload)
-    if not isinstance(parsed, dict):
-        raise RuntimeError("Unity table metadata response is not a JSON object")
-    return parsed
-
-
-def _extract_foreign_keys(metadata: dict[str, Any]) -> list[UnityForeignKey]:
-    constraints = _constraint_items(metadata)
+def _extract_foreign_keys(metadata: Mapping[str, Any]) -> list[UnityForeignKey]:
     foreign_keys: list[UnityForeignKey] = []
-    for item in constraints:
+    for item in _constraint_items(metadata):
         record = _parse_constraint_record(item)
         if record is not None:
             foreign_keys.append(record)
     return foreign_keys
 
 
-def _constraint_items(metadata: dict[str, Any]) -> list[dict[str, Any]]:
-    merged: list[dict[str, Any]] = []
-    for key in (
-        "table_constraints",
-        "tableConstraints",
-        "constraints",
-        "foreign_keys",
-        "foreignKeys",
-    ):
-        value = metadata.get(key)
-        if isinstance(value, list):
-            merged.extend(item for item in value if isinstance(item, dict))
-    return merged
+def _constraint_items(metadata: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    value = metadata.get("table_constraints")
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
 
 
-def _parse_constraint_record(item: dict[str, Any]) -> UnityForeignKey | None:
-    constraint_type = str(
-        item.get("constraint_type")
-        or item.get("constraintType")
-        or item.get("type")
-        or item.get("kind")
-        or ""
-    ).lower()
-    if "foreign" not in constraint_type and "reference" not in constraint_type:
+def _parse_constraint_record(item: Mapping[str, Any]) -> UnityForeignKey | None:
+    value = item.get("foreign_key_constraint")
+    if not isinstance(value, Mapping):
         return None
 
-    source_columns = _to_string_list(
-        item.get("columns")
-        or item.get("column_names")
-        or item.get("columnNames")
-        or item.get("from_columns")
-        or item.get("fromColumns")
-        or item.get("child_columns")
-        or item.get("childColumns")
-        or item.get("from")
-    )
-    target_columns = _to_string_list(
-        item.get("referenced_columns")
-        or item.get("referencedColumns")
-        or item.get("to_columns")
-        or item.get("toColumns")
-        or item.get("parent_columns")
-        or item.get("parentColumns")
-        or item.get("to")
-    )
-    target_table = _to_string(
-        item.get("referenced_table")
-        or item.get("referencedTable")
-        or item.get("to_table")
-        or item.get("toTable")
-        or item.get("parent_table")
-        or item.get("parentTable")
-    )
-
+    source_columns = _to_string_list(value.get("child_columns"))
+    target_columns = _to_string_list(value.get("parent_columns"))
+    target_table = _to_string(value.get("parent_table"))
     if not source_columns or not target_columns or not target_table:
         return None
 
@@ -181,7 +100,7 @@ def _parse_constraint_record(item: dict[str, Any]) -> UnityForeignKey | None:
         source_columns=source_columns,
         target_table=target_table,
         target_columns=target_columns,
-        constraint_name=_to_string(item.get("name")),
+        constraint_name=_to_string(value.get("name")),
     )
 
 
@@ -193,14 +112,9 @@ def _to_string(value: Any) -> str | None:
 
 
 def _to_string_list(value: Any) -> list[str]:
-    if value is None:
+    if not isinstance(value, list):
         return []
-    if isinstance(value, str):
-        parts = [part.strip() for part in value.split(",")]
-        return [part for part in parts if part]
-    if isinstance(value, list):
-        return [item for item in (_to_string(item) for item in value) if item]
-    return []
+    return [item for item in (_to_string(item) for item in value) if item]
 
 
 def _apply_foreign_keys(
@@ -211,6 +125,10 @@ def _apply_foreign_keys(
 ) -> int:
     schema_obj = _resolve_target_schema(contract, table_fqn=table_fqn)
     if schema_obj is None:
+        if foreign_keys:
+            raise ValueError(
+                f"Unity relationship metadata has no matching governed asset: {table_fqn}"
+            )
         return 0
 
     imported_count = 0
@@ -263,7 +181,7 @@ def _resolve_target_schema(
     for item in schema_items:
         if (item.name or "").strip().lower() == short_name:
             return item
-    return schema_items[0]
+    return None
 
 
 def _constraint_custom_props(name: str | None) -> list[CustomProperty] | None:

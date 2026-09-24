@@ -57,7 +57,7 @@ def test_databricks_probe_checks_identity_uc_and_read_only_statement_execution(
     client = _Client()
     monkeypatch.setattr(
         readiness,
-        "create_databricks_workspace_client",
+        "create_configured_databricks_workspace_client",
         lambda **kwargs: client,
     )
 
@@ -87,7 +87,7 @@ def test_missing_warehouse_blocks_deployment_readiness(
     client = _Client()
     monkeypatch.setattr(
         readiness,
-        "create_databricks_workspace_client",
+        "create_configured_databricks_workspace_client",
         lambda **kwargs: client,
     )
 
@@ -114,7 +114,7 @@ def test_client_initialization_failure_does_not_leak_exception_message(
 
     monkeypatch.setattr(
         readiness,
-        "create_databricks_workspace_client",
+        "create_configured_databricks_workspace_client",
         _raise,
     )
 
@@ -143,7 +143,7 @@ def test_uc_permission_failure_is_reported_without_exposing_provider_message(
     client.schemas.get = _deny
     monkeypatch.setattr(
         readiness,
-        "create_databricks_workspace_client",
+        "create_configured_databricks_workspace_client",
         lambda **kwargs: client,
     )
 
