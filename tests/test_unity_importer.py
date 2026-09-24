@@ -11,9 +11,6 @@ from open_data_contract_standard.model import (
 )
 
 from semapact.importers.unity_importer import import_unity_contract
-from semapact.platforms.databricks.configuration import DatabricksConnectionHints
-
-
 @dataclass
 class _TableInfo:
     full_name: str
@@ -146,37 +143,33 @@ def test_table_level_import_fetches_only_requested_table(
     assert client.tables.get_calls == ["main.gold.orders"]
 
 
-def test_import_resolves_config_before_constructing_workspace_client(
+def test_import_uses_configured_workspace_client_when_not_injected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _install_mapper(monkeypatch)
     client = _Client([_TableInfo("main.gold.orders")])
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(
-        "semapact.platforms.databricks.configuration.resolve_databricks_connection_hints",
-        lambda **kwargs: DatabricksConnectionHints(
-            workspace_url="https://config.example",
-            token="config-token",
-            profile="config-profile",
-        ),
-    )
-
-    def fake_create_client(**kwargs):  # noqa: ANN003
+    def fake_create_configured_client(**kwargs):  # noqa: ANN003
         captured.update(kwargs)
         return client
 
     monkeypatch.setattr(
-        "semapact.platforms.databricks.client.create_databricks_workspace_client",
-        fake_create_client,
+        "semapact.platforms.databricks.configuration.create_configured_databricks_workspace_client",
+        fake_create_configured_client,
     )
 
-    import_unity_contract(table_fqn="main.gold.orders")
+    import_unity_contract(
+        table_fqn="main.gold.orders",
+        workspace_url="https://explicit.example",
+        token="explicit-token",
+        profile="explicit-profile",
+    )
 
     assert captured == {
-        "workspace_url": "https://config.example",
-        "token": "config-token",
-        "profile": "config-profile",
+        "workspace_url": "https://explicit.example",
+        "token": "explicit-token",
+        "profile": "explicit-profile",
     }
 
 
