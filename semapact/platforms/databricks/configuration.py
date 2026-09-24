@@ -59,6 +59,29 @@ def resolve_databricks_connection_hints(
     )
 
 
+
+def create_configured_databricks_workspace_client(
+    *,
+    workspace_url: str | None = None,
+    token: str | None = None,
+    profile: str | None = None,
+):
+    """Construct a WorkspaceClient after resolving SemaPact connection hints."""
+    from semapact.platforms.databricks.client import (
+        create_databricks_workspace_client,
+    )
+
+    hints = resolve_databricks_connection_hints(
+        workspace_url=workspace_url,
+        token=token,
+        profile=profile,
+    )
+    return create_databricks_workspace_client(
+        workspace_url=hints.workspace_url,
+        token=hints.token,
+        profile=hints.profile,
+    )
+
 def _first_nonblank(*values: str | None) -> str | None:
     for value in values:
         if value is None:
