@@ -4,6 +4,7 @@ import pytest
 
 from semapact.exceptions import ValidationError
 from semapact.platforms.databricks.configuration import (
+    create_configured_databricks_workspace_client,
     resolve_databricks_connection_hints,
 )
 
@@ -95,3 +96,41 @@ def test_invalid_databricks_config_fails_closed(
 
     with pytest.raises(ValidationError, match="Invalid databricks configuration"):
         resolve_databricks_connection_hints()
+
+
+def test_configured_workspace_client_resolves_then_delegates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sentinel = object()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "semapact.platforms.databricks.configuration.resolve_databricks_connection_hints",
+        lambda **kwargs: type(
+            "Hints",
+            (),
+            {
+                "workspace_url": "https://config.example",
+                "token": "config-token",
+                "profile": "config-profile",
+            },
+        )(),
+    )
+
+    def fake_create_client(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(
+        "semapact.platforms.databricks.client.create_databricks_workspace_client",
+        fake_create_client,
+    )
+
+    client = create_configured_databricks_workspace_client()
+
+    assert client is sentinel
+    assert captured == {
+        "workspace_url": "https://config.example",
+        "token": "config-token",
+        "profile": "config-profile",
+    }
