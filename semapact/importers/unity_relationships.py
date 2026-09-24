@@ -29,35 +29,45 @@ class UnityForeignKey:
 def enrich_unity_contract_relationships(
     contract: OpenDataContractStandard,
     *,
-    table_fqn: str,
-    metadata: Mapping[str, Any],
+    table_metadata: Mapping[str, Mapping[str, Any]],
 ) -> OpenDataContractStandard:
-    """Project Unity Catalog foreign-key metadata already returned by the SDK.
+    """Project SDK-returned Unity foreign keys for an entire data product.
 
-    Relationship extraction is best effort: malformed provider metadata does not
-    fail the contract import, but the fallback reason is recorded on the contract.
+    Relationship extraction is best effort per table. A contract-level summary
+    records the total imported relationships and any table-specific failures.
     No second HTTP client or bearer-token path is introduced here.
     """
-    try:
-        foreign_keys = _extract_foreign_keys(metadata)
-        imported_count = _apply_foreign_keys(
-            contract, table_fqn=table_fqn, foreign_keys=foreign_keys
-        )
+    imported_count = 0
+    failures: list[str] = []
+
+    for table_fqn in sorted(table_metadata, key=lambda value: (value.casefold(), value)):
+        try:
+            foreign_keys = _extract_foreign_keys(table_metadata[table_fqn])
+            imported_count += _apply_foreign_keys(
+                contract,
+                table_fqn=table_fqn,
+                foreign_keys=foreign_keys,
+            )
+        except Exception as exc:  # pragma: no cover - validated through unit tests
+            failures.append(f"{table_fqn}: {exc}")
+
+    _upsert_contract_custom_property(
+        contract,
+        UNITY_RELATIONSHIPS_IMPORTED_KEY,
+        "false" if failures else "true",
+    )
+    _upsert_contract_custom_property(
+        contract,
+        UNITY_RELATIONSHIPS_COUNT_KEY,
+        str(imported_count),
+    )
+    if failures:
         _upsert_contract_custom_property(
-            contract, UNITY_RELATIONSHIPS_IMPORTED_KEY, "true"
-        )
-        _upsert_contract_custom_property(
-            contract, UNITY_RELATIONSHIPS_COUNT_KEY, str(imported_count)
-        )
-    except Exception as exc:  # pragma: no cover - behavior validated via unit tests
-        _upsert_contract_custom_property(
-            contract, UNITY_RELATIONSHIPS_IMPORTED_KEY, "false"
-        )
-        _upsert_contract_custom_property(
-            contract, UNITY_RELATIONSHIPS_REASON_KEY, str(exc)
+            contract,
+            UNITY_RELATIONSHIPS_REASON_KEY,
+            "; ".join(failures),
         )
     return contract
-
 
 def _extract_foreign_keys(metadata: Mapping[str, Any]) -> list[UnityForeignKey]:
     foreign_keys: list[UnityForeignKey] = []
