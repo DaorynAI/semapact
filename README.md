@@ -361,8 +361,7 @@ semapact release plan \
   --base ./contracts/orders.yaml \
   --candidate ./contracts/orders.candidate.yaml \
   --base-revision-ref git:abc123 \
-  --candidate-revision-ref git:def456 \
-  --effective-date 2026-09-11
+  --candidate-revision-ref git:def456
 ```
 
 The output contains the canonical `GovernanceDecision`, `ChangeSet`, `ReleasePlan`, and `VersionResolution` artifacts.
