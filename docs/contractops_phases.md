@@ -81,8 +81,7 @@ The CLI analysis surface is:
 ```bash
 semapact release classify \
   --base ./contracts/orders.yaml \
-  --candidate ./contracts/orders.candidate.yaml \
-  --effective-date 2026-09-11
+  --candidate ./contracts/orders.candidate.yaml
 ```
 
 `release classify` is analysis-only. It reports the governance decision and required version bump, but it does not create a `ChangeSet`, `ReleasePlan`, or `VersionResolution` and does not authorize a release.
@@ -104,8 +103,7 @@ semapact release plan \
   --base ./contracts/orders.yaml \
   --candidate ./contracts/orders.candidate.yaml \
   --base-revision-ref git:abc123 \
-  --candidate-revision-ref git:def456 \
-  --effective-date 2026-09-11
+  --candidate-revision-ref git:def456
 ```
 
 The revision references are required because release artifacts must be bound to the exact base and candidate workflow revisions rather than to mutable file paths alone.
@@ -118,8 +116,7 @@ semapact release plan \
   --candidate ./contract.candidate.yaml \
   --base-revision-ref git:abc123 \
   --candidate-revision-ref git:def456 \
-  --authority-reference v1.4.0 \
-  --effective-date 2026-09-11
+  --authority-reference v1.4.0
 ```
 
 The JSON output is serialized directly from the canonical models and contains:
