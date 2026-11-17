@@ -2,7 +2,30 @@
 
 ## Purpose
 
-SemaPact is an ODCS-first, change-driven contract governance and production-assurance control plane. It separates governed contract semantics, formal release publication, runtime deployment, and runtime verification so each concern has one authoritative owner.
+SemaPact currently provides an ODCS-first, change-driven contract governance and production-assurance control plane. It separates governed contract semantics, formal release publication, runtime deployment, and runtime verification so each concern has one authoritative owner.
+
+**Target direction:** SemaPact is evolving into a **governed Agentic Data Engineering loop engine**, in which a deterministic outer loop independently verifies and gates contract-grounded engineering changes performed by external coding agents. This target is **not yet an implemented feature**. The current contract/release/deployment boundaries below remain authoritative. See [Agentic Engineering Target Architecture](docs/agentic_engineering_architecture.md) and [Roadmap](docs/ROADMAP.md).
+
+## Target Agentic Loop Overlay (Planned)
+
+The existing canonical governance, release, deployment, observation and reconciliation artifacts become **deterministic services used by the outer loop**, not a second, competing workflow model. The external coding agent owns the *inner* implementation/repair loop and cannot self-declare that a step has passed.
+
+| Boundary | Intended owner |
+| --- | --- |
+| Workflow selection, trusted profile loading, step routing, async waits, budgets and independent exit checks | SemaPact outer loop (optional LangGraph engine, CLI first) |
+| Engineering investigation, code/config edits and fast iterative repair | External coding agent (Codex, Copilot, Claude Code, etc.) in isolated execution context |
+| ODCS lint, standard contract testing, generic data quality execution and change primitives | Delegate to Data Contract CLI where feature equivalence is verified |
+| Contract lifecycle, GovernanceDecision, ChangeSet, formal release and reconciliation semantics | Existing SemaPact canonical domain authorities |
+| Runtime observation and test receipts; pipeline deployment and execution | Pluggable runtime and pipeline-framework drivers, Databricks first |
+| Merge, human approvals, deployment credentials and environment access | Protected Git, review and CI/CD/IAM controls |
+
+**Trust model:** a check result is bound to immutable input and runtime evidence, rerun at each exit, and invalidated after relevant changes. Workflow tools and policies are loaded from pinned protected Git revisions or allowlisted installed profiles, never from an agent-mutated worktree. LangGraph checkpointing (live state), operational telemetry (SQLite/Delta), and immutable Git governance history are separate persistence authorities.
+
+**Deployment authorization compatibility:** future action-level authorize() is a SemaPact-mediated policy check, **not** a new DeploymentAuthorization artifact or a replacement for protected CI/CD execution context. Human workflow gates (proposed GA/GC/GR) are distinct: design approval, merge approval and formal PUBLISH approval. They do not grant each other's side-effect permissions. Candidate Test staging never becomes formal PUBLISH merely by merging a PR.
+
+**Lifecycle/reproducibility compatibility:** retain the canonical explicit ChangeContext/effective-date contract; do not resolve governance-semantic defaults implicitly from wall-clock time. Phase 0 validates the target as a real manual agent loop before adding LangGraph orchestration.
+
+See [full target architecture](docs/agentic_engineering_architecture.md) for the five-plane diagram, step protocol, plugins, trust model and delivery-versus-release flows.
 
 The canonical product flow has two paths after governance:
 
@@ -308,3 +331,7 @@ Rules:
 9. **Greenfield means one surface** — superseded aliases, legacy artifacts, and compatibility workflows are removed rather than maintained beside canonical paths.
 10. **One canonical contract model** — SemaPact reuses ODCS rather than maintaining a parallel contract schema.
 11. **Evidence is not contract truth** — runtime evidence may inform analysis or an explicit governed proposal, but it never silently mutates canonical ODCS semantics.
+12. **Agent completion is not verification** — an external agent's self-reported success never replaces independently executed step exit checks.
+13. **Trust is pinned** — agent-editable workflow/policy files cannot redefine trusted checks, allowed operations or side-effect permissions.
+14. **Live state is not history** — loop checkpointing, operational evidence and immutable Git governance facts remain separate stores.
+15. **Action authorization is not IAM** — policy gates constrain SemaPact-mediated actions; protected platform identities and CI/CD are the runtime enforcement boundary.
