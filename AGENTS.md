@@ -7,6 +7,7 @@ SemaPact is an open-source, enterprise lifecycle-governance and production-assur
 SemaPact is change-driven, not CRUD. Main governed contracts are not edited blindly; lifecycle, release, authorization, deployment, and reconciliation remain separate boundaries.
 
 - **Always read [`ARCHITECTURE.md`](./ARCHITECTURE.md)** before designing features, adding state, or moving code across packages.
+- For **future loop/agentic work**, read [`docs/agentic_engineering_architecture.md`](./docs/agentic_engineering_architecture.md) and [`docs/ROADMAP.md`](./docs/ROADMAP.md). Treat both as **target-state planning**, not as proof that loop APIs exist. Do not weaken current PUBLISH/DEPLOY or explicit governance-context semantics.
 - Preserve canonical dependency direction: interfaces → application → domain/ports; platform adapters implement external/provider boundaries.
 
 ### Package ownership rules
