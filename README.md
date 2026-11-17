@@ -6,6 +6,16 @@ SemaPact is an open-source, change-driven governance layer for evolving data pro
 
 > **SemaPact is not another metadata catalog or CRUD editor. It governs how data products are allowed to change, turns approved contract releases into explicit deployment intent, and verifies how governed desired state compares with observed platform state.**
 
+## Direction: Governed Agentic Data Engineering (planned)
+
+SemaPact's next product direction is a **governed agentic engineering outer loop**: an external coding agent creates and repairs engineering changes; SemaPact pins the trusted workflow, independently verifies each step's exit, enforces governance gates and records evidence. Contract validation/DQ execution is delegated to Data Contract CLI where appropriate; pipeline execution remains with Databricks and other runtime toolchains.
+
+**This is a target architecture, not a shipped loop engine.** Current SemaPact governance/release/deployment commands remain the existing capabilities.
+
+- [Current architecture and canonical invariants](ARCHITECTURE.md)
+- [Target agentic-loop architecture and trust boundaries](docs/agentic_engineering_architecture.md)
+- [Phased roadmap and Phase 0 pilot exit criteria](docs/ROADMAP.md)
+
 ## Installation
 
 Install the platform-neutral core:
